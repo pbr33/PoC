@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ECI Estimate — Your Last Manual Proposal</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:#04080f;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:20px;
+    font-family:'DM Sans',sans-serif;
+  }
+
+  .page{
+    width:794px;height:1123px;
+    background:#04080f;
+    position:relative;overflow:hidden;
+    box-shadow:0 60px 160px rgba(0,0,0,.9);
+  }
+
+  /* ── Split background: left dark / right slightly lighter ── */
+  .split-bg{
+    position:absolute;inset:0;
+    background:linear-gradient(110deg, #04080f 0%, #04080f 55%, #070d1a 55%, #070d1a 100%);
+  }
+
+  /* ── Diagonal slash ── */
+  .slash{
+    position:absolute;
+    top:0;left:0;right:0;bottom:0;
+    clip-path:polygon(55% 0%, 57% 0%, 100% 100%, 98% 100%);
+    background:linear-gradient(180deg,#8b5cf6,#f72585,#ffd166);
+    opacity:.15;
+  }
+
+  /* ── Glow orbs ── */
+  .orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.12}
+  .o1{width:450px;height:450px;background:#8b5cf6;top:-100px;right:-100px;}
+  .o2{width:350px;height:350px;background:#f72585;bottom:100px;right:50px;}
+  .o3{width:280px;height:280px;background:#00b4d8;top:300px;left:-80px;}
+
+  /* ── Top accent bar ── */
+  .top-bar{
+    position:absolute;top:0;left:0;right:0;height:4px;
+    background:linear-gradient(90deg,#8b5cf6,#f72585,#ffd166);
+  }
+
+  /* ── Content layout ── */
+  .content{position:absolute;inset:0;z-index:5;padding:0 56px;}
+
+  /* Header */
+  .header{
+    padding-top:32px;
+    display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid rgba(255,255,255,.04);
+    padding-bottom:20px;
+    margin-bottom:0;
+  }
+  .logo{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:14px;font-weight:700;letter-spacing:-.01em;
+    background:linear-gradient(135deg,#00b4d8,#8b5cf6);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .pre-release{
+    font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:#334155;border:1px solid #1e293b;border-radius:4px;padding:4px 12px;
+  }
+
+  /* ── Left: Before column ── */
+  .two-col{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:0;margin-top:0;height:calc(100% - 80px);
+  }
+
+  .col-before{
+    padding:40px 32px 40px 0;
+    border-right:1px solid rgba(255,255,255,.06);
+    display:flex;flex-direction:column;
+  }
+  .col-after{
+    padding:40px 0 40px 32px;
+    display:flex;flex-direction:column;
+  }
+
+  .col-label{
+    font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;
+    margin-bottom:20px;display:flex;align-items:center;gap:8px;
+  }
+  .col-label .dot{width:6px;height:6px;border-radius:50%;}
+
+  /* Before items */
+  .before-item{
+    display:flex;align-items:flex-start;gap:14px;
+    padding:14px 16px;margin-bottom:8px;
+    border:1px solid rgba(255,255,255,.05);
+    border-radius:10px;
+    background:rgba(255,255,255,.02);
+  }
+  .before-icon{
+    width:32px;height:32px;border-radius:8px;
+    background:rgba(239,68,68,.1);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;flex-shrink:0;
+  }
+  .before-text{}
+  .before-title{font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:3px;}
+  .before-desc{font-size:10px;color:#475569;line-height:1.5;}
+  .before-badge{
+    display:inline-block;margin-top:5px;
+    background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);
+    border-radius:4px;padding:2px 8px;
+    font-size:9px;font-weight:700;color:#ef4444;letter-spacing:.04em;
+  }
+
+  /* Main headline in middle — overlapping both cols */
+  .big-middle{
+    position:absolute;left:56px;right:56px;
+    top:130px;
+    text-align:center;z-index:10;pointer-events:none;
+  }
+  .big-middle h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;color:#475569;margin-bottom:10px;
+  }
+  .vs-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:44px;height:44px;border-radius:50%;
+    background:#04080f;border:1px solid rgba(255,255,255,.1);
+    font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;
+    color:#475569;
+    position:absolute;left:50%;top:130px;transform:translate(-50%,-50%);
+    z-index:20;
+  }
+
+  /* After items */
+  .after-item{
+    display:flex;align-items:flex-start;gap:14px;
+    padding:14px 16px;margin-bottom:8px;
+    border:1px solid rgba(0,212,170,.15);
+    border-radius:10px;
+    background:rgba(0,212,170,.04);
+    position:relative;overflow:hidden;
+  }
+  .after-item::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
+    background:var(--ac,#00d4aa);
+  }
+  .after-icon{
+    width:32px;height:32px;border-radius:8px;
+    background:rgba(0,212,170,.12);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;flex-shrink:0;
+  }
+  .after-title{font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:3px;}
+  .after-desc{font-size:10px;color:#64748b;line-height:1.5;}
+  .after-badge{
+    display:inline-block;margin-top:5px;
+    background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.25);
+    border-radius:4px;padding:2px 8px;
+    font-size:9px;font-weight:700;color:#00d4aa;letter-spacing:.04em;
+  }
+
+  /* ── Hero statement ── */
+  .hero-stmt{
+    position:absolute;bottom:200px;left:56px;right:56px;
+    text-align:center;z-index:10;
+  }
+  .hero-stmt h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:48px;font-weight:800;line-height:1.05;
+    letter-spacing:-.04em;margin-bottom:16px;
+  }
+  .hero-stmt .word1{color:#94a3b8;}
+  .hero-stmt .word2{
+    background:linear-gradient(135deg,#8b5cf6,#f72585);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .hero-stmt .word3{color:#94a3b8;}
+  .hero-stmt p{
+    font-size:13px;color:#475569;line-height:1.6;max-width:500px;margin:0 auto;
+  }
+
+  /* ── Bottom CTA ── */
+  .cta-bottom{
+    position:absolute;bottom:0;left:0;right:0;
+    padding:20px 56px;
+    background:rgba(255,255,255,.02);
+    border-top:1px solid rgba(255,255,255,.05);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .cta-text{font-size:10px;color:#334155;letter-spacing:.04em;}
+  .cta-text strong{color:#475569;font-size:11px;}
+  .cta-pill{
+    background:linear-gradient(135deg,#8b5cf6,#f72585);
+    color:#fff;padding:10px 28px;border-radius:50px;
+    font-size:11px;font-weight:700;letter-spacing:.04em;
+    box-shadow:0 0 24px rgba(139,92,246,.4);
+  }
+
+  /* VS divider line */
+  .vline{
+    position:absolute;left:50%;top:80px;bottom:180px;
+    width:1px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.06),rgba(255,255,255,.06),transparent);
+    z-index:3;
+  }
+
+  @media print{body{background:#04080f;padding:0}.page{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top-bar"></div>
+  <div class="split-bg"></div>
+  <div class="slash"></div>
+  <div class="orb o1"></div>
+  <div class="orb o2"></div>
+  <div class="orb o3"></div>
+  <div class="vline"></div>
+
+  <div class="content">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">⚡ ECI Business Estimation Tool</div>
+      <div class="pre-release">Pre-Release Preview</div>
+    </div>
+
+    <!-- VS badge -->
+    <div class="vs-badge">VS</div>
+
+    <!-- Two-column layout -->
+    <div class="two-col">
+
+      <!-- BEFORE column -->
+      <div class="col-before">
+        <div class="col-label" style="color:#ef4444">
+          <div class="dot" style="background:#ef4444;box-shadow:0 0 8px #ef4444"></div>
+          The Way It Is Today
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">⏳</div>
+          <div class="before-text">
+            <div class="before-title">Days of Manual Writing</div>
+            <div class="before-desc">Senior consultants spending 8–40 hours per proposal. Weekends formatting spreadsheets instead of closing deals.</div>
+            <div class="before-badge">8–40 HOURS</div>
+          </div>
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">😰</div>
+          <div class="before-text">
+            <div class="before-title">Inconsistent Estimates</div>
+            <div class="before-desc">Every consultant prices differently. No shared methodology. Client gets wildly different numbers from different people.</div>
+            <div class="before-badge">HIGH VARIANCE</div>
+          </div>
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">💸</div>
+          <div class="before-text">
+            <div class="before-title">Guessed Infrastructure Costs</div>
+            <div class="before-desc">Outdated price lists. Rule-of-thumb guesses. CFO asks where the number came from — you can't answer.</div>
+            <div class="before-badge">INDEFENSIBLE</div>
+          </div>
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">😬</div>
+          <div class="before-text">
+            <div class="before-title">"What If We Cut Scope?"</div>
+            <div class="before-desc">Client asks in the meeting. You promise to come back next week. Competitor answers immediately. You lose.</div>
+            <div class="before-badge">LOST DEAL</div>
+          </div>
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">🗑️</div>
+          <div class="before-text">
+            <div class="before-title">Proposals Lost on Hard Drives</div>
+            <div class="before-desc">No shared history. No way to find the Contoso estimate from Q3. Same work done repeatedly, from scratch.</div>
+            <div class="before-badge">NO MEMORY</div>
+          </div>
+        </div>
+
+        <div class="before-item">
+          <div class="before-icon">😶</div>
+          <div class="before-text">
+            <div class="before-title">Generic Templates That Show</div>
+            <div class="before-desc">Clients see through template proposals immediately. Sophisticated buyers expect intelligence, not mail-merge.</div>
+            <div class="before-badge">LOW WIN RATE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AFTER column -->
+      <div class="col-after">
+        <div class="col-label" style="color:#00d4aa">
+          <div class="dot" style="background:#00d4aa;box-shadow:0 0 8px #00d4aa"></div>
+          The ECI Way — Coming Soon
+        </div>
+
+        <div class="after-item" style="--ac:#00d4aa">
+          <div class="after-icon">⚡</div>
+          <div>
+            <div class="after-title">90 Seconds. Every Time.</div>
+            <div class="after-desc">Upload scope document, hit one button. 11 AI agents run in parallel. Full estimation package ready before your coffee cools.</div>
+            <div class="after-badge">UNDER 90 SECONDS</div>
+          </div>
+        </div>
+
+        <div class="after-item" style="--ac:#8b5cf6">
+          <div class="after-icon">🎯</div>
+          <div>
+            <div class="after-title">Consistent Across Every Consultant</div>
+            <div class="after-desc">Same methodology, same quality — every run. ±8% variance across the entire team. Your best consultant's standard, always.</div>
+            <div class="after-badge">±8% VARIANCE</div>
+          </div>
+        </div>
+
+        <div class="after-item" style="--ac:#00b4d8">
+          <div class="after-icon">💰</div>
+          <div>
+            <div class="after-title">Live Azure Retail Prices API</div>
+            <div class="after-desc">Real-time infrastructure costs fetched live from Azure. When the CFO asks — you have a real, defensible answer.</div>
+            <div class="after-badge">REAL-TIME DATA</div>
+          </div>
+        </div>
+
+        <div class="after-item" style="--ac:#ffd166">
+          <div class="after-icon">🔀</div>
+          <div>
+            <div class="after-title">3 Scenarios. In the Room. Now.</div>
+            <div class="after-desc">Scope slider. Team size. Fixed vs T&M. Watch all three scenarios recalculate live. You control the conversation.</div>
+            <div class="after-badge">WIN THE MEETING</div>
+          </div>
+        </div>
+
+        <div class="after-item" style="--ac:#06d6a0">
+          <div class="after-icon">🗂️</div>
+          <div>
+            <div class="after-title">Every Run Saved. Forever.</div>
+            <div class="after-desc">Persistent run library with client name extracted. Architect review gate. Search, restore, compare any past proposal instantly.</div>
+            <div class="after-badge">TOTAL RECALL</div>
+          </div>
+        </div>
+
+        <div class="after-item" style="--ac:#f72585">
+          <div class="after-icon">🧠</div>
+          <div>
+            <div class="after-title">Proposals That Know the Client</div>
+            <div class="after-desc">AI extracts client name, reads writing style, mirrors terminology. Every proposal feels bespoke — because it is.</div>
+            <div class="after-badge">WINS DEALS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hero statement -->
+    <div class="hero-stmt">
+      <h1>
+        <span class="word1">You just wrote your</span>
+        <span class="word2"> last </span>
+        <span class="word3">manual proposal.</span>
+      </h1>
+      <p>The ECI Business Estimation Tool is launching soon.<br>
+         Request early access and be first to experience the future of presales.</p>
+    </div>
+
+    <!-- Bottom CTA -->
+    <div class="cta-bottom">
+      <div class="cta-text">
+        <strong>ECI Business Estimation Tool</strong><br>
+        11 Agents · 9 Formats · 5 AI Providers · Under £1 per Run
+      </div>
+      <div class="cta-pill">Request Early Access →</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

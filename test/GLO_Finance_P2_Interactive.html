@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GLO Finance AS-IS — System View (Interactive)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #03060F;
+  font-family: 'Inter', sans-serif; color: #EEF4FF; }
+
+/* ── top bar ── */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 54px; z-index: 300;
+  background: rgba(3,6,15,.97); border-bottom: 1px solid rgba(255,255,255,.09);
+  display: flex; align-items: center; padding: 0 18px; gap: 16px;
+}
+#topbar .brand { font-size: 13px; font-weight: 700; color: #EEF4FF; }
+#topbar .sub   { font-size: 9px; color: #4E6280; margin-top: 2px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
+  border-radius: 20px; font-size: 8px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; white-space: nowrap;
+}
+.badge-auto   { background: rgba(74,222,128,.12); border: 1px solid rgba(74,222,128,.3); color: #4ade80; }
+.badge-manual { background: rgba(249,115,22,.12); border: 1px solid rgba(249,115,22,.3); color: #f97316; }
+.badge-mixed  { background: rgba(148,163,184,.1);  border: 1px solid rgba(148,163,184,.25); color: #94A3B8; }
+.ctrl-btn {
+  height: 28px; padding: 0 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04);
+  color: #94A3B8; font-size: 10px; font-weight: 600; font-family: 'Inter',sans-serif;
+  transition: all .15s;
+}
+.ctrl-btn:hover { background: rgba(255,255,255,.09); color: #EEF4FF; }
+
+/* ── diagram viewport ── */
+#vp {
+  position: fixed; top: 54px; left: 0; right: 0; bottom: 0;
+  overflow: hidden; z-index: 1; cursor: grab; transition: right .35s ease;
+}
+#vp.panel-open { right: 420px; }
+#vp.drag { cursor: grabbing; }
+#diagram-root { transform-origin: 0 0; user-select: none; }
+
+/* ── detail panel ── */
+#detail-panel {
+  position: fixed; top: 54px; right: -420px; bottom: 0; width: 420px; z-index: 200;
+  background: #08111F; border-left: 1px solid rgba(255,255,255,.1);
+  display: flex; flex-direction: column;
+  transition: right .35s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+#detail-panel.open { right: 0; }
+.dp-header {
+  padding: 18px 18px 14px; border-bottom: 1px solid rgba(255,255,255,.07);
+  flex-shrink: 0;
+}
+.dp-sys  { font-size: 9px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--lc); margin-bottom: 6px; }
+.dp-title { font-size: 16px; font-weight: 700; color: #EEF4FF; line-height: 1.3; margin-bottom: 8px; }
+.dp-fn    { font-size: 10px; color: #4E6280; margin-bottom: 10px; }
+.dp-mode  { display: inline-flex; }
+.dp-close {
+  position: absolute; top: 14px; right: 14px; width: 26px; height: 26px;
+  border-radius: 6px; border: 1px solid rgba(255,255,255,.1);
+  background: rgba(255,255,255,.05); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #4E6280; transition: all .12s;
+}
+.dp-close:hover { background: rgba(255,255,255,.12); color: #EEF4FF; }
+.dp-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+.dp-section-title {
+  font-size: 9px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase;
+  color: #4E6280; margin-bottom: 8px; padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.dp-detail { font-size: 11.5px; color: #94A3B8; line-height: 1.7; margin-bottom: 18px; }
+.dp-connections { list-style: none; }
+.dp-connections li {
+  font-size: 10.5px; color: #64748B; padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04); display: flex; align-items: center; gap: 7px;
+}
+.dp-connections li::before { content: ''; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--lc); flex-shrink: 0; }
+.dp-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; color: #1E293B; gap: 10px; padding: 40px;
+}
+.dp-empty svg { opacity: .3; }
+.dp-empty p { font-size: 11px; text-align: center; color: #334155; }
+
+/* ── zoom controls ── */
+#zoom-ctrl {
+  position: fixed; bottom: 40px; right: 14px; display: flex;
+  flex-direction: column; gap: 3px; z-index: 200;
+  transition: right .35s ease;
+}
+#zoom-ctrl.panel-open { right: 434px; }
+.zb {
+  width: 30px; height: 30px; border-radius: 6px;
+  background: rgba(8,14,28,.95); border: 1px solid rgba(255,255,255,.1);
+  color: #94A3B8; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; font-size: 15px; font-weight: 700;
+  backdrop-filter: blur(8px); transition: all .12s;
+}
+.zb:hover { background: rgba(20,40,80,.95); color: #EEF4FF; }
+#zoom-label { font-size: 8px; color: #4E6280; text-align: center; padding: 2px;
+  background: rgba(8,14,28,.85); border: 1px solid rgba(255,255,255,.07);
+  border-radius: 5px; font-family: monospace; }
+
+/* elem hover highlight */
+.elem:hover .elem-shape { filter: brightness(1.35); transition: filter .15s; }
+.elem.selected .elem-shape { filter: brightness(1.5); }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div>
+    <div class="brand">GLO Finance — AS-IS Process Map (System / ERP View)</div>
+    <div class="sub">13 System Swim Lanes  ·  8 L3 Activity Phases  ·  Click any box to see details</div>
+  </div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <span class="badge badge-auto">&#x25CF; Auto</span>
+    <span class="badge badge-manual">&#x25CF; Manual</span>
+    <span class="badge badge-mixed">&#x25CF; Mixed</span>
+    <button class="ctrl-btn" onclick="resetView()">&#x2295; Reset</button>
+    <button class="ctrl-btn" onclick="fitScreen()">&#x2922; Fit</button>
+  </div>
+</div>
+
+<!-- Diagram viewport -->
+<div id="vp">
+  <div id="diagram-root">
+    <svg id="mainsvg" xmlns="http://www.w3.org/2000/svg" width="3570" height="1770">
+<defs>
+<marker id="arr-main" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+<path d="M1,1 L7,4 L1,7 Z" fill="rgba(255,255,255,.4)"/></marker>
+<marker id="arr-yes" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+<path d="M1,1 L7,4 L1,7 Z" fill="#4ade80"/></marker>
+<marker id="arr-no" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+<path d="M1,1 L7,4 L1,7 Z" fill="#f97316"/></marker>
+<marker id="arr-loop" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+<path d="M1,1 L7,4 L1,7 Z" fill="#f97316"/></marker>
+<marker id="arr-hand" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+<path d="M1,1 L7,4 L1,7 Z" fill="rgba(100,116,139,.9)"/></marker>
+</defs>
+<rect width="3570" height="1770" fill="#03060F"/>
+<rect x="0" y="80" width="3570" height="130" fill="rgba(0,229,192,.05)"/>
+<line x1="0" y1="210" x2="3570" y2="210" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="80" width="3" height="130" fill="#00E5C0"/>
+<rect x="3" y="80" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="136" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#00E5C0" font-family="Inter,sans-serif">SSUP Portal</text>
+<text x="122" y="153" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#00E5C0" font-family="Inter,sans-serif">/ NeoGrid</text>
+<text x="122" y="168" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Supplier Onboarding Team</text>
+<line x1="240" y1="80" x2="240" y2="210" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="210" width="3570" height="130" fill="rgba(26,224,190,.05)"/>
+<line x1="0" y1="340" x2="3570" y2="340" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="210" width="3" height="130" fill="#1AE0BE"/>
+<rect x="3" y="210" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="275" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#1AE0BE" font-family="Inter,sans-serif">EQOS</text>
+<text x="122" y="289" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Master Data Management</text>
+<line x1="240" y1="210" x2="240" y2="340" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="340" width="3570" height="130" fill="rgba(79,179,255,.05)"/>
+<line x1="0" y1="470" x2="3570" y2="470" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="340" width="3" height="130" fill="#4FB3FF"/>
+<rect x="3" y="340" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="396" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#4FB3FF" font-family="Inter,sans-serif">LM / MM</text>
+<text x="122" y="413" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#4FB3FF" font-family="Inter,sans-serif">System</text>
+<text x="122" y="428" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Buyers (PO Creation)</text>
+<line x1="240" y1="340" x2="240" y2="470" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="470" width="3570" height="130" fill="rgba(123,159,255,.05)"/>
+<line x1="0" y1="600" x2="3570" y2="600" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="470" width="3" height="130" fill="#7B9FFF"/>
+<rect x="3" y="470" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="535" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#7B9FFF" font-family="Inter,sans-serif">ISOS</text>
+<text x="122" y="549" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Finance & PO Validation Hub</text>
+<line x1="240" y1="470" x2="240" y2="600" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="600" width="3570" height="130" fill="rgba(167,139,250,.05)"/>
+<line x1="0" y1="730" x2="3570" y2="730" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="600" width="3" height="130" fill="#A78BFA"/>
+<rect x="3" y="600" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="656" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#A78BFA" font-family="Inter,sans-serif">Oracle TM</text>
+<text x="122" y="673" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#A78BFA" font-family="Inter,sans-serif">(OTM)</text>
+<text x="122" y="688" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Logistics & Planning</text>
+<line x1="240" y1="600" x2="240" y2="730" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="730" width="3570" height="130" fill="rgba(196,181,253,.05)"/>
+<line x1="0" y1="860" x2="3570" y2="860" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="730" width="3" height="130" fill="#C4B5FD"/>
+<rect x="3" y="730" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="795" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#C4B5FD" font-family="Inter,sans-serif">BizTalk / EDI</text>
+<text x="122" y="809" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Integration Layer (IT)</text>
+<line x1="240" y1="730" x2="240" y2="860" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="860" width="3570" height="130" fill="rgba(255,208,74,.05)"/>
+<line x1="0" y1="990" x2="3570" y2="990" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="860" width="3" height="130" fill="#FFD04A"/>
+<rect x="3" y="860" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="925" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#FFD04A" font-family="Inter,sans-serif">Documentum</text>
+<text x="122" y="939" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Document Management (AP)</text>
+<line x1="240" y1="860" x2="240" y2="990" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="990" width="3570" height="130" fill="rgba(255,107,107,.05)"/>
+<line x1="0" y1="1120" x2="3570" y2="1120" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="990" width="3" height="130" fill="#FF6B6B"/>
+<rect x="3" y="990" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1046" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#FF6B6B" font-family="Inter,sans-serif">MS Access DB</text>
+<text x="122" y="1063" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#FF6B6B" font-family="Inter,sans-serif">(Self-Billing)</text>
+<text x="122" y="1078" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">TBS Billing Analyst</text>
+<line x1="240" y1="990" x2="240" y2="1120" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="1120" width="3570" height="130" fill="rgba(255,158,94,.05)"/>
+<line x1="0" y1="1250" x2="3570" y2="1250" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="1120" width="3" height="130" fill="#FF9E5E"/>
+<rect x="3" y="1120" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1176" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#FF9E5E" font-family="Inter,sans-serif">Oracle</text>
+<text x="122" y="1193" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#FF9E5E" font-family="Inter,sans-serif">Financials 11i</text>
+<text x="122" y="1208" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">AP / AR Finance</text>
+<line x1="240" y1="1120" x2="240" y2="1250" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="1250" width="3570" height="130" fill="rgba(197,123,255,.05)"/>
+<line x1="0" y1="1380" x2="3570" y2="1380" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="1250" width="3" height="130" fill="#C57BFF"/>
+<rect x="3" y="1250" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1306" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#C57BFF" font-family="Inter,sans-serif">Oracle Fusion</text>
+<text x="122" y="1323" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#C57BFF" font-family="Inter,sans-serif">(Procurement/AR)</text>
+<text x="122" y="1338" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Finance / Procurement</text>
+<line x1="240" y1="1250" x2="240" y2="1380" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="1380" width="3570" height="130" fill="rgba(82,230,122,.05)"/>
+<line x1="0" y1="1510" x2="3570" y2="1510" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="1380" width="3" height="130" fill="#52E67A"/>
+<rect x="3" y="1380" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1445" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#52E67A" font-family="Inter,sans-serif">Tungsten Network</text>
+<text x="122" y="1459" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">eInvoicing Portal</text>
+<line x1="240" y1="1380" x2="240" y2="1510" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="1510" width="3570" height="130" fill="rgba(56,198,255,.05)"/>
+<line x1="0" y1="1640" x2="3570" y2="1640" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="1510" width="3" height="130" fill="#38C6FF"/>
+<rect x="3" y="1510" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1566" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#38C6FF" font-family="Inter,sans-serif">WTA Portal</text>
+<text x="122" y="1583" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#38C6FF" font-family="Inter,sans-serif">/ HMRC</text>
+<text x="122" y="1598" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Customs Clearance Agent</text>
+<line x1="240" y1="1510" x2="240" y2="1640" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="1640" width="3570" height="130" fill="rgba(93,221,170,.05)"/>
+<line x1="0" y1="1770" x2="3570" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<rect x="0" y="1640" width="3" height="130" fill="#5DDDAA"/>
+<rect x="3" y="1640" width="237" height="130" fill="rgba(3,6,15,.85)"/>
+<text x="122" y="1705" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#5DDDAA" font-family="Inter,sans-serif">NBS / DDA</text>
+<text x="122" y="1719" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,.32)" font-family="Inter,sans-serif">Duty Management (Finance)</text>
+<line x1="240" y1="1640" x2="240" y2="1770" stroke="rgba(255,255,255,.07)"/>
+<rect x="0" y="0" width="3570" height="80" fill="rgba(3,6,15,.97)"/>
+<line x1="0" y1="80" x2="3570" y2="80" stroke="rgba(255,255,255,.08)"/>
+<rect x="0" y="0" width="240" height="80" fill="rgba(3,6,15,.96)"/>
+<text x="120" y="28" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="700" fill="rgba(255,255,255,.4)" font-family="Inter,sans-serif">ERP / SYSTEM</text>
+<text x="120" y="44" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(255,255,255,.22)" font-family="Inter,sans-serif">Business Function Below</text>
+<text x="120" y="60" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.18)" font-family="Inter,sans-serif">[A]=Auto  [M]=Manual</text>
+<rect x="240" y="0" width="380" height="1770" fill="rgba(0,229,192,.07)"/>
+<line x1="620" y1="0" x2="620" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="430" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#00E5C0" font-family="Inter,sans-serif">Supplier</text>
+<text x="430" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#00E5C0" font-family="Inter,sans-serif">Setup</text>
+<rect x="620" y="0" width="420" height="1770" fill="rgba(79,179,255,.07)"/>
+<line x1="1040" y1="0" x2="1040" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="830" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#4FB3FF" font-family="Inter,sans-serif">PO &</text>
+<text x="830" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#4FB3FF" font-family="Inter,sans-serif">Compliance</text>
+<rect x="1040" y="0" width="390" height="1770" fill="rgba(167,139,250,.07)"/>
+<line x1="1430" y1="0" x2="1430" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="1235" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#A78BFA" font-family="Inter,sans-serif">Shipment</text>
+<text x="1235" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#A78BFA" font-family="Inter,sans-serif">& Booking</text>
+<rect x="1430" y="0" width="420" height="1770" fill="rgba(255,208,74,.06)"/>
+<line x1="1850" y1="0" x2="1850" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="1640" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#FFD04A" font-family="Inter,sans-serif">Invoice</text>
+<text x="1640" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#FFD04A" font-family="Inter,sans-serif">Receipt & Prep</text>
+<rect x="1850" y="0" width="410" height="1770" fill="rgba(255,107,107,.06)"/>
+<line x1="2260" y1="0" x2="2260" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="2055" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#FF6B6B" font-family="Inter,sans-serif">Cost</text>
+<text x="2055" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#FF6B6B" font-family="Inter,sans-serif">Validation</text>
+<rect x="2260" y="0" width="410" height="1770" fill="rgba(197,123,255,.06)"/>
+<line x1="2670" y1="0" x2="2670" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="2465" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#C57BFF" font-family="Inter,sans-serif">Billing &</text>
+<text x="2465" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#C57BFF" font-family="Inter,sans-serif">PO Raise</text>
+<rect x="2670" y="0" width="380" height="1770" fill="rgba(82,230,122,.06)"/>
+<line x1="3050" y1="0" x2="3050" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="2860" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#52E67A" font-family="Inter,sans-serif">AR &</text>
+<text x="2860" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#52E67A" font-family="Inter,sans-serif">Settlement</text>
+<rect x="3050" y="0" width="480" height="1770" fill="rgba(56,198,255,.06)"/>
+<line x1="3530" y1="0" x2="3530" y2="1770" stroke="rgba(255,255,255,.06)"/>
+<text x="3290" y="26" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#38C6FF" font-family="Inter,sans-serif">Customs</text>
+<text x="3290" y="43" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#38C6FF" font-family="Inter,sans-serif">& Duty</text>
+<path d="M934.0,535.0 C960.0,535.0 960.0,535.0 986.0,535.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1134.0,535.0 C1150.0,535.0 1150.0,535.0 1166.0,535.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1314.0,535.0 C1440.0,535.0 1440.0,535.0 1566.0,535.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1714.0,535.0 C1845.0,535.0 1845.0,535.0 1976.0,535.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1304.0,665.0 C1365.0,665.0 1365.0,665.0 1426.0,665.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M3174.0,665.0 C3230.0,665.0 3230.0,665.0 3286.0,665.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M894.0,795.0 C1025.0,795.0 1025.0,795.0 1156.0,795.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1304.0,795.0 C1400.0,795.0 1400.0,795.0 1496.0,795.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M1644.0,795.0 C1810.0,795.0 1810.0,795.0 1976.0,795.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M2884.0,1185.0 C2910.0,1185.0 2910.0,1185.0 2936.0,1185.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M3314.0,1705.0 C3340.0,1705.0 3340.0,1705.0 3366.0,1705.0" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.3" marker-end="url(#arr-main)"/>
+<path d="M420,168.0 C456.0,168.0 464.0,252.0 500,252.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="460" y="210.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Doc upload</text>
+<path d="M500,298.0 C662.0,298.0 698.0,512.0 860,512.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="680" y="405.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Compliance feed</text>
+<path d="M720,428.0 C783.0,428.0 797.0,512.0 860,512.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="790" y="470.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">PO via BizTalk</text>
+<path d="M1060,558.0 C1001.5,558.0 988.5,642.0 930,642.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="995" y="600.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">PO to OTM</text>
+<path d="M930,688.0 C880.5,688.0 869.5,772.0 820,772.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="875" y="730.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">PO distributed</text>
+<path d="M1230,772.0 C1230,697.1 1240,632.9 1240,558.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="1235" y="665.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">SM1 from FF</text>
+<path d="M1570,772.0 C1786.0,772.0 1834.0,558.0 2050,558.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="1810" y="665.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">IV0 to ISOS</text>
+<path d="M2050,558.0 C2050,632.9 2050,697.1 2050,772.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2050" y="665.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">78-col export</text>
+<path d="M2050,818.0 C2050,892.9 2100,957.1 2100,1032.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2075" y="925.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">69-col CSV</text>
+<path d="M1640,948.0 C1847.0,948.0 1893.0,1032.0 2100,1032.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="1870" y="990.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Indexed fields</text>
+<path d="M2460,1078.0 C2617.5,1078.0 2652.5,1162.0 2810,1162.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2635" y="1120.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Matched data</text>
+<path d="M2460,1078.0 C2460,1152.9 2460,1217.1 2460,1292.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2460" y="1185.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">PO requisition</text>
+<path d="M2460,1338.0 C2460,1367.4 2460,1392.6 2460,1422.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2460" y="1380.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">PO to carrier</text>
+<path d="M2460,1468.0 C2644.5,1468.0 2685.5,1292.0 2870,1292.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2665" y="1380.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Validated invoice</text>
+<path d="M3010,1208.0 C2947.0,1208.0 2933.0,1292.0 2870,1292.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2940" y="1250.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">AR for UK/ROI</text>
+<path d="M1500,642.0 C2220.0,642.0 2380.0,688.0 3100,688.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="2300" y="665.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">Triggers CSS</text>
+<path d="M3100,688.0 C3100,990.4 3160,1249.6 3160,1552.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="3130" y="1120.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">CSS data</text>
+<path d="M3010,1208.0 C3077.5,1208.0 3092.5,1552.0 3160,1552.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="3085" y="1380.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">IMS data</text>
+<path d="M3360,688.0 C3306.0,688.0 3294.0,1682.0 3240,1682.0" fill="none" stroke="rgba(100,116,139,.9)" stroke-width="1.3" marker-end="url(#arr-hand)"/>
+<text x="3300" y="1185.0" text-anchor="middle" dominant-baseline="middle" font-size="6.5" fill="rgba(100,116,139,.9)" font-family="Inter,sans-serif">HS codes</text>
+<g class="elem" data-id="ssup_coll" style="cursor:pointer">
+<rect x="346" y="122" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.0" class="elem-shape" data-id="ssup_coll"/>
+<rect x="346" y="122" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="486" y="131" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="422" y="139.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Collect & Upload</text>
+<text x="422" y="150.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Supplier Documents</text>
+<text x="420" y="177" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">SSUP Portal / NeoGrid</text>
+</g>
+<g class="elem" data-id="eqos_create" style="cursor:pointer">
+<rect x="426" y="252" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="eqos_create"/>
+<rect x="426" y="252" width="3" height="46" rx="3" fill="#94A3B8"/>
+<text x="566" y="261" text-anchor="end" font-size="6" font-weight="700" fill="#94A3B8" font-family="Inter,sans-serif">[A/M]</text>
+<text x="502" y="269.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Validate & Create</text>
+<text x="502" y="280.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Supplier/Factory Record</text>
+<text x="500" y="307" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">EQOS</text>
+</g>
+<g class="elem" data-id="eqos_feed" style="cursor:pointer">
+<rect x="746" y="252" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#1AE0BE" stroke-width="1.0" class="elem-shape" data-id="eqos_feed"/>
+<rect x="746" y="252" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="886" y="261" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="822" y="269.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Real-time Compliance</text>
+<text x="822" y="280.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Feed to ISOS (15-min)</text>
+<text x="820" y="307" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">EQOS → ISOS</text>
+</g>
+<g class="elem" data-id="lm_po" style="cursor:pointer">
+<rect x="646" y="382" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#4FB3FF" stroke-width="1.0" class="elem-shape" data-id="lm_po"/>
+<rect x="646" y="382" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="786" y="391" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="722" y="399.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Buyer Creates</text>
+<text x="722" y="410.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Purchase Order</text>
+<text x="720" y="437" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">LM / MM System</text>
+</g>
+<g class="elem" data-id="isos_valid" style="cursor:pointer">
+<rect x="786" y="512" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#7B9FFF" stroke-width="1.0" class="elem-shape" data-id="isos_valid"/>
+<rect x="786" y="512" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="926" y="521" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="862" y="529.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Validate PO:</text>
+<text x="862" y="540.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Compliance & Cost</text>
+<text x="860" y="567" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">ISOS</text>
+</g>
+<g class="elem" data-id="isos_enrich" style="cursor:pointer">
+<rect x="986" y="512" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#7B9FFF" stroke-width="1.0" class="elem-shape" data-id="isos_enrich"/>
+<rect x="986" y="512" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1126" y="521" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1062" y="529.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Enrich PO &</text>
+<text x="1062" y="540.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Assign FF/LSP</text>
+<text x="1060" y="567" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">ISOS</text>
+</g>
+<g class="elem" data-id="isos_sm" style="cursor:pointer">
+<rect x="1166" y="512" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#7B9FFF" stroke-width="1.0" class="elem-shape" data-id="isos_sm"/>
+<rect x="1166" y="512" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1306" y="521" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1242" y="529.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">SM1/SM2 Processing</text>
+<text x="1242" y="540.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">& Version Filtering</text>
+<text x="1240" y="567" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">ISOS</text>
+</g>
+<g class="elem" data-id="isos_78col" style="cursor:pointer">
+<rect x="1566" y="512" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="isos_78col"/>
+<rect x="1566" y="512" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1706" y="521" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1642" y="529.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Generate 78-Column</text>
+<text x="1642" y="540.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Extract (Approved POs)</text>
+<text x="1640" y="567" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">ISOS</text>
+</g>
+<g class="elem" data-id="isos_cost" style="cursor:pointer">
+<rect x="1976" y="512" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#7B9FFF" stroke-width="1.0" class="elem-shape" data-id="isos_cost"/>
+<rect x="1976" y="512" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="2116" y="521" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="2052" y="529.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">2-Way Cost Check:</text>
+<text x="2052" y="540.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">PO vs IV0 Value</text>
+<text x="2050" y="567" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">ISOS / OTM BM</text>
+</g>
+<g class="elem" data-id="otm_po" style="cursor:pointer">
+<rect x="856" y="642" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#A78BFA" stroke-width="1.0" class="elem-shape" data-id="otm_po"/>
+<rect x="856" y="642" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="996" y="651" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="932" y="659.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Enrich & Distribute</text>
+<text x="932" y="670.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">PO to Supplier (PDF)</text>
+<text x="930" y="697" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">OTM</text>
+</g>
+<g class="elem" data-id="otm_sm" style="cursor:pointer">
+<rect x="1156" y="642" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="otm_sm"/>
+<rect x="1156" y="642" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1296" y="651" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1232" y="659.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Shipment Booking</text>
+<text x="1232" y="670.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">& Milestone Tracking</text>
+<text x="1230" y="697" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">OTM</text>
+</g>
+<g class="elem" data-id="otm_file" style="cursor:pointer">
+<rect x="1426" y="642" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="otm_file"/>
+<rect x="1426" y="642" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1566" y="651" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1502" y="659.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Daily Inbound</text>
+<text x="1502" y="670.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">All File Generated</text>
+<text x="1500" y="697" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">OTM</text>
+</g>
+<g class="elem" data-id="otm_css" style="cursor:pointer">
+<rect x="3026" y="642" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="otm_css"/>
+<rect x="3026" y="642" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="3166" y="651" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="3102" y="659.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">CSS Auto-sent</text>
+<text x="3102" y="670.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">to WTA (Pre-Arrival)</text>
+<text x="3100" y="697" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">OTM → WTA Portal</text>
+</g>
+<g class="elem" data-id="otm_nbs" style="cursor:pointer">
+<rect x="3286" y="642" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#A78BFA" stroke-width="1.0" class="elem-shape" data-id="otm_nbs"/>
+<rect x="3286" y="642" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="3426" y="651" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="3362" y="659.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">HS Code Extract</text>
+<text x="3362" y="670.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">to NBS (weekly)</text>
+<text x="3360" y="697" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">OTM → NBS</text>
+</g>
+<g class="elem" data-id="bt_po" style="cursor:pointer">
+<rect x="746" y="772" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#C4B5FD" stroke-width="1.0" class="elem-shape" data-id="bt_po"/>
+<rect x="746" y="772" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="886" y="781" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="822" y="789.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Transmit PO to OTM</text>
+<text x="822" y="800.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">& Supplier (BizTalk)</text>
+<text x="820" y="827" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">BizTalk / XCOM</text>
+</g>
+<g class="elem" data-id="bt_sm" style="cursor:pointer">
+<rect x="1156" y="772" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#C4B5FD" stroke-width="1.0" class="elem-shape" data-id="bt_sm"/>
+<rect x="1156" y="772" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1296" y="781" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1232" y="789.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Route Shipment</text>
+<text x="1232" y="800.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Milestones (SM1-SM4)</text>
+<text x="1230" y="827" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">BizTalk</text>
+</g>
+<g class="elem" data-id="bt_iv0" style="cursor:pointer">
+<rect x="1496" y="772" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#C4B5FD" stroke-width="1.0" class="elem-shape" data-id="bt_iv0"/>
+<rect x="1496" y="772" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="1636" y="781" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="1572" y="789.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Route IV0 e-Invoice</text>
+<text x="1572" y="800.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">from FF to ISOS</text>
+<text x="1570" y="827" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">BizTalk</text>
+</g>
+<g class="elem" data-id="bt_edi" style="cursor:pointer">
+<rect x="1976" y="772" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="bt_edi"/>
+<rect x="1976" y="772" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="2116" y="781" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="2052" y="789.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">EDI: 78-col → 69-col</text>
+<text x="2052" y="800.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Format Conversion</text>
+<text x="2050" y="827" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">EDI</text>
+</g>
+<g class="elem" data-id="doc_index" style="cursor:pointer">
+<rect x="1566" y="902" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#FFD04A" stroke-width="1.0" class="elem-shape" data-id="doc_index"/>
+<rect x="1566" y="902" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="1706" y="911" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="1642" y="919.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Manually Index PDF</text>
+<text x="1642" y="930.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Invoice (6-7 Fields)</text>
+<text x="1640" y="957" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Documentum</text>
+</g>
+<g class="elem" data-id="ms_upload" style="cursor:pointer">
+<rect x="2026" y="1032" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#FF6B6B" stroke-width="1.0" class="elem-shape" data-id="ms_upload"/>
+<rect x="2026" y="1032" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="2166" y="1041" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="2102" y="1049.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Upload OTM File &</text>
+<text x="2102" y="1060.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Run Weekly Extract</text>
+<text x="2100" y="1087" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">MS Access DB</text>
+</g>
+<g class="elem" data-id="ms_roll" style="cursor:pointer">
+<rect x="2386" y="1032" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#FF6B6B" stroke-width="1.0" class="elem-shape" data-id="ms_roll"/>
+<rect x="2386" y="1032" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="2526" y="1041" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="2462" y="1049.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Rolling File: Track</text>
+<text x="2462" y="1060.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Charges & Agreements</text>
+<text x="2460" y="1087" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">MS Access DB</text>
+</g>
+<g class="elem" data-id="ofi_ap" style="cursor:pointer">
+<rect x="2736" y="1162" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="ofi_ap"/>
+<rect x="2736" y="1162" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="2876" y="1171" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="2812" y="1179.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">AP Invoice</text>
+<text x="2812" y="1190.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Auto-Created</text>
+<text x="2810" y="1217" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Oracle Financials 11i</text>
+</g>
+<g class="elem" data-id="ofi_ar" style="cursor:pointer">
+<rect x="2936" y="1162" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="ofi_ar"/>
+<rect x="2936" y="1162" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="3076" y="1171" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="3012" y="1179.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">AR Invoice</text>
+<text x="3012" y="1190.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Auto-Created (TISL)</text>
+<text x="3010" y="1217" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Oracle Financials 11i</text>
+</g>
+<g class="elem" data-id="fusion_po" style="cursor:pointer">
+<rect x="2386" y="1292" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="fusion_po"/>
+<rect x="2386" y="1292" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="2526" y="1301" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="2462" y="1309.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Freight PO Raised</text>
+<text x="2462" y="1320.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">(P1002-XXXXXX)</text>
+<text x="2460" y="1347" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Oracle Fusion Procurement</text>
+</g>
+<g class="elem" data-id="fusion_ar" style="cursor:pointer">
+<rect x="2796" y="1292" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#C57BFF" stroke-width="1.0" class="elem-shape" data-id="fusion_ar"/>
+<rect x="2796" y="1292" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="2936" y="1301" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="2872" y="1309.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">UK/ROI AR Automation</text>
+<text x="2872" y="1320.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">& EDI to Financials</text>
+<text x="2870" y="1347" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Oracle Fusion AR</text>
+</g>
+<g class="elem" data-id="tung_inv" style="cursor:pointer">
+<rect x="2386" y="1422" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#52E67A" stroke-width="1.0" class="elem-shape" data-id="tung_inv"/>
+<rect x="2386" y="1422" width="3" height="46" rx="3" fill="#f97316"/>
+<text x="2526" y="1431" text-anchor="end" font-size="6" font-weight="700" fill="#f97316" font-family="Inter,sans-serif">[M]</text>
+<text x="2462" y="1439.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Carrier Creates</text>
+<text x="2462" y="1450.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Formal eInvoice vs PO</text>
+<text x="2460" y="1477" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">Tungsten Network</text>
+</g>
+<g class="elem" data-id="wta_sfd" style="cursor:pointer">
+<rect x="3086" y="1552" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="wta_sfd"/>
+<rect x="3086" y="1552" width="3" height="46" rx="3" fill="#94A3B8"/>
+<text x="3226" y="1561" text-anchor="end" font-size="6" font-weight="700" fill="#94A3B8" font-family="Inter,sans-serif">[A/M]</text>
+<text x="3162" y="1569.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Prepare CSS+IMS &</text>
+<text x="3162" y="1580.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">File SFD at UK Border</text>
+<text x="3160" y="1607" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">WTA / HMRC (CHIEF/CDS)</text>
+</g>
+<g class="elem" data-id="nbs_duty" style="cursor:pointer">
+<rect x="3166" y="1682" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#5DDDAA" stroke-width="1.0" class="elem-shape" data-id="nbs_duty"/>
+<rect x="3166" y="1682" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="3306" y="1691" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="3242" y="1699.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">NBS: Duty Rates;</text>
+<text x="3242" y="1710.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Accrual Posted to GL</text>
+<text x="3240" y="1737" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">NBS / OFI GL</text>
+</g>
+<g class="elem" data-id="dda_pay" style="cursor:pointer">
+<rect x="3366" y="1682" width="148" height="46" rx="5" fill="rgba(3,6,15,.92)" stroke="#00E5C0" stroke-width="1.6" class="elem-shape" data-id="dda_pay"/>
+<rect x="3366" y="1682" width="3" height="46" rx="3" fill="#4ade80"/>
+<text x="3506" y="1691" text-anchor="end" font-size="6" font-weight="700" fill="#4ade80" font-family="Inter,sans-serif">[A]</text>
+<text x="3442" y="1699.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">TISL Monthly Duty</text>
+<text x="3442" y="1710.5" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="600" fill="#eef4ff" font-family="Inter,sans-serif" pointer-events="none">Payment via DDA</text>
+<text x="3440" y="1737" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="rgba(255,255,255,.3)" font-family="Inter,sans-serif" pointer-events="none">DDA / TISL</text>
+</g>
+</svg>
+  </div>
+</div>
+
+<!-- Detail panel -->
+<div id="detail-panel">
+  <div class="dp-empty" id="dp-empty">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+      <rect x="6" y="14" width="36" height="26" rx="4" stroke="#334155" stroke-width="2"/>
+      <path d="M16 8 L24 4 L32 8" stroke="#334155" stroke-width="2"/>
+      <line x1="14" y1="24" x2="34" y2="24" stroke="#334155" stroke-width="1.5"/>
+      <line x1="14" y1="30" x2="28" y2="30" stroke="#334155" stroke-width="1.5"/>
+    </svg>
+    <p>Click any box on the diagram<br>to see its full description,<br>system details and connections.</p>
+  </div>
+  <div id="dp-content" style="display:none;height:100%;flex-direction:column;display:none">
+    <div class="dp-header" id="dp-header">
+      <div class="dp-sys" id="dp-sys"></div>
+      <div class="dp-title" id="dp-title"></div>
+      <div class="dp-fn" id="dp-fn"></div>
+      <div class="dp-mode" id="dp-mode"></div>
+      <div class="dp-close" onclick="closePanel()">&#x2715;</div>
+    </div>
+    <div class="dp-body">
+      <div class="dp-section-title">WHAT HAPPENS HERE</div>
+      <div class="dp-detail" id="dp-detail"></div>
+      <div class="dp-section-title">SYSTEM CONNECTIONS</div>
+      <ul class="dp-connections" id="dp-connections"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- Zoom controls -->
+<div id="zoom-ctrl">
+  <button class="zb" onclick="doZoom(1.15)">+</button>
+  <div id="zoom-label">100%</div>
+  <button class="zb" onclick="doZoom(1/1.15)">&#x2212;</button>
+</div>
+
+<script>
+const ELEM_DATA = {
+  "ssup_coll": {
+    "id": "ssup_coll",
+    "label": "Collect & Upload — Supplier Documents",
+    "sys": "SSUP Portal / NeoGrid",
+    "mode": "manual",
+    "fn": "Supplier Onboarding Team",
+    "lane_label": "SSUP Portal / / NeoGrid",
+    "lane_color": "#00E5C0",
+    "detail": "The SSUP (Supplier Set-Up Support) team is the entry point for all new supplier and factory onboarding. They collect a mandatory document pack: set-up form, business rationale, bank details (sort code, account number, currency), company letterhead, and contact information. All tasks and documents are uploaded and tracked in the NeoGrid portal, which assigns tasks to the MDM team for validation. Until documents are complete in NeoGrid, no EQOS record can be created and no POs can be raised against that supplier.",
+    "connects_to": [
+      "eqos_create"
+    ],
+    "receives_from": [],
+    "connections": [
+      "→ EQOS (creates supplier record)"
+    ]
+  },
+  "eqos_create": {
+    "id": "eqos_create",
+    "label": "Validate & Create — Supplier/Factory Record",
+    "sys": "EQOS",
+    "mode": "mixed",
+    "fn": "Master Data Management",
+    "lane_label": "EQOS",
+    "lane_color": "#1AE0BE",
+    "detail": "EQOS is Tesco's master data system for supplier and factory management. MDM performs two validation types: for existing suppliers — EQOS ID, address, bank details and contacts are verified; for new suppliers — bank documents, company letterhead, sort code, account number, currency and contacts are all validated before creation. Lead and manager approvals are required. Critically, factory addresses cannot be edited once created — a new factory ID is required for address changes. One EQOS record per supplier-factory combination. A single factory can be linked to multiple suppliers.",
+    "connects_to": [
+      "isos_valid"
+    ],
+    "receives_from": [
+      "ssup_coll"
+    ],
+    "connections": [
+      "← SSUP Portal (document upload)",
+      "→ ISOS (15-min compliance feed)",
+      "→ Oracle 11i OFI (weekly vendor master batch)"
+    ]
+  },
+  "eqos_feed": {
+    "id": "eqos_feed",
+    "label": "Real-time Compliance — Feed to ISOS (15-min)",
+    "sys": "EQOS → ISOS",
+    "mode": "auto",
+    "fn": "Master Data Management",
+    "lane_label": "EQOS",
+    "lane_color": "#1AE0BE",
+    "detail": "EQOS pushes supplier compliance and factory approval status to ISOS every 15 minutes via an automated interface. ISOS treats this feed as the master source of truth for supplier compliance during PO validation. If a factory's compliance flag changes in EQOS, ISOS reflects this within 15 minutes — meaning a PO that was valid at 9:00 AM could become blocked by 9:15 AM if a factory audit fails. Separately, EQOS sends a weekly batch interface to Oracle Financials 11i (OFI) to create or update vendor master records in the AP module.",
+    "connects_to": [],
+    "receives_from": [],
+    "connections": [
+      "→ ISOS (PO compliance validation)",
+      "→ Oracle 11i OFI (weekly batch)"
+    ]
+  },
+  "lm_po": {
+    "id": "lm_po",
+    "label": "Buyer Creates — Purchase Order",
+    "sys": "LM / MM System",
+    "mode": "manual",
+    "fn": "Buyers (PO Creation)",
+    "lane_label": "LM / MM / System",
+    "lane_color": "#4FB3FF",
+    "detail": "Buyers create product Purchase Orders in LM (the PO Creation System). Clothing POs originate in MM (Merchandise Management) and are passed to LM before transmission to ISOS. PO types vary by route: PO1 (UK inbound), PO3 (outbound to OTM), PO5 (LM UK home range), PO6 (LM CE clothing and CE home). Transmission from LM/MM to ISOS occurs via BizTalk or XCOM depending on PO type. Critically, LM does NOT receive cancellation status back from ISOS — so buyers are unaware when a PO is blocked due to compliance failure.",
+    "connects_to": [
+      "isos_valid"
+    ],
+    "receives_from": [],
+    "connections": [
+      "→ ISOS (PO transmitted via BizTalk)",
+      "→ BizTalk (integration middleware)"
+    ]
+  },
+  "isos_valid": {
+    "id": "isos_valid",
+    "label": "Validate PO: — Compliance & Cost",
+    "sys": "ISOS",
+    "mode": "auto",
+    "fn": "Finance & PO Validation Hub",
+    "lane_label": "ISOS",
+    "lane_color": "#7B9FFF",
+    "detail": "ISOS is the central finance and PO validation hub. Upon receiving a PO from LM/MM, ISOS performs four automatic validations: (1) Is the supplier active in EQOS? (2) Is the factory approved in EQOS? (3) Is the cost price non-zero? (4) Is the delivery date valid? If a factory is non-compliant, ISOS silently sets the PO status to \"Cancelled\" — this is NOT communicated back to LM or the buyer. ISOS is the only system that retains the full PO amendment history; LM does not store this.",
+    "connects_to": [
+      "isos_enrich"
+    ],
+    "receives_from": [
+      "eqos_create",
+      "lm_po"
+    ],
+    "connections": [
+      "← LM/MM (PO received)",
+      "← EQOS (compliance status)",
+      "→ ISOS Enrich (next step)"
+    ]
+  },
+  "isos_enrich": {
+    "id": "isos_enrich",
+    "label": "Enrich PO & — Assign FF/LSP",
+    "sys": "ISOS",
+    "mode": "auto",
+    "fn": "Finance & PO Validation Hub",
+    "lane_label": "ISOS",
+    "lane_color": "#7B9FFF",
+    "detail": "Once validated, ISOS enriches the PO with freight and logistics mapping data. It assigns a Freight Forwarder (FF) and Logistics Service Provider (LSP) based on ISOS internal transport lane mapping tables. ISOS determines the transport mode (sea/air/road). Only the latest approved version of a PO is processed — older versions arriving late are automatically rejected. The enriched PO is then transmitted to OTM.",
+    "connects_to": [
+      "isos_sm",
+      "otm_po"
+    ],
+    "receives_from": [
+      "isos_valid"
+    ],
+    "connections": [
+      "→ OTM (enriched PO for distribution)",
+      "→ ISOS SM processing (next stage)"
+    ]
+  },
+  "isos_sm": {
+    "id": "isos_sm",
+    "label": "SM1/SM2 Processing — & Version Filtering",
+    "sys": "ISOS",
+    "mode": "auto",
+    "fn": "Finance & PO Validation Hub",
+    "lane_label": "ISOS",
+    "lane_color": "#7B9FFF",
+    "detail": "Shipment Milestone 1 (SM1) is sent by the Freight Forwarder when goods are handed over (FOB). ISOS receives SM1 via BizTalk and applies version filtering — only the highest version number is processed; out-of-sequence updates are rejected. ISOS stores booking, container, and Bill of Lading details. It then generates SM2 and sends it to OTM, which becomes the system of record for planned vs actual shipment tracking. If SM data fails validation, the logistics team coordinates with FF to resolve.",
+    "connects_to": [
+      "isos_78col"
+    ],
+    "receives_from": [
+      "isos_enrich",
+      "bt_sm"
+    ],
+    "connections": [
+      "← BizTalk (SM1 from Freight Forwarder)",
+      "→ OTM (SM2 shipment confirmation)"
+    ]
+  },
+  "isos_78col": {
+    "id": "isos_78col",
+    "label": "Generate 78-Column — Extract (Approved POs)",
+    "sys": "ISOS",
+    "mode": "auto",
+    "fn": "Finance & PO Validation Hub",
+    "lane_label": "ISOS",
+    "lane_color": "#7B9FFF",
+    "detail": "The 78-column extract is the pivotal data output that drives the entire invoice matching and payment process. ISOS merges four data sources into this extract: PO data (from LM/OTM), Supplier Master (from EQOS), Shipment Data (from OTM), and FF invoice values (from IV0). ONLY POs that have passed the OTM Business Monitor cost validation appear in this extract. If 100 invoice PDFs have been received but ISOS produces only 80 lines, the remaining 20 are either in price mismatch in Business Monitor, or missing IV0/shipment data.",
+    "connects_to": [
+      "isos_cost"
+    ],
+    "receives_from": [
+      "isos_sm"
+    ],
+    "connections": [
+      "← BizTalk/IV0 (FF invoice values needed)",
+      "→ BizTalk/EDI (78→69 column conversion)"
+    ]
+  },
+  "isos_cost": {
+    "id": "isos_cost",
+    "label": "2-Way Cost Check: — PO vs IV0 Value",
+    "sys": "ISOS / OTM BM",
+    "mode": "auto",
+    "fn": "Finance & PO Validation Hub",
+    "lane_label": "ISOS",
+    "lane_color": "#7B9FFF",
+    "detail": "ISOS performs an automatic 2-way cost validation: it compares the PO cost (from LM) against the Supplier Invoice cost (from IV0, routed via BizTalk). This validation is fully automated — no manual intervention. If PO cost is less than the supplier invoice cost, a Cost Exception appears in the OTM Business Monitor. ISOS will NOT generate the 78-column extract for that PO until the Business Monitor exception is resolved by the buyer. This creates a dependency: delayed buyer resolution = delayed AP invoice = delayed payment.",
+    "connects_to": [
+      "bt_edi"
+    ],
+    "receives_from": [
+      "isos_78col",
+      "bt_iv0"
+    ],
+    "connections": [
+      "← ISOS 78-col (blocked until resolved)",
+      "→ OTM Business Monitor (exception raised)",
+      "→ BizTalk/EDI (approved → 78-col export)"
+    ]
+  },
+  "otm_po": {
+    "id": "otm_po",
+    "label": "Enrich & Distribute — PO to Supplier (PDF)",
+    "sys": "OTM",
+    "mode": "auto",
+    "fn": "Logistics & Planning",
+    "lane_label": "Oracle TM / (OTM)",
+    "lane_color": "#A78BFA",
+    "detail": "OTM (Oracle Transportation Management) receives the enriched PO from ISOS and further enhances it. OTM issues a PDF copy of the PO to the supplier via email. Importantly, the PO PDF sent from OTM does NOT explicitly include the Freight Forwarder name — only transport mode and port details are shown. OTM also sends the enhanced PO back to ISOS. This bidirectional flow ensures both systems are aligned on PO versions.",
+    "connects_to": [
+      "bt_po"
+    ],
+    "receives_from": [
+      "isos_enrich"
+    ],
+    "connections": [
+      "← ISOS (enriched PO)",
+      "→ Supplier (PDF via email)",
+      "→ BizTalk (PO transmission)"
+    ]
+  },
+  "otm_sm": {
+    "id": "otm_sm",
+    "label": "Shipment Booking — & Milestone Tracking",
+    "sys": "OTM",
+    "mode": "auto",
+    "fn": "Logistics & Planning",
+    "lane_label": "Oracle TM / (OTM)",
+    "lane_color": "#A78BFA",
+    "detail": "OTM becomes the system of record for all shipment tracking. It receives SM2 from ISOS (shipment confirmed) and stores: booking details, container numbers, Bill of Lading data, shipment dates, and milestone timestamps. OTM then sends SM3 (system-to-system update) to Data Warehouse, MM and LM, and SM4 via BizTalk back to the Freight Forwarder. OTM also publishes ETD/ETA information used by the Customs team to predict arrival windows.",
+    "connects_to": [
+      "otm_file"
+    ],
+    "receives_from": [],
+    "connections": [
+      "← ISOS (SM2 shipment confirmation)",
+      "→ BizTalk (SM4 to Freight Forwarder)",
+      "→ OTM Daily File (next)"
+    ]
+  },
+  "otm_file": {
+    "id": "otm_file",
+    "label": "Daily Inbound — All File Generated",
+    "sys": "OTM",
+    "mode": "auto",
+    "fn": "Logistics & Planning",
+    "lane_label": "Oracle TM / (OTM)",
+    "lane_color": "#A78BFA",
+    "detail": "OTM automatically generates the Daily Inbound All File (also called the Inbound Report) every day. It is delivered to the TBS Self-Billing Team in Bangalore via shared mailbox (~12:50 PM) and shared folder. Contents: shipment details, carrier name, container type (20ft/40ft/40HC/45ft), origin and destination ports, ETA, ETD, and container counts. This is the PRIMARY and ONLY system-generated input into the freight self-billing process. Without it, the Self-Billing team cannot begin weekly invoice extraction.",
+    "connects_to": [
+      "otm_css"
+    ],
+    "receives_from": [
+      "otm_sm"
+    ],
+    "connections": [
+      "→ MS Access DB (manual upload by TBS team)",
+      "→ OTM CSS (triggers pre-arrival data)"
+    ]
+  },
+  "otm_css": {
+    "id": "otm_css",
+    "label": "CSS Auto-sent — to WTA (Pre-Arrival)",
+    "sys": "OTM → WTA Portal",
+    "mode": "auto",
+    "fn": "Logistics & Planning",
+    "lane_label": "Oracle TM / (OTM)",
+    "lane_color": "#A78BFA",
+    "detail": "OTM automatically generates a Customs Summary Sheet (CSS) for every active shipment. The CSS contains: container number, PO numbers linked to the container, mode of transport, vessel and voyage details, estimated arrival dates, and carton count/weight. CSS is automatically sent to Tesco's clearing agent (WTA) several days before vessel arrival, giving WTA time to prepare the Simplified Frontier Declaration (SFD). Without CSS, WTA cannot begin clearance preparation — this is a hard dependency.",
+    "connects_to": [
+      "otm_nbs",
+      "wta_sfd"
+    ],
+    "receives_from": [
+      "otm_file"
+    ],
+    "connections": [
+      "→ WTA Portal (CSS enables SFD preparation)"
+    ]
+  },
+  "otm_nbs": {
+    "id": "otm_nbs",
+    "label": "HS Code Extract — to NBS (weekly)",
+    "sys": "OTM → NBS",
+    "mode": "auto",
+    "fn": "Logistics & Planning",
+    "lane_label": "Oracle TM / (OTM)",
+    "lane_color": "#A78BFA",
+    "detail": "OTM contains the Commodity Code (HS code/Tariff code) for every product in a shipment. OTM sends weekly commodity code extracts to NBS (New Buying System). NBS uses these to assign the correct duty rate, origin rules, and preference rules for each HS code. NBS then becomes the duty rate master for Finance. Incorrect HS codes in OTM directly and immediately affect duty calculation accuracy — a 1% error in HS code assignment can represent significant financial liability given Tesco's import volumes.",
+    "connects_to": [
+      "nbs_duty"
+    ],
+    "receives_from": [
+      "otm_css"
+    ],
+    "connections": [
+      "→ NBS/DDA (duty rate assignment)"
+    ]
+  },
+  "bt_po": {
+    "id": "bt_po",
+    "label": "Transmit PO to OTM — & Supplier (BizTalk)",
+    "sys": "BizTalk / XCOM",
+    "mode": "auto",
+    "fn": "Integration Layer (IT)",
+    "lane_label": "BizTalk / EDI",
+    "lane_color": "#C4B5FD",
+    "detail": "BizTalk is the primary enterprise integration middleware at Tesco. For PO transmission, BizTalk routes POs from LM/MM → ISOS → OTM and from OTM → Supplier. Different PO types use different transmission protocols: BizTalk for most routes, XCOM for specific clothing routes. BizTalk handles message transformation, routing rules, and retry logic. It maintains an audit trail of all transmitted messages, though support teams must intervene manually for technical failures.",
+    "connects_to": [
+      "bt_sm"
+    ],
+    "receives_from": [
+      "otm_po"
+    ],
+    "connections": [
+      "← LM/MM (PO received for routing)",
+      "→ OTM (PO distributed)",
+      "→ Supplier (via OTM)"
+    ]
+  },
+  "bt_sm": {
+    "id": "bt_sm",
+    "label": "Route Shipment — Milestones (SM1-SM4)",
+    "sys": "BizTalk",
+    "mode": "auto",
+    "fn": "Integration Layer (IT)",
+    "lane_label": "BizTalk / EDI",
+    "lane_color": "#C4B5FD",
+    "detail": "BizTalk is the backbone for all Shipment Milestone messaging. SM1 (FOB handover) is received from the Freight Forwarder's system via BizTalk and routed to ISOS. SM2 (shipment confirmed) flows from ISOS to OTM via BizTalk. SM3 (system update) is sent to Data Warehouse/MM/LM. SM4 (carrier acknowledgment) is sent back to the Freight Forwarder via BizTalk. A single shipment may have multiple SM1 versions — ISOS filters by version number and only processes the latest, rejecting earlier out-of-sequence updates.",
+    "connects_to": [
+      "bt_iv0",
+      "isos_sm"
+    ],
+    "receives_from": [
+      "bt_po"
+    ],
+    "connections": [
+      "← Freight Forwarder (SM1)",
+      "→ ISOS (SM milestone data)",
+      "→ OTM (SM routing)"
+    ]
+  },
+  "bt_iv0": {
+    "id": "bt_iv0",
+    "label": "Route IV0 e-Invoice — from FF to ISOS",
+    "sys": "BizTalk",
+    "mode": "auto",
+    "fn": "Integration Layer (IT)",
+    "lane_label": "BizTalk / EDI",
+    "lane_color": "#C4B5FD",
+    "detail": "IV0 is an electronic invoice message that Freight Forwarders send to ISOS via BizTalk. The IV0 contains supplier invoice values, shipment references, and booking data that ISOS uses to populate the 78-column extract and perform the 2-way cost check. If IV0 is missing for a shipment, the corresponding ISOS 78-column line will not be generated, and the AP team flags it as missing data. The AP team shares a Business Monitor fallout report with FF each morning specifically tracking missing IV0s.",
+    "connects_to": [
+      "bt_edi",
+      "isos_cost"
+    ],
+    "receives_from": [
+      "bt_sm"
+    ],
+    "connections": [
+      "← Freight Forwarder (IV0 electronic invoice)",
+      "→ ISOS (enables 78-col extract)"
+    ]
+  },
+  "bt_edi": {
+    "id": "bt_edi",
+    "label": "EDI: 78-col → 69-col — Format Conversion",
+    "sys": "EDI",
+    "mode": "auto",
+    "fn": "Integration Layer (IT)",
+    "lane_label": "BizTalk / EDI",
+    "lane_color": "#C4B5FD",
+    "detail": "The EDI module (Electronic Data Interchange) within the BizTalk/integration layer automatically converts the 78-column ISOS extract into a 69-column OFI-compatible CSV format. The 8-9 removed fields are not used by Oracle Financials 11i (OFI). This conversion is fully automated and format-deterministic. The resulting 69-column CSV is what the AP team uses in MS Access for the 3-way match before uploading to OFI. Any field mapping errors at this stage propagate directly into the AP invoice.",
+    "connects_to": [
+      "ms_upload"
+    ],
+    "receives_from": [
+      "bt_iv0",
+      "isos_cost"
+    ],
+    "connections": [
+      "← ISOS (78-col extract)",
+      "→ MS Access (69-col for 3-way match)"
+    ]
+  },
+  "doc_index": {
+    "id": "doc_index",
+    "label": "Manually Index PDF — Invoice (6-7 Fields)",
+    "sys": "Documentum",
+    "mode": "manual",
+    "fn": "Document Management (AP)",
+    "lane_label": "Documentum",
+    "lane_color": "#FFD04A",
+    "detail": "Suppliers send PDF invoices separately from the IV0 electronic message — these two channels are completely independent. The PDF is stored in Documentum (Tesco's document management system), but none of the fields are auto-extracted. The AP team manually keys in 6-7 mandatory fields: PO number, Currency, Supplier number, Quantity, Total Invoice Amount, Invoice number. The team also manually cross-checks the Invoice against the Packing List (quantity check) during indexing. Documentum then produces an Excel extract with the indexed fields, which is used in the MS Access 3-way match. This is one of the highest-volume manual activities in the AP process.",
+    "connects_to": [
+      "ms_upload"
+    ],
+    "receives_from": [],
+    "connections": [
+      "→ MS Access (indexed invoice fields for 3-way match)"
+    ]
+  },
+  "ms_upload": {
+    "id": "ms_upload",
+    "label": "Upload OTM File & — Run Weekly Extract",
+    "sys": "MS Access DB",
+    "mode": "manual",
+    "fn": "TBS Billing Analyst",
+    "lane_label": "MS Access DB / (Self-Billing)",
+    "lane_color": "#FF6B6B",
+    "detail": "The Self-Billing Analyst manually uploads the OTM Daily Inbound All File into the MS Access Database — the local self-billing tool. There is NO automated integration between OTM and MS Access. Every Monday, the analyst runs the extraction query to produce the weekly invoicing file, with separate extraction per carrier: CMA, MSC, Maersk, LMN, HMN. Two additional carriers require fully manual invoicing not driven by the database at all. This weekly manual upload is a critical single point of failure — if the analyst is absent, the entire freight billing cycle stalls.",
+    "connects_to": [],
+    "receives_from": [
+      "bt_edi",
+      "doc_index"
+    ],
+    "connections": [
+      "← OTM (Daily All File via shared mailbox)",
+      "→ Rolling File (cleaned data)"
+    ]
+  },
+  "ms_roll": {
+    "id": "ms_roll",
+    "label": "Rolling File: Track — Charges & Agreements",
+    "sys": "MS Access DB",
+    "mode": "manual",
+    "fn": "TBS Billing Analyst",
+    "lane_label": "MS Access DB / (Self-Billing)",
+    "lane_color": "#FF6B6B",
+    "detail": "The Rolling File is a master Excel workbook maintained as the single source of truth for all weekly freight invoicing data. It tracks: container numbers, departure dates, carrier name, charge amounts per currency (USD origin, GBP UK, EUR CE), Carrier Confirmation Status (default: No), and Payment Status (default: No). Every Friday, the analyst filters the Rolling File by: Cost Agreed = YES, Payment Status = No, Container arrived this week. This filtered dataset drives the Oracle Fusion PO creation. CRITICAL RISK: No system backup exists for this file. Loss of the Rolling File = loss of the entire freight billing history.",
+    "connects_to": [
+      "ofi_ap",
+      "fusion_po"
+    ],
+    "receives_from": [],
+    "connections": [
+      "→ Oracle Fusion (PO requisition for agreed costs)",
+      "→ Oracle 11i OFI (matched data → AP invoice via EDI)"
+    ]
+  },
+  "ofi_ap": {
+    "id": "ofi_ap",
+    "label": "AP Invoice — Auto-Created",
+    "sys": "Oracle Financials 11i",
+    "mode": "auto",
+    "fn": "AP / AR Finance",
+    "lane_label": "Oracle / Financials 11i",
+    "lane_color": "#FF9E5E",
+    "detail": "Once the AP team completes the 3-way match in MS Access (69-column EDI output vs Documentum indexed invoice fields), the matched 69-column CSV is uploaded to Oracle Financials 11i (OFI). OFI automatically generates the AP invoice — no workflow approval is required for product invoices. Three payment mechanisms are then available: (1) Standard 90-day payment — invoices selected in batch, Manager + 2nd-level approval, released to HSBC. (2) Vendor Financing — supplier receives ~30-day payment from HSBC; Tesco pays HSBC at 90 days. (3) Letter of Credit — common for Bangladesh suppliers, raised within 7 days.",
+    "connects_to": [
+      "ofi_ar"
+    ],
+    "receives_from": [
+      "ms_roll"
+    ],
+    "connections": [
+      "← MS Access / EDI (69-col matched data)",
+      "→ Oracle 11i AR (triggers AR auto-creation)",
+      "→ WTA (IMS data sent for customs)"
+    ]
+  },
+  "ofi_ar": {
+    "id": "ofi_ar",
+    "label": "AR Invoice — Auto-Created (TISL)",
+    "sys": "Oracle Financials 11i",
+    "mode": "auto",
+    "fn": "AP / AR Finance",
+    "lane_label": "Oracle / Financials 11i",
+    "lane_color": "#FF9E5E",
+    "detail": "When an AP invoice is created in OFI, the system immediately and automatically creates a corresponding AR invoice from TISL (Tesco International Sourcing Ltd) to the destination entity. The destination is determined by PO and shipment details: TS UK, Tesco ROI, or TICB (Central Europe). Each AP invoice header produces exactly one corresponding AR invoice with the same multi-line structure. Additionally, TISL generates a Commission Invoice for every cycle — commission percentage depends on supplier type: 1.5% (third-way suppliers), 3.5% (standard), or 4.25% (specific categories). The AR invoice package (product AR + commission) is then routed based on destination.",
+    "connects_to": [
+      "fusion_ar",
+      "wta_sfd"
+    ],
+    "receives_from": [
+      "ofi_ap"
+    ],
+    "connections": [
+      "← OFI AP (AP invoice auto-triggers AR)",
+      "→ Oracle Fusion AR (UK/ROI route)",
+      "→ WTA Portal (IMS customs data)"
+    ]
+  },
+  "fusion_po": {
+    "id": "fusion_po",
+    "label": "Freight PO Raised — (P1002-XXXXXX)",
+    "sys": "Oracle Fusion Procurement",
+    "mode": "auto",
+    "fn": "Finance / Procurement",
+    "lane_label": "Oracle Fusion / (Procurement/AR)",
+    "lane_color": "#C57BFF",
+    "detail": "Every Friday, the Self-Billing Analyst creates a Purchase Requisition in Oracle Fusion for all freight costs where Cost Agreed = YES and Payment Status = No. All POs are raised under Tesco Stores Limited entity code 1002 (P1002-XXXXXX). Costs are grouped by currency: USD (origin charges), GBP (UK destination), EUR (CE destination). The Cost Centre Owner approves the requisition, and Oracle Fusion automatically generates the PO and emails it to the carrier. This is the carrier's authorisation to submit a formal invoice via Tungsten.",
+    "connects_to": [
+      "tung_inv"
+    ],
+    "receives_from": [
+      "ms_roll"
+    ],
+    "connections": [
+      "← MS Access Rolling File (PO requisition data)",
+      "→ Tungsten Network (PO sent to carrier)"
+    ]
+  },
+  "fusion_ar": {
+    "id": "fusion_ar",
+    "label": "UK/ROI AR Automation — & EDI to Financials",
+    "sys": "Oracle Fusion AR",
+    "mode": "auto",
+    "fn": "Finance / Procurement",
+    "lane_label": "Oracle Fusion / (Procurement/AR)",
+    "lane_color": "#C57BFF",
+    "detail": "For UK and Tesco ROI destinations, AR invoice generation and settlement is fully automated in Oracle Fusion. Invoice data flows automatically from OFI through outbound EDI interfaces to UK and ROI financial systems. AR settlement follows standard AR flows in Oracle Fusion. AR invoices do not undergo workflow approvals as they represent receivables. Separately, Oracle Fusion Payables receives validated Tungsten freight invoices (~24 hours after submission) via a custom-built interface. Freight invoices appear with status \"Validated\" and are paid on due date per agreed payment terms (30, 40, or 60 days).",
+    "connects_to": [],
+    "receives_from": [
+      "tung_inv",
+      "ofi_ar"
+    ],
+    "connections": [
+      "← OFI AR (AR invoice for UK/ROI)",
+      "← Tungsten (validated freight invoice)",
+      "→ UK/ROI Financial Systems (EDI)"
+    ]
+  },
+  "tung_inv": {
+    "id": "tung_inv",
+    "label": "Carrier Creates — Formal eInvoice vs PO",
+    "sys": "Tungsten Network",
+    "mode": "manual",
+    "fn": "eInvoicing Portal",
+    "lane_label": "Tungsten Network",
+    "lane_color": "#52E67A",
+    "detail": "The carrier logs into the Tungsten Network portal using their credentials and creates a formal invoice referencing the Tesco Oracle Fusion PO number. The invoice amount must not exceed the PO value. Tungsten automatically validates three conditions: (1) PO number exists in Oracle Fusion, (2) invoice currency matches PO currency, (3) invoice value does not exceed PO value. In practice, 95%+ of submissions are 1 invoice to 1 PO — Tungsten charges per invoice submission, which financially incentivises carriers to consolidate. After ~24 hours, validated invoices automatically flow into Oracle Fusion Payables via a custom-built interface.",
+    "connects_to": [
+      "fusion_ar"
+    ],
+    "receives_from": [
+      "fusion_po"
+    ],
+    "connections": [
+      "← Oracle Fusion (PO reference for invoice creation)",
+      "→ Oracle Fusion Payables (validated invoice auto-received)"
+    ]
+  },
+  "wta_sfd": {
+    "id": "wta_sfd",
+    "label": "Prepare CSS+IMS & — File SFD at UK Border",
+    "sys": "WTA / HMRC (CHIEF/CDS)",
+    "mode": "mixed",
+    "fn": "Customs Clearance Agent",
+    "lane_label": "WTA Portal / / HMRC",
+    "lane_color": "#38C6FF",
+    "detail": "WTA (Tesco's UK clearing agent) requires BOTH CSS and IMS data to prepare the Simplified Frontier Declaration (SFD). CSS provides shipment/container level data from OTM. IMS (Invoice Matching Status) provides invoice-level value data from OFI/ISOS. Both are mandatory — if IMS is missing, WTA holds the container. For Home imports: Tesco operates under SCDP (Simplified Customs Declaration Procedure) — near-automatic HMRC clearance because Tesco is AEO (Authorised Economic Operator) authorised. For F&F Clothing: Customs Warehousing (CW) — goods enter bonded warehouse duty-free; duty is only paid when stock leaves warehouse to stores. Supplementary Declaration (SDI) is filed inland by the 10th of the following month.",
+    "connects_to": [],
+    "receives_from": [
+      "otm_css",
+      "ofi_ar"
+    ],
+    "connections": [
+      "← OTM (CSS: shipment container data)",
+      "← OFI AR (IMS: invoice value data)",
+      "→ HMRC (CHIEF/CDS customs filing)"
+    ]
+  },
+  "nbs_duty": {
+    "id": "nbs_duty",
+    "label": "NBS: Duty Rates; — Accrual Posted to GL",
+    "sys": "NBS / OFI GL",
+    "mode": "auto",
+    "fn": "Duty Management (Finance)",
+    "lane_label": "NBS / DDA",
+    "lane_color": "#5DDDAA",
+    "detail": "NBS (New Buying System) receives the weekly HS code extract from OTM and fetches the correct duty rate, origin rules, and preference rules for each commodity code. NBS sends duty rate information into the QL (Quantity Ledger) Accrual process. The duty accrual formula is: Accrual = Duty Rate × Customs Value × Quantity. For Home imports, duty is accrued at import. For F&F Clothing (Customs Warehousing), duty is accrued when goods leave the warehouse to stores. WMS (Denver) → CSG (third party) → CM-UK updates customs warehouse stock the day after arrival. The accrual is posted to the General Ledger in OFI.",
+    "connects_to": [
+      "dda_pay"
+    ],
+    "receives_from": [
+      "otm_nbs"
+    ],
+    "connections": [
+      "← OTM (HS code extract)",
+      "→ OFI GL (duty accrual posting)",
+      "→ DDA (monthly duty payment)"
+    ]
+  },
+  "dda_pay": {
+    "id": "dda_pay",
+    "label": "TISL Monthly Duty — Payment via DDA",
+    "sys": "DDA / TISL",
+    "mode": "auto",
+    "fn": "Duty Management (Finance)",
+    "lane_label": "NBS / DDA",
+    "lane_color": "#5DDDAA",
+    "detail": "TISL (Tesco International Sourcing Ltd) pays Customs Duty monthly through the Duty Deferment Account (DDA) — a HMRC-approved mechanism that allows duty to be deferred and paid once a month rather than at each import. Payment is made on the 16th of the month following import for Home goods, or the 16th after store delivery for F&F Clothing. Tesco is legally required to retain all customs documentation for 6 years (Tesco retains 7 years). The commission invoice from TISL is NOT part of Customs Value — TISL is classified as a buying agent, and commission is treated as a separate, non-dutiable invoice.",
+    "connects_to": [],
+    "receives_from": [
+      "nbs_duty"
+    ],
+    "connections": [
+      "← NBS (duty accrual calculated)",
+      "→ HMRC (DDA payment on 16th)"
+    ]
+  }
+};
+
+// ── pan / zoom ────────────────────────────────────────────────────────────────
+const vp = document.getElementById('vp');
+const root = document.getElementById('diagram-root');
+let scale=1, tx=0, ty=0, dragging=false, mx0=0, my0=0, tx0=0, ty0=0;
+
+function applyTransform(){
+  root.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale*100)+'%';
+}
+function doZoom(f, cx, cy){
+  cx = cx||vp.clientWidth/2; cy = cy||vp.clientHeight/2;
+  const ns = Math.min(3, Math.max(.12, scale*f));
+  tx = cx - (cx-tx)*(ns/scale); ty = cy - (cy-ty)*(ns/scale); scale=ns;
+  applyTransform();
+}
+function resetView(){ scale=1; tx=0; ty=0; applyTransform(); }
+function fitScreen(){
+  const vw=vp.clientWidth, vh=vp.clientHeight;
+  scale = Math.min(vw/3570, vh/1770)*.9;
+  tx=(vw-3570*scale)/2; ty=(vh-1770*scale)/2;
+  applyTransform();
+}
+vp.addEventListener('mousedown', e=>{ if(e.target.closest('.elem')) return;
+  dragging=true; vp.classList.add('drag'); mx0=e.clientX; my0=e.clientY; tx0=tx; ty0=ty; });
+window.addEventListener('mousemove', e=>{ if(!dragging) return;
+  tx=tx0+e.clientX-mx0; ty=ty0+e.clientY-my0; applyTransform(); });
+window.addEventListener('mouseup', ()=>{ dragging=false; vp.classList.remove('drag'); });
+vp.addEventListener('wheel', e=>{ e.preventDefault();
+  const r=vp.getBoundingClientRect();
+  doZoom(e.deltaY<0?1.1:.9, e.clientX-r.left, e.clientY-r.top); }, {passive:false});
+
+// ── detail panel ─────────────────────────────────────────────────────────────
+let selectedEl = null;
+function openPanel(id){
+  const d = ELEM_DATA[id];
+  if(!d) return;
+  // deselect old
+  if(selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = document.querySelector(`.elem[data-id="${id}"]`);
+  if(selectedEl) selectedEl.classList.add('selected');
+
+  document.getElementById('dp-empty').style.display='none';
+  const content = document.getElementById('dp-content');
+  content.style.display='flex'; content.style.flexDirection='column'; content.style.height='100%';
+
+  const lc = d.lane_color;
+  document.getElementById('dp-header').style.setProperty('--lc', lc);
+  document.getElementById('detail-panel').style.setProperty('--lc', lc);
+  document.getElementById('dp-sys').textContent  = d.sys;
+  document.getElementById('dp-sys').style.color  = lc;
+  document.getElementById('dp-title').textContent = d.label;
+  document.getElementById('dp-fn').textContent   = 'Business Function: ' + d.fn + '  ·  System: ' + d.lane_label;
+
+  const modeEl = document.getElementById('dp-mode');
+  const modeText = d.mode==='auto'? '[A] Automated' : d.mode==='manual'? '[M] Manual' : '[A/M] Mixed';
+  const modeClass = d.mode==='auto'? 'badge-auto' : d.mode==='manual'? 'badge-manual' : 'badge-mixed';
+  modeEl.innerHTML = `<span class="badge ${modeClass}">${modeText}</span>`;
+
+  document.getElementById('dp-detail').textContent = d.detail;
+
+  const ul = document.getElementById('dp-connections');
+  ul.innerHTML = '';
+  const conns = d.connections && d.connections.length ? d.connections :
+    [...(d.receives_from||[]).map(x=>'← '+x), ...(d.connects_to||[]).map(x=>'→ '+x)];
+  conns.forEach(c=>{
+    const li=document.createElement('li');
+    li.style.setProperty('--lc', lc);
+    li.textContent=c; ul.appendChild(li);
+  });
+
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('vp').classList.add('panel-open');
+  document.getElementById('zoom-ctrl').classList.add('panel-open');
+}
+function closePanel(){
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('vp').classList.remove('panel-open');
+  document.getElementById('zoom-ctrl').classList.remove('panel-open');
+  document.getElementById('dp-content').style.display='none';
+  document.getElementById('dp-empty').style.display='';
+  if(selectedEl){ selectedEl.classList.remove('selected'); selectedEl=null; }
+}
+document.querySelectorAll('.elem').forEach(g=>{
+  g.addEventListener('click', e=>{
+    e.stopPropagation();
+    openPanel(g.dataset.id);
+  });
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePanel(); });
+
+// auto-fit on load
+window.addEventListener('load', ()=>{ setTimeout(fitScreen, 100); });
+</script>
+</body>
+</html>

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ECI Estimate — 90 Seconds Flyer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:#020817;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:20px;
+    font-family:'DM Sans',sans-serif;
+  }
+
+  .page{
+    width:794px;height:1123px;
+    position:relative;overflow:hidden;
+    box-shadow:0 60px 160px rgba(0,0,0,.9);
+    background:#020817;
+  }
+
+  /* ── Full-bleed top hero (40% height) ── */
+  .hero-band{
+    position:absolute;top:0;left:0;right:0;height:450px;
+    background:linear-gradient(135deg,
+      #0a0f1e 0%,
+      #0d1229 40%,
+      #120d24 70%,
+      #0a0f1e 100%);
+    overflow:hidden;
+  }
+
+  /* Glowing rings */
+  .ring{
+    position:absolute;border-radius:50%;
+    border-style:solid;border-color:transparent;
+    animation:spin linear infinite;
+  }
+  .ring1{
+    width:500px;height:500px;top:50%;left:50%;
+    margin:-250px 0 0 -250px;
+    border-width:1px;
+    border-top-color:rgba(0,180,216,.25);
+    border-right-color:rgba(139,92,246,.15);
+    animation-duration:20s;
+  }
+  .ring2{
+    width:380px;height:380px;top:50%;left:50%;
+    margin:-190px 0 0 -190px;
+    border-width:1px;
+    border-bottom-color:rgba(247,37,133,.2);
+    border-left-color:rgba(0,212,170,.15);
+    animation-duration:14s;animation-direction:reverse;
+  }
+  .ring3{
+    width:240px;height:240px;top:50%;left:50%;
+    margin:-120px 0 0 -120px;
+    border-width:1px;
+    border-top-color:rgba(255,209,102,.2);
+    border-right-color:rgba(0,180,216,.2);
+    animation-duration:8s;
+  }
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+  /* Central glow */
+  .hero-glow{
+    position:absolute;top:50%;left:50%;
+    width:280px;height:280px;
+    margin:-140px 0 0 -140px;
+    background:radial-gradient(ellipse, rgba(0,180,216,.2) 0%, rgba(139,92,246,.12) 40%, transparent 70%);
+    border-radius:50%;
+  }
+
+  /* Big 90 number in hero */
+  .hero-center{
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    text-align:center;
+  }
+  .big-90{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:140px;font-weight:800;line-height:.85;
+    letter-spacing:-.07em;
+    background:linear-gradient(135deg,#00d4aa 0%,#00b4d8 40%,#8b5cf6 80%,#f72585 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    position:relative;
+    filter:drop-shadow(0 0 30px rgba(0,180,216,.3));
+  }
+  .sec-label{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:16px;font-weight:600;letter-spacing:.2em;
+    text-transform:uppercase;color:#64748b;
+    margin-top:8px;
+  }
+
+  /* Top stripe */
+  .top-stripe{
+    position:absolute;top:0;left:0;right:0;height:4px;
+    background:linear-gradient(90deg,#00d4aa,#00b4d8,#8b5cf6,#f72585,#ffd166,#06d6a0);
+    z-index:20;
+  }
+
+  /* Nav */
+  .nav{
+    position:absolute;top:0;left:0;right:0;
+    padding:20px 48px;
+    display:flex;align-items:center;justify-content:space-between;
+    z-index:20;
+  }
+  .logo{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;font-weight:700;
+    background:linear-gradient(135deg,#00b4d8,#8b5cf6);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .coming-pill{
+    background:rgba(139,92,246,.15);
+    border:1px solid rgba(139,92,246,.3);
+    border-radius:20px;padding:5px 16px;
+    font-size:9px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:#8b5cf6;
+    display:flex;align-items:center;gap:7px;
+  }
+  .cpulse{
+    width:5px;height:5px;border-radius:50%;background:#8b5cf6;
+    animation:cpulse 2s infinite;
+  }
+  @keyframes cpulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* Hero sub-text */
+  .hero-sub-text{
+    position:absolute;bottom:24px;left:0;right:0;
+    text-align:center;z-index:10;
+  }
+  .hero-sub-text p{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:14px;font-weight:600;letter-spacing:.04em;
+    color:#94a3b8;
+  }
+  .hero-sub-text span{color:#00b4d8;}
+
+  /* ── Main content area ── */
+  .main{
+    position:absolute;top:450px;left:0;right:0;bottom:0;
+    padding:36px 48px 0;
+    background:#020817;
+  }
+
+  /* Headline */
+  .main-headline{
+    text-align:center;margin-bottom:28px;
+  }
+  .main-headline h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:34px;font-weight:800;
+    letter-spacing:-.035em;line-height:1.1;
+    margin-bottom:10px;
+  }
+  .main-headline h2 em{
+    font-style:normal;
+    background:linear-gradient(135deg,#ffd166,#f72585);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .main-headline p{
+    font-size:13px;color:#64748b;line-height:1.6;max-width:520px;margin:0 auto;
+  }
+
+  /* ── Timeline / steps ── */
+  .timeline{
+    display:flex;align-items:stretch;
+    gap:0;margin-bottom:28px;
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:12px;overflow:hidden;
+  }
+  .t-step{
+    flex:1;padding:16px 14px;
+    position:relative;
+    background:rgba(255,255,255,.02);
+    text-align:center;
+    border-right:1px solid rgba(255,255,255,.05);
+  }
+  .t-step:last-child{border-right:none;}
+  .t-step::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:var(--tc,linear-gradient(90deg,#00b4d8,#00d4aa));
+  }
+  .t-time{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:15px;font-weight:800;
+    background:var(--tc,linear-gradient(135deg,#00d4aa,#00b4d8));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    line-height:1;margin-bottom:4px;
+  }
+  .t-icon{font-size:14px;margin-bottom:5px;}
+  .t-label{font-size:9px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;line-height:1.3;}
+
+  /* ── Feature 3-col ── */
+  .features{
+    display:grid;grid-template-columns:1fr 1fr 1fr;
+    gap:10px;margin-bottom:24px;
+  }
+  .feat{
+    background:rgba(255,255,255,.025);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:10px;padding:16px 14px;
+    position:relative;overflow:hidden;
+  }
+  .feat::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:var(--fc,linear-gradient(90deg,#00b4d8,#8b5cf6));
+  }
+  .feat-ico{font-size:18px;margin-bottom:8px;}
+  .feat-ttl{font-size:11px;font-weight:700;color:#e2e8f0;margin-bottom:4px;}
+  .feat-dsc{font-size:9px;color:#475569;line-height:1.55;}
+
+  /* ── Provider row ── */
+  .providers{
+    display:flex;align-items:center;gap:8px;
+    justify-content:center;margin-bottom:24px;flex-wrap:wrap;
+  }
+  .prov-label{
+    font-size:9px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:#334155;margin-right:4px;
+  }
+  .pbadge{
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:20px;padding:5px 14px;
+    font-size:9px;font-weight:600;color:#64748b;
+    display:flex;align-items:center;gap:6px;
+  }
+  .pdot{width:5px;height:5px;border-radius:50%;}
+
+  /* ── Output chips ── */
+  .outputs{
+    display:flex;flex-wrap:wrap;gap:7px;
+    justify-content:center;margin-bottom:20px;
+  }
+  .ochip{
+    background:rgba(6,214,160,.06);
+    border:1px solid rgba(6,214,160,.15);
+    border-radius:6px;padding:5px 12px;
+    font-size:10px;font-weight:600;color:#06d6a0;
+    display:flex;align-items:center;gap:5px;
+  }
+  .ochip span{font-size:11px;}
+
+  /* ── Bottom CTA bar ── */
+  .cta-bar{
+    position:absolute;bottom:0;left:0;right:0;
+    height:84px;
+    background:linear-gradient(135deg,rgba(0,180,216,.08),rgba(139,92,246,.08));
+    border-top:1px solid rgba(255,255,255,.05);
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 48px;
+  }
+  .cta-words{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:18px;font-weight:800;letter-spacing:-.02em;
+    color:#e2e8f0;
+  }
+  .cta-words span{
+    background:linear-gradient(135deg,#00d4aa,#00b4d8);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .cta-action{
+    display:flex;align-items:center;gap:16px;
+  }
+  .cta-sub{font-size:9px;color:#334155;letter-spacing:.06em;text-transform:uppercase;text-align:right;}
+  .cta-btn{
+    background:linear-gradient(135deg,#00b4d8,#8b5cf6);
+    color:#fff;padding:11px 26px;border-radius:8px;
+    font-size:11px;font-weight:700;letter-spacing:.04em;
+    box-shadow:0 0 20px rgba(0,180,216,.3);
+    white-space:nowrap;
+  }
+
+  /* Bottom stripe */
+  .bot-stripe{
+    position:absolute;bottom:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,#ffd166,#f72585,#8b5cf6,#00b4d8,#00d4aa);
+  }
+
+  @media print{body{background:#020817;padding:0}.page{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top-stripe"></div>
+
+  <!-- Hero band -->
+  <div class="hero-band">
+    <div class="ring ring1"></div>
+    <div class="ring ring2"></div>
+    <div class="ring ring3"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-center">
+      <div class="big-90">90</div>
+      <div class="sec-label">Seconds</div>
+    </div>
+    <div class="hero-sub-text">
+      <p>From scope document to <span>complete boardroom-ready proposal.</span></p>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav">
+    <div class="logo">⚡ ECI Business Estimation Tool</div>
+    <div class="coming-pill"><div class="cpulse"></div>Launching Soon</div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+    <!-- Headline -->
+    <div class="main-headline">
+      <h2>11 Agents. 9 Formats. <em>One Button.</em></h2>
+      <p>The world's first purpose-built AI presales estimation platform. Every agent a specialist. Every output professional-grade. Every run under 90 seconds.</p>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline">
+      <div class="t-step" style="--tc:linear-gradient(90deg,#00b4d8,#00d4aa)">
+        <div class="t-time">0s</div>
+        <div class="t-icon">📄</div>
+        <div class="t-label">Upload<br>Scope Doc</div>
+      </div>
+      <div class="t-step" style="--tc:linear-gradient(90deg,#8b5cf6,#00b4d8)">
+        <div class="t-time">~10s</div>
+        <div class="t-icon">🔍</div>
+        <div class="t-label">11 Agents<br>Analyse</div>
+      </div>
+      <div class="t-step" style="--tc:linear-gradient(90deg,#f72585,#8b5cf6)">
+        <div class="t-time">~35s</div>
+        <div class="t-icon">💰</div>
+        <div class="t-label">Live Azure<br>Pricing</div>
+      </div>
+      <div class="t-step" style="--tc:linear-gradient(90deg,#ffd166,#f72585)">
+        <div class="t-time">~60s</div>
+        <div class="t-icon">🏗️</div>
+        <div class="t-label">Architecture<br>Designed</div>
+      </div>
+      <div class="t-step" style="--tc:linear-gradient(90deg,#06d6a0,#00b4d8)">
+        <div class="t-time">~80s</div>
+        <div class="t-icon">✍️</div>
+        <div class="t-label">Proposal<br>Written</div>
+      </div>
+      <div class="t-step" style="--tc:linear-gradient(90deg,#00d4aa,#06d6a0)">
+        <div class="t-time">&lt;90s</div>
+        <div class="t-icon">📦</div>
+        <div class="t-label">9 Formats<br>Ready</div>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div class="features">
+      <div class="feat" style="--fc:linear-gradient(90deg,#00d4aa,#00b4d8)">
+        <div class="feat-ico">🔀</div>
+        <div class="feat-ttl">Scenario Modelling</div>
+        <div class="feat-dsc">3 live what-if scenarios with Brooks' Law team scaling. Answer commercial questions in the room.</div>
+      </div>
+      <div class="feat" style="--fc:linear-gradient(90deg,#8b5cf6,#f72585)">
+        <div class="feat-ico">🌐</div>
+        <div class="feat-ttl">3D Architecture Viewer</div>
+        <div class="feat-dsc">Interactive Three.js fly-through. Rotate, zoom, click any service node. A showstopper every time.</div>
+      </div>
+      <div class="feat" style="--fc:linear-gradient(90deg,#ffd166,#f72585)">
+        <div class="feat-ico">🎬</div>
+        <div class="feat-ttl">AI Video Narration</div>
+        <div class="feat-dsc">HeyGen / D-ID / ElevenLabs. Your proposal presents itself. Send it before the meeting starts.</div>
+      </div>
+      <div class="feat" style="--fc:linear-gradient(90deg,#06d6a0,#00d4aa)">
+        <div class="feat-ico">💰</div>
+        <div class="feat-ttl">Live Azure Prices</div>
+        <div class="feat-dsc">Real-time Azure Retail Prices API. Every infra estimate backed by actual 2025 market data.</div>
+      </div>
+      <div class="feat" style="--fc:linear-gradient(90deg,#00b4d8,#8b5cf6)">
+        <div class="feat-ico">🧠</div>
+        <div class="feat-ttl">Continuous Learning</div>
+        <div class="feat-dsc">Records actuals vs estimates. Auto-applies correction factors. Gets more accurate every project.</div>
+      </div>
+      <div class="feat" style="--fc:linear-gradient(90deg,#f72585,#8b5cf6)">
+        <div class="feat-ico">🗂️</div>
+        <div class="feat-ttl">Run Library</div>
+        <div class="feat-dsc">Every estimation saved with client name extracted. Architect review gate. Nothing ever lost.</div>
+      </div>
+    </div>
+
+    <!-- Providers -->
+    <div class="providers">
+      <div class="prov-label">Works with:</div>
+      <div class="pbadge"><div class="pdot" style="background:#00b4d8"></div>Azure OpenAI</div>
+      <div class="pbadge"><div class="pdot" style="background:#8b5cf6"></div>Claude (Anthropic)</div>
+      <div class="pbadge"><div class="pdot" style="background:#06d6a0"></div>Google Gemini</div>
+      <div class="pbadge"><div class="pdot" style="background:#ffd166"></div>Qwen Foundry</div>
+      <div class="pbadge"><div class="pdot" style="background:#f72585"></div>Vertex AI</div>
+    </div>
+
+    <!-- Outputs -->
+    <div class="outputs">
+      <div class="ochip"><span>📊</span> Excel Workbook</div>
+      <div class="ochip"><span>📄</span> PDF Proposal</div>
+      <div class="ochip"><span>📊</span> PowerPoint</div>
+      <div class="ochip"><span>📝</span> Word SOW</div>
+      <div class="ochip"><span>❓</span> Discovery Deck</div>
+      <div class="ochip"><span>🔀</span> Scenario Excel</div>
+      <div class="ochip"><span>🎬</span> Video MP4</div>
+      <div class="ochip"><span>🔗</span> JSON Export</div>
+      <div class="ochip"><span>📦</span> ZIP Bundle</div>
+    </div>
+  </div>
+
+  <!-- CTA bar -->
+  <div class="cta-bar">
+    <div class="cta-words">Ready to run your <span>first proposal?</span></div>
+    <div class="cta-action">
+      <div class="cta-sub">ECI Business Estimation Tool<br>Q2 2026 · Internal Release</div>
+      <div class="cta-btn">Request Early Access →</div>
+    </div>
+  </div>
+
+  <div class="bot-stripe"></div>
+</div>
+</body>
+</html>

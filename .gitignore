@@ -1,0 +1,26 @@
+# ECI config — contains real API keys, NEVER commit
+config.yaml
+
+# SQLite database — contains run data, local only
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.env.*
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml

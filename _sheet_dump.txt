@@ -1,0 +1,647 @@
+=== Summary (78r x 13c) ===
+  A1: CHARTER HOUSE ? AI AGENT MVP BUILD  |  ESTIMATION SUMMARY
+  A3: Variables
+  F3: Team Allocation
+  L3: S.N.  |  Pre-Requisites (Client Responsibility)
+  A4: SNO
+  B4: Variables
+  C4: #
+  F4: SNO
+  G4: Role
+  H4: Allocation %
+  I4: Est. Days
+  L4: 1
+  M4: Active Azure subscription with Contributor or Owner role on the target subscription.
+  A5: 1
+  B5: Front End
+  C5: No
+  F5: 1
+  G5: Project Manager
+  H5: 33%
+  I5: =('AI Agent Dev'!F46+'DevOps & Cloud'!F22)/7*0.33
+  L5: 2
+  M5: Microsoft 365 E3 (or higher) licenses for all service and user accounts.
+  A6: 2
+  B6: Backend (AI Agent Dev)
+  C6: Yes
+  F6: 2
+  G6: AI Architect / Lead
+  H6: 50%
+  I6: =('AI Agent Dev'!F46+'DevOps & Cloud'!F22)/7*0.5
+  L6: 3
+  M6: Copilot Studio license (standalone ~$200/tenant/mo or via M365 Copilot SKU).
+  A7: 3
+  B7: DevOps & Cloud
+  C7: Yes
+  F7: 3
+  G7: AI Engineer
+  H7: 100%
+  I7: =('AI Agent Dev'!F46+'DevOps & Cloud'!F22)/7*1
+  L7: 4
+  M7: Read-access SharePoint credentials and Graph API permissions for ECI team.
+  F8: 4
+  G8: QA Engineer
+  H8: 50%
+  I8: =('AI Agent Dev'!F46+'DevOps & Cloud'!F22)/7*0.5
+  L8: 5
+  M8: Microsoft Teams admin consent for custom Copilot Studio bot deployment.
+  A9: Activities
+  F9: 5
+  G9: DevOps / Cloud Eng
+  H9: 25%
+  I9: =('AI Agent Dev'!F46+'DevOps & Cloud'!F22)/7*0.25
+  L9: 6
+  M9: Azure AD user accounts provisioned UAT users prior to UAT phase.
+  A10: SNO
+  B10: Activities
+  D10: DevTime (hrs)
+  A11: 1
+  B11: Front End
+  D11: 0
+  A12: 2
+  B12: AI Agent Dev
+  D12: ='AI Agent Dev'!F46
+  F12: Monthly Infra Cost (Est.)
+  H12: ='Infra Cost'!C28
+  A13: 3
+  B13: DevOps & Cloud
+  D13: ='DevOps & Cloud'!F22
+  L13: S.N.  |  Out of Scope
+  L14: 1
+  M14: Automated / scheduled data ingestion pipelines from any source.
+  B15: Component
+  C15: Days
+  D15: Weeks
+  L15: 2
+  M15: Data ingestion from sources outside SharePoint, PDF, or Word.
+  B16: Front End
+  C16: 0
+  D16: 0
+  L16: 3
+  M16: Custom UI development for Teams, web, or mobile platforms.
+  B17: AI Agent Dev
+  C17: ='AI Agent Dev'!F46/7
+  D17: ='AI Agent Dev'!F46/35
+  L17: 4
+  M17: Building CI/CD pipelines or advanced deployment automation.
+  B18: DevOps & Cloud
+  C18: ='DevOps & Cloud'!F22/7
+  D18: ='DevOps & Cloud'!F22/35
+  L18: 5
+  M18: PPT, Excel, image, audio, or video file types as agent inputs.
+  B19: Project Duration without UAT
+  D19: ='AI Agent Dev'!F46/35
+  L19: 6
+  M19: Long-term AI operations support or enterprise-wide AI platform.
+  B20: UAT
+  C20: 10
+  D20: =C20/5
+  L20: 7
+  M20: Unstructured formats (scanned images, audio, video) as data sources.
+  B21: Project Duration with UAT
+  D21: =SUM(D19,D20)
+  L21: 8
+  M21: Data classification, sensitivity labelling, or DLP integration.
+  B22: Project Duration incl. Leaves & Holiday
+  L22: 9
+  M22: Any of the 9 remaining Charter House use cases not in MVP scope.
+  B23: Leaves & Holiday
+  C23: 1
+  D23: Weeks
+  L23: 10
+  M23: Multi-language support for NDA review or DDQ drafting.
+  B24: Weeks
+  D24: =D21+C23
+  L24: 11
+  M24: DocuSign integration or automated email dispatch of outputs.
+  A25: Note: With 2 AI Engineers running NDA + DDQ build in parallel, project can be completed within 5-6 weeks
+  L25: 12
+  M25: LP-specific personalisation engine (Phase 2 roadmap item).
+  L26: 13
+  M26: Any features not explicitly listed in scope (subject to change request).
+  L27: S.N.  |  Assumptions
+  L28: 1
+  M28: Source files are PDF and Word only , all other formats excluded from MVP scope.
+  L29: 2
+  M29: 50-100 historical files per use case (NDAs + DDQs) provided within Week 1.
+  L30: 3
+  M30: AI accuracy estimated at 80?95% for structured document comparison tasks.
+  L31: 4
+  M31: AI responses are advisory - all outputs require human review before use.
+  L32: 5
+  M32: Model accuracy depends on quality, consistency, and volume of source files provided.
+  L33: 8
+  M33: Charter House standard NDA template provided in editable Word format (baseline for comparison).
+  L34: 9
+  M34: One-time ingestion only , no automated real-time or scheduled data sync in MVP.
+  L35: 10
+  M35: UAT phase follows agreed timeline; client resources available and committed.
+  L36: 11
+  M36: Data classification and labelling not required for the POC phase.
+  L37: 12
+  M37: 10?15 users participate in UAT, each running ~50?100 queries per agent.
+  L38: 13
+  M38: All UAT users have existing SharePoint / file access to source documents.
+  L39: 14
+  M39: Prompt logs stored in Azure Monitor / Log Analytics with 30-day default retention.
+  L40: 15
+  M40: Client is responsible for all Azure/cloud licensing, infrastructure, and data usage costs.
+  L41: 16
+  M41: Client will respond to ECI queries within 24?48 business hours.
+  L42: S.N.  |  Risks
+  L43: 1
+  M43: AI accuracy below KPI threshold - NDA clause comparison or DDQ answer quality insufficient. Mitigation: multi-model testing; human review always included.
+  L44: 2
+  M44: Historical files insufficient quality or quantity (<50 files). minimum viable dataset defined upfront.
+  L45: 5
+  M45: Copilot Studio Teams channel blocked by client IT/AAD restrictions. Mitigation: IT admin identified in Week 1.
+  L46: 7
+  M46: SharePoint API permissions or access issues delay data access. Mitigation: pre-req checklist sent in Week 1; 24-48hr SLA on client responses.
+  L47: 8
+  M47: Word track-changes output incompatible with Charter House Word version. 
+  L48: 12
+  M48: NDA clause variation too broad for standard comparison logic. Mitigation: clause library reviewed and categorised in Discovery phase.
+  L49: S.N.  |  Definition of Done ? Project Closure Criteria
+  L50:   ? DISCOVERY & DESIGN
+  L51: 1
+  M51: Architecture document reviewed and signed off by client.
+  L52: 2
+  M52: KPI metrics and accuracy thresholds defined, documented, and agreed by client.
+  L53: 3
+  M53: NDA + DDQ source files confirmed as PDF/Word; volume confirmed ?50 files per use case.
+  L54: 4
+  M54: Prompt templates provided and approved for both agents. Model selection justified.
+  L55:   ? ENVIRONMENT SETUP
+  L56: 1
+  M56: All Azure resources provisioned in dedicated Resource Group; private endpoints verified.
+  L57: 2
+  M57: Entra ID Managed Identities configured - no hardcoded secrets; Key Vault policies set.
+  L58: 3
+  M58: Copilot Studio bot deployed to Charter House Teams tenant with test message confirmed.
+  L59:   ? NDA REVIEWER AGENT
+  L60: 1
+  M60: Document parser correctly extracts clauses from ?95% of test NDA files.
+  L61: 2
+  M61: One-time ingestion complete - 50-100 NDAs indexed in AI Search with metadata.
+  L62: 3
+  M62: Clause comparison correctly identifies non-standard clauses in ?80% of test cases.
+  L63: 4
+  M63: Word output with track changes generated; issues summary page included in all outputs.
+  L64: 5
+  M64: Agent accessible via Teams; NDA reviewed and output returned within 60 seconds.
+  L65:   ? LP QUESTIONNAIRE ENGINE
+  L66: 1
+  M66: DDQ parser extracts all questions from ?95% of test DDQ files (PDF and Word).
+  L67: 2
+  M67: One-time ingestion complete ? 50-100 historical DDQ responses indexed in AI Search.
+  L68: 3
+  M68: RAG retrieval returns relevant answers for ?85% of test questions (similarity ?70%).
+  L69: 4
+  M69: Low-confidence answers (<70%) correctly flagged for human review in output document.
+  L70: 5
+  M70: Source traceability:  answer tagged to source DDQ + question reference.
+  L71:   ? TESTING & UAT
+  L72: 1
+  M72: All unit and integration tests passing - minimum critical open defects at UAT closure.
+  L73: 2
+  M73: 10-15 Charter House users completed UAT (50-100 queries each) across both agents.
+  L74: 3
+  M74: KPI validation report produced - accuracy vs threshold documented for both models.
+  L75: 4
+  M75: UAT written sign-off received from named client approver for each agent.
+  L76:   ? PRODUCTION DEPLOYMENT & HANDOVER
+  L77: 2
+  M77: Technical documentation and user guides finalised and delivered to client.
+  L78: 4
+  M78: Admin + end-user training sessions completed; recordings provided.
+=== AI Agent Dev (46r x 7c) ===
+  A1: CHARTER HOUSE ? AI AGENT DEVELOPMENT & INTEGRATION  (NDA Reviewer + LP Questionnaire Engine)
+  A3: #
+  B3: Task / Phase
+  C3: Sub-task
+  D3: Dev Low (hrs)
+  E3: Dev High (hrs)
+  F3: Avg (hrs)
+  G3: Comments
+  A4: Phase 1: Discovery & Design
+  D4: =SUM(D5:D11)
+  E4: =SUM(E5:E11)
+  F4: =(D4+E4)/2
+  A5: 1
+  C5: Kickoff workshop ? scope confirmation & stakeholder alignment
+  D5: 8
+  E5: 10
+  F5: =(D5+E5)/2
+  G5: Joint session with Charter House Legal & IR SMEs
+  A6: 2
+  C6: Data assessment ? source NDA files & DDQ response library review
+  D6: 8
+  E6: 12
+  F6: =(D6+E6)/2
+  G6: Validate PDF/Word quality, structure, volume (50-100 files each)
+  A7: 3
+  C7: Architecture finalisation ? AI Foundry, AI Search, App Service, Key Vault, Entra ID
+  D7: 8
+  E7: 12
+  F7: =(D7+E7)/2
+  A8: 4
+  C8: NDA orchestration logic design ? clause extraction, comparison & redline framework
+  D8: 8
+  E8: 12
+  F8: =(D8+E8)/2
+  G8: System prompt, tool definitions, output format design
+  A9: 5
+  C9: DDQ orchestration logic design ? RAG architecture (reuse ELLA logic)
+  D9: 6
+  E9: 8
+  F9: =(D9+E9)/2
+  G9: Leverage existing ELLA DDQ agent; document adaptation required
+  A10: 6
+  C10: Evaluation framework ? KPI metrics, accuracy thresholds, model selection (2 LLM x 2 embedding)
+  D10: 6
+  E10: 8
+  F10: =(D10+E10)/2
+  A11: 7
+  C11: Technical documentation v1 ? architecture, comms plan, solution design doc
+  D11: 12
+  E11: 16
+  F11: =(D11+E11)/2
+  G11: ECI best practice format; client sign-off required
+  A12: Phase 2A: NDA Reviewer & Standard Mark-Up Agent
+  D12: =SUM(D13:D20)
+  E12: =SUM(E13:E20)
+  F12: =(D12+E12)/2
+  A13: 1
+  C13: Document parser ? PDF/Word ingestion, clause boundary detection
+  D13: 12
+  E13: 16
+  F13: =(D13+E13)/2
+  A14: 2
+  C14: One-time ingestion ? 50-100 historical NDA files ? AI Search index
+  D14: 8
+  E14: 12
+  F14: =(D14+E14)/2
+  G14: Chunking strategy, metadata tagging, embedding generation
+  A15: 3
+  C15: Clause comparison engine ? incoming clause vs Charter House standard position
+  D15: 16
+  E15: 20
+  F15: =(D15+E15)/2
+  G15: Prompt engineering; few-shot examples for each clause type
+  A16: 4
+  C16: Redline generation ? Word track-changes output via python-docx
+  D16: 12
+  E16: 16
+  F16: =(D16+E16)/2
+  G16: Track changes applied to original NDA; format preservation
+  A17: 5
+  C17: Issues summary page ? plain English summary of all flagged clauses
+  D17: 6
+  E17: 8
+  F17: =(D17+E17)/2
+  G17: Structured output appended to Word document
+  A18: 6
+  C18: Foundry Agent Service wiring ? tools, system prompt, conversation flow
+  D18: 8
+  E18: 12
+  F18: =(D18+E18)/2
+  G18: Tool registration, agent orchestration logic
+  A19: 7
+  C19: Copilot Studio / Teams UI ? file upload trigger, response cards
+  D19: 6
+  E19: 8
+  F19: =(D19+E19)/2
+  G19: Adaptive card output; file return to Teams user
+  A20: 8
+  C20: Prompt logging ? all interactions ? Log Analytics (audit trail)
+  D20: 3
+  E20: 4
+  F20: =(D20+E20)/2
+  G20: Per-query logging; source traceability
+  A22: Phase 2B: LP Questionnaire Answer Engine (DDQ Agent)
+  D22: =SUM(D23:D30)
+  E22: =SUM(E23:E30)
+  F22: =(D22+E22)/2
+  G22: ELLA DDQ agent reused ? reduced hours vs NDA agent build
+  A23: 1
+  C23: DDQ parser - question extraction from PDF/Word uploads
+  D23: 8
+  E23: 12
+  F23: =(D23+E23)/2
+  G23: Question boundary detection, category tagging , reuse ELLA parsing logic
+  A24: 2
+  C24: One-time ingestion - 50-100 historical DDQ responses -> AI Search index
+  D24: 5
+  E24: 8
+  F24: =(D24+E24)/2
+  A25: 3
+  C25: RAG retrieval - semantic search against historical answers (top-k)
+  D25: 8
+  E25: 12
+  F25: =(D25+E25)/2
+  G25: Similarity scoring, source tagging, confidence threshold 
+  A26: 4
+  C26: Answer rewriter - Charter House house-style enforcement
+  D26: 8
+  E26: 12
+  F26: =(D26+E26)/2
+  G26: Few-shot prompting; tone & style alignment - Charter House  style
+  A27: 6
+  C27: Draft package output - Q&A review document with source traceability
+  D27: 4
+  E27: 6
+  F27: =(D27+E27)/2
+  G27: Word output; each answer tagged to source DDQ + question ref
+  A28: 7
+  C28: Foundry Agent Service wiring - tools, system prompt, multi-step flow
+  D28: 6
+  E28: 10
+  F28: =(D28+E28)/2
+  G28: Tool registration, orchestration logic 
+  A29: 8
+  C29: Copilot Studio / Teams UI - file upload, Q&A display, review flow
+  D29: 4
+  E29: 6
+  F29: =(D29+E29)/2
+  G29: Teams interface for IR team
+  A30: 9
+  C30: Prompt logging - all interactions ? Log Analytics
+  D30: 2
+  E30: 3
+  F30: =(D30+E30)/2
+  G30: Source traceability log for compliance
+  A32: Phase 3: Testing & UAT
+  D32: =SUM(D33:D37)
+  E32: =SUM(E33:E37)
+  F32: =(D32+E32)/2
+  A33: 1
+  C33: Internal QA ? end-to-end testing both agents; test case execution
+  D33: 12
+  E33: 16
+  F33: =(D33+E33)/2
+  G33: All acceptance criteria tested; defect log maintained
+  A34: 2
+  C34: KPI validation ? accuracy testing 
+  D34: 8
+  E34: 12
+  F34: =(D34+E34)/2
+  G34: Model comparison report; threshold validation
+  A35: 3
+  C35: UAT facilitation ? 10-15 Charter House users, ~50-100 queries each
+  D35: 8
+  E35: 10
+  F35: =(D35+E35)/2
+  G35: Session management, issue logging, user feedback collection
+  A36: 4
+  C36: Bug fixes & prompt tuning post-UAT
+  D36: 10
+  E36: 16
+  F36: =(D36+E36)/2
+  G36: Based on UAT feedback; P1/P2 issues resolved before sign-off
+  A37: 5
+  C37: Azure Monitor alerts & workflow notification testing
+  D37: 4
+  E37: 6
+  F37: =(D37+E37)/2
+  A39: Phase 4: Handover & Knowledge Transfer
+  D39: =SUM(D40:D42)
+  E39: =SUM(E40:E42)
+  F39: =(D39+E39)/2
+  A40: 1
+  C40: Technical documentation ? architecture diagrams, API specs
+  D40: 8
+  E40: 12
+  F40: =(D40+E40)/2
+  G40: ECI standard format; delivered to client operational team
+  A41: 2
+  C41: Functional documentation ? end-user guide for Teams interface
+  D41: 6
+  E41: 8
+  F41: =(D41+E41)/2
+  G41: Per-agent user guide; uploaded to client SharePoint
+  A42: 5
+  C42: Knowledge transfer ? 1x admin session + 1x end-user training session
+  D42: 6
+  E42: 8
+  F42: =(D42+E42)/2
+  G42: 1hr each; recorded for future reference
+  A44: Meetings & Sync (10% of dev hours)
+  D44: =(D4+D12+D22+D32+D39)*0.1
+  E44: =(E4+E12+E22+E32+E39)*0.1
+  F44: =(D44+E44)/2
+  G44: Standups, client syncs, reviews
+  A46: TOTAL AI AGENT DEV HOURS
+  D46: =D4+D12+D22+D32+D39+D44
+  E46: =E4+E12+E22+E32+E39+E44
+  F46: =(D46+E46)/2
+=== Architecture (41r x 30c) ===
+  L37: NDA Reviewer Agent
+  L38: Legal & HR Team ? Upload NDA (PDF/Word) via Teams ? AI compares each clause against Charter House standard positions ? Word output with track changes + issues s
+  L40: LP Questionnaire Engine (DDQ Agent)
+  L41: Investor Relations ? Upload DDQ (PDF/Word) via Teams ? RAG retrieves best historical answers ? AI rewrites in Charter House house style ? draft Q&A doc with sou
+=== DevOps & Cloud (22r x 7c) ===
+  A1: CHARTER HOUSE ? DEVOPS & INFRASTRUCTURE PROVISIONING
+  A3: #
+  B3: Task / Phase
+  C3: Sub-task
+  D3: Dev Low (hrs)
+  E3: Dev High (hrs)
+  F3: Avg (hrs)
+  G3: Comments
+  A4: Azure Environment Setup
+  D4: =SUM(D5:D13)
+  E4: =SUM(E5:E13)
+  F4: =(D4+E4)/2
+  A5: 1
+  C5: Azure Resource Group
+  D5: 2
+  E5: 3
+  F5: =(D5+E5)/2
+  G5: Isolated network foundation; naming convention per ECI standard
+  A6: 2
+  C6: Private endpoints & Private Link config (all services off public internet)
+  D6: 8
+  E6: 12
+  F6: =(D6+E6)/2
+  G6: AI Foundry, AI Search, App Service, Key Vault, Storage
+  A7: 3
+  C7: Azure AI Foundry hub + project ? llm model deployments
+  D7: 4
+  E7: 6
+  F7: =(D7+E7)/2
+  G7: Model deployment; quota increase request in Week 1
+  A8: 4
+  C8: Azure AI Search (S1) provisioning & index schema setup
+  D8: 3
+  E8: 4
+  F8: =(D8+E8)/2
+  G8: Two indexes: nda-clauses-index, ddq-answers-index
+  A9: 5
+  C9: Azure App Service (B2/P1v3 Linux) ? backend API hosting
+  D9: 2
+  E9: 3
+  F9: =(D9+E9)/2
+  G9: REST API + MCP Server; auto-scale config
+  A10: 6
+  C10: Azure Key Vault ? secrets config, Managed Identity RBAC
+  D10: 2
+  E10: 4
+  F10: =(D10+E10)/2
+  G10: No hardcoded secrets; Managed Identity for all service-to-service
+  A11: 7
+  C11: Azure Blob Storage ? containers for source files & outputs
+  D11: 2
+  E11: 3
+  F11: =(D11+E11)/2
+  G11: Hot tier LRS; lifecycle policy for staging cleanup
+  A12: 8
+  C12: Azure Monitor + Log Analytics workspace (30-day default retention)
+  D12: 2
+  E12: 3
+  F12: =(D12+E12)/2
+  G12: Prompt log ingestion; dashboard setup
+  A13: 9
+  C13: Microsoft Entra ID ? Managed Identities, app registrations
+  D13: 3
+  E13: 4
+  F13: =(D13+E13)/2
+  G13: Service-to-service auth; Teams bot app registration
+  A14: Copilot Studio & Teams Integration
+  D14: =SUM(D15:D16)
+  E14: =SUM(E15:E16)
+  F14: =(D14+E14)/2
+  A15: 11
+  C15: Copilot Studio environment provisioning + Teams bot channel config
+  D15: 4
+  E15: 6
+  F15: =(D15+E15)/2
+  G15: Bot channel setup; Teams admin consent required from client IT
+  A16: 12
+  C16: Teams admin consent + bot deployment to Charter House tenant
+  D16: 3
+  E16: 5
+  F16: =(D16+E16)/2
+  G16: Admin approval gating; fallback to web UI if Teams blocked
+  A18: Security Baseline & Testing
+  D18: =SUM(D19:D20)
+  E18: =SUM(E19:E20)
+  F18: =(D18+E18)/2
+  A19: 13
+  C19: NSG rules, Entra Conditional Access, Key Vault access policies
+  D19: 4
+  E19: 6
+  F19: =(D19+E19)/2
+  G19: Security hardening; all services private endpoint verified
+  A20: 14
+  C20: UAT staging environment deployment + smoke test
+  D20: 2
+  E20: 3
+  F20: =(D20+E20)/2
+  G20: Mirror of production; used for UAT phase
+  A21: Meetings & Sync (10% of dev hours)
+  D21: =(D4+D14+D18)*0.1
+  E21: =(E4+E14+E18)*0.1
+  F21: =(D21+E21)/2
+  G21: Standups, client syncs
+  A22: TOTAL DEVOPS HOURS
+  D22: =D4+D14+D18+D21
+  E22: =E4+E14+E18+E21
+  F22: =(D22+E22)/2
+  G22: Average for budgeting
+=== Infra Cost (28r x 5c) ===
+  A1: CHARTER HOUSE ? AZURE INFRASTRUCTURE COST ESTIMATE  |  Live Pricing ? March 2026  |  Pay-As-You-Go
+  A2: #
+  B2: Service / Resource
+  C2: $/mo
+  D2: Pricing Model
+  E2: Notes / Assumptions
+  A3:   AI Services ? Azure AI Foundry / OpenAI
+  A4: 1
+  B4: Azure OpenAI GPT-4o (Global PAYG) - Primary LLM
+  C4: 35
+  D4: Pay-per-token
+  E4: Est. ~1.5M input + 0.5M output tokens/mo @ POC. $2.50/$10 per 1M. Source: azure.microsoft.com/pricing
+  A5: 2
+  B5: Azure OpenAI GPT-4o-mini - Model comparison / fallback
+  C5: 5
+  D5: Pay-per-token
+  E5: ~10% of queries. $0.15/$0.60 per 1M tokens. Used for model benchmarking in Phase 4.
+  A6: 3
+  B6: text-embedding-3-small - One-time ingestion (100-200 files)
+  C6: 1
+  D6: Pay-per-token
+  E6: ~5M tokens total one-time ingestion. $0.022/1M tokens. Negligible ongoing cost.
+  A7: Subtotal ? AI Services
+  C7: =SUM(C4:C6)
+  A8:   Vector Storage ? Azure AI Search
+  A9: 4
+  B9: Azure AI Search - Standard S1 (1 replica, 1 partition)
+  C9: 250
+  D9: Fixed monthly
+  E9: S1 required for semantic ranker + hybrid search. Supports both NDA clause index + DDQ answer index. Source: azure.microsoft.com/pricing/details/search
+  A10: Subtotal ? Vector Storage
+  C10: =C9
+  A11:   Compute ? App Service & Functions
+  A12: 5
+  B12: Azure App Service - B2 (2 vCPU, 3.5GB) Linux
+  C12: 75
+  D12: Fixed monthly
+  E12: Hosts FastAPI backend / REST API. B2 sufficient for POC load. ~$75/mo. Upgrade to P1v3 at production.
+  A13: 6
+  B13: Azure Functions - Consumption Plan 
+  C13: 2
+  D13: Pay-per-execution
+  E13: ~500K executions/mo. First 1M free, then $0.20/1M. Near-zero cost for POC traffic levels.
+  A14: 7
+  B14: Azure Blob Storage - Hot LRS (~20 GB staging)
+  C14: 1
+  D14: Pay-per-GB
+  E14: $0.018/GB/mo. Source file staging + output documents. Lifecycle policy cleans temp files.
+  A15: Subtotal ? Compute
+  C15: =SUM(C12:C14)
+  A16:   Security & Identity
+  A17: 8
+  B17: Azure Key Vault - Standard tier (~50K operations/mo)
+  C17: 0.15
+  D17: Operations-based
+  E17: $0.03/10K ops. Holds API keys, connection strings. Managed Identity eliminates secret exposure.
+  A18: 9
+  B18: Microsoft Entra ID - Managed Identity & app registrations
+  C18: 0
+  D18: Included in M365 E3
+  E18: No additional cost. Covered by client M365 E3 license. Managed Identity for all service auth.
+  A19: Subtotal ? Security & Identity
+  C19: =SUM(C17:C18)
+  A20:   Monitoring & Observability
+  A21: 10
+  B21: Azure Log Analytics - prompt logging (~5 GB/mo ingested)
+  C21: 11.5
+  D21: Per GB ingested
+  E21: $2.30/GB after 5 GB free tier. 30-day default retention. All agent interactions logged here.
+  A22: 11
+  B22: Azure Monitor - alert rules & dashboards
+  C22: 1
+  D22: Per alert rule
+  E22: 10 alert rules. First 10 rules free. Workflow failure notifications; performance monitoring.
+  A23: Subtotal ? Monitoring
+  C23: =SUM(C21:C22)
+  A24:   Integration ? Copilot Studio & Teams
+  A25: 12
+  B25: Microsoft Copilot Studio - Teams bot (both agents)
+  C25: 200
+  D25: Per tenant/month
+  E25: ~$200/tenant/mo standalone OR included in M365 E5/Copilot SKU. Confirm client license tier.
+  A26: Subtotal ? Integration
+  C26: =SUM(C25:C25)
+  A28: TOTAL ESTIMATED MONTHLY INFRASTRUCTURE COST (POC)
+  C28: =C7+C10+C15+C19+C23+C26
+  E28: POC phase (10-week build, 10-15 users). Excludes one-time setup costs.
+=== Version History (4r x 4c) ===
+  A1: CHARTER HOUSE ? ESTIMATION VERSION HISTORY
+  A3: Version
+  B3: Changes / Notes
+  C3: Date
+  D3: Author
+  A4: v1.1
+  C4: 2026-03-19 00:00:00
+  D4: Prabhakar Gupta

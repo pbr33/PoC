@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECI Business Estimation Tool — AI-Powered Presales Intelligence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --neon-blue:   #00b4d8;
+    --neon-cyan:   #00d4aa;
+    --neon-purple: #8b5cf6;
+    --neon-pink:   #f72585;
+    --neon-gold:   #ffd166;
+    --neon-green:  #06d6a0;
+    --bg-deep:     #020817;
+    --bg-card:     #0f172a;
+    --bg-card2:    #111827;
+    --border:      rgba(255,255,255,0.07);
+    --text-main:   #e2e8f0;
+    --text-muted:  #64748b;
+    --text-dim:    #94a3b8;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+    line-height: 1.6;
+  }
+
+  /* ── Animated background ── */
+  .bg-orbs {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  }
+  .orb {
+    position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.18;
+    animation: drift 20s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 600px; height: 600px; background: var(--neon-purple); top: -200px; left: -200px; animation-duration: 18s; }
+  .orb-2 { width: 500px; height: 500px; background: var(--neon-blue);   top: 40%; right: -150px; animation-duration: 24s; animation-delay: -6s; }
+  .orb-3 { width: 400px; height: 400px; background: var(--neon-pink);   bottom: -100px; left: 30%; animation-duration: 22s; animation-delay: -12s; }
+  .orb-4 { width: 350px; height: 350px; background: var(--neon-cyan);   top: 60%; left: 10%; animation-duration: 26s; animation-delay: -4s; }
+
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1); }
+    33%  { transform: translate(40px, -30px) scale(1.05); }
+    66%  { transform: translate(-30px, 20px) scale(0.95); }
+    100% { transform: translate(20px, 40px) scale(1.03); }
+  }
+
+  /* ── Layout ── */
+  section { position: relative; z-index: 1; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; width: 100%; z-index: 100;
+    background: rgba(2,8,23,0.85); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1200px; margin: 0 auto; padding: 16px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-logo {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700; font-size: 1.3rem;
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .nav-logo span { color: var(--neon-cyan); -webkit-text-fill-color: var(--neon-cyan); }
+  .nav-links { display: flex; gap: 32px; }
+  .nav-links a {
+    color: var(--text-dim); text-decoration: none; font-size: .9rem;
+    transition: color .2s;
+  }
+  .nav-links a:hover { color: var(--neon-cyan); }
+  .nav-cta {
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+    color: #fff; border: none; padding: 10px 24px; border-radius: 8px;
+    font-weight: 600; cursor: pointer; font-size: .9rem;
+    box-shadow: 0 0 20px rgba(0,180,216,.35);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(0,180,216,.55); }
+
+  /* ── HERO ── */
+  #hero {
+    min-height: 100vh; display: flex; align-items: center;
+    padding: 120px 0 80px;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(139,92,246,.12) 0%, transparent 70%);
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(139,92,246,.12); border: 1px solid rgba(139,92,246,.3);
+    border-radius: 20px; padding: 6px 16px; margin-bottom: 28px;
+    font-size: .82rem; font-weight: 600; color: var(--neon-purple);
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .hero-eyebrow::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--neon-purple); animation: pulse-dot 2s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .5; transform: scale(1.5); }
+  }
+  .hero-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(2.6rem, 6vw, 5rem);
+    font-weight: 700; line-height: 1.1; margin-bottom: 24px;
+    letter-spacing: -.03em;
+  }
+  .hero-title .grad {
+    background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-blue) 40%, var(--neon-purple) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-sub {
+    font-size: 1.2rem; color: var(--text-dim); max-width: 620px;
+    margin-bottom: 44px; line-height: 1.7;
+  }
+  .hero-btns { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 64px; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--neon-blue) 0%, var(--neon-purple) 100%);
+    color: #fff; padding: 16px 36px; border-radius: 10px; font-weight: 700;
+    font-size: 1rem; border: none; cursor: pointer;
+    box-shadow: 0 0 40px rgba(0,180,216,.4);
+    transition: all .25s; text-decoration: none; display: inline-block;
+    position: relative; overflow: hidden;
+  }
+  .btn-primary::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.15), transparent);
+    opacity: 0; transition: opacity .2s;
+  }
+  .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 0 60px rgba(0,180,216,.6); }
+  .btn-primary:hover::after { opacity: 1; }
+  .btn-ghost {
+    background: transparent; color: var(--text-main);
+    border: 1px solid var(--border); padding: 16px 36px; border-radius: 10px;
+    font-weight: 600; font-size: 1rem; cursor: pointer; text-decoration: none;
+    display: inline-block; transition: all .25s;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+
+  /* ── Stat chips ── */
+  .hero-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+  .stat-chip { text-align: center; }
+  .stat-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 2.4rem; font-weight: 700; line-height: 1;
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .stat-lbl { font-size: .75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
+
+  /* ── Section header ── */
+  .sec-header { text-align: center; margin-bottom: 64px; }
+  .sec-eyebrow {
+    font-size: .78rem; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--neon-cyan); margin-bottom: 14px;
+  }
+  .sec-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
+    letter-spacing: -.025em; margin-bottom: 16px;
+  }
+  .sec-title .accent { color: var(--neon-cyan); }
+  .sec-sub { color: var(--text-dim); max-width: 560px; margin: 0 auto; font-size: 1.05rem; }
+
+  /* ── Metric bar ── */
+  #metrics {
+    padding: 80px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+  .metric-card {
+    background: var(--bg-card); padding: 36px 28px; text-align: center;
+    position: relative; overflow: hidden;
+    transition: transform .2s;
+  }
+  .metric-card:first-child { border-radius: 12px 0 0 12px; }
+  .metric-card:last-child  { border-radius: 0 12px 12px 0; }
+  .metric-card::before {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 3px; background: var(--grad-color, linear-gradient(90deg, var(--neon-blue), var(--neon-cyan)));
+  }
+  .metric-card:hover { transform: translateY(-4px); }
+  .metric-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 3rem; font-weight: 700; line-height: 1;
+    background: var(--num-grad, linear-gradient(135deg, var(--neon-cyan), var(--neon-blue)));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .metric-unit { font-size: 1.1rem; color: var(--text-dim); margin-bottom: 4px; }
+  .metric-lbl { font-size: .8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; }
+
+  /* ── PIPELINE DIAGRAM ── */
+  #pipeline { padding: 100px 0; }
+  .pipeline-wrap {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 48px; overflow-x: auto;
+  }
+  .pipe-flow {
+    display: flex; align-items: stretch; gap: 0;
+    min-width: 900px;
+  }
+  .pipe-step {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .pipe-step:not(:last-child)::after {
+    content: '→';
+    position: absolute; right: -10px; top: 22px;
+    font-size: 1.2rem; color: var(--text-muted); z-index: 2;
+  }
+  .pipe-node {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; margin-bottom: 12px;
+    position: relative; flex-shrink: 0;
+    box-shadow: 0 0 20px var(--glow-color, rgba(0,180,216,.3));
+    animation: node-glow 3s ease-in-out infinite alternate;
+  }
+  @keyframes node-glow {
+    from { box-shadow: 0 0 12px var(--glow-color, rgba(0,180,216,.3)); }
+    to   { box-shadow: 0 0 28px var(--glow-color, rgba(0,180,216,.5)), 0 0 50px var(--glow-color, rgba(0,180,216,.15)); }
+  }
+  .pipe-num {
+    position: absolute; top: -8px; right: -8px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--bg-deep); border: 1px solid var(--border);
+    font-size: .65rem; font-weight: 700; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pipe-label {
+    font-size: .72rem; font-weight: 600; text-align: center;
+    color: var(--text-dim); line-height: 1.3; max-width: 80px;
+  }
+
+  /* ── ARCHITECTURE DIAGRAM ── */
+  #architecture { padding: 100px 0; background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(0,180,216,.05), transparent); }
+  .arch-diagram {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 20px; padding: 48px; overflow: hidden;
+  }
+  svg.arch-svg { width: 100%; height: auto; display: block; }
+
+  /* ── FEATURES GRID ── */
+  #features { padding: 100px 0; }
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+  }
+  .feat-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px; position: relative; overflow: hidden;
+    transition: transform .25s, border-color .25s, box-shadow .25s;
+  }
+  .feat-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at top left, var(--card-glow, rgba(0,180,216,.06)), transparent 70%);
+    opacity: 0; transition: opacity .3s;
+  }
+  .feat-card:hover { transform: translateY(-6px); border-color: var(--card-border, rgba(0,180,216,.3)); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .feat-card:hover::before { opacity: 1; }
+  .feat-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; margin-bottom: 20px;
+  }
+  .feat-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.05rem; font-weight: 700; margin-bottom: 10px;
+  }
+  .feat-desc { font-size: .88rem; color: var(--text-dim); line-height: 1.65; }
+
+  /* ── COMPARISON TABLE ── */
+  #compare { padding: 100px 0; }
+  .compare-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  }
+  .compare-table th {
+    padding: 20px 24px; font-size: .8rem; letter-spacing: .08em;
+    text-transform: uppercase; font-weight: 700;
+    background: var(--bg-card2);
+  }
+  .compare-table th:first-child { color: var(--text-muted); text-align: left; }
+  .compare-table th.col-eci { color: var(--neon-cyan); background: rgba(0,180,216,.08); }
+  .compare-table td {
+    padding: 16px 24px; border-top: 1px solid var(--border);
+    font-size: .9rem;
+  }
+  .compare-table td:first-child { color: var(--text-dim); font-weight: 500; }
+  .compare-table td.col-eci { background: rgba(0,180,216,.04); font-weight: 600; color: var(--neon-cyan); text-align: center; }
+  .compare-table td.col-bad { color: var(--text-muted); text-align: center; }
+  .compare-table tr:hover td { background: rgba(255,255,255,.02); }
+  .compare-table tr:hover td.col-eci { background: rgba(0,180,216,.07); }
+  .tick { color: var(--neon-green); font-size: 1.1rem; }
+  .cross { color: #ef4444; font-size: 1.1rem; }
+  .dash { color: var(--text-muted); }
+
+  /* ── OUTPUTS SHOWCASE ── */
+  #outputs { padding: 100px 0; }
+  .outputs-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .output-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; display: flex; gap: 16px; align-items: flex-start;
+    transition: transform .2s, border-color .2s;
+  }
+  .output-card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,.15); }
+  .output-icon { font-size: 2rem; flex-shrink: 0; line-height: 1; }
+  .output-title { font-weight: 700; font-size: .95rem; margin-bottom: 4px; }
+  .output-desc { font-size: .8rem; color: var(--text-dim); }
+
+  /* ── HOW IT WORKS ── */
+  #how { padding: 100px 0; }
+  .steps { display: flex; flex-direction: column; gap: 0; max-width: 700px; margin: 0 auto; }
+  .step {
+    display: flex; gap: 28px; position: relative; padding-bottom: 40px;
+  }
+  .step:last-child { padding-bottom: 0; }
+  .step-line {
+    position: absolute; left: 19px; top: 44px; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--neon-blue), transparent);
+  }
+  .step:last-child .step-line { display: none; }
+  .step-num {
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: .9rem;
+    position: relative; z-index: 1;
+  }
+  .step-body { padding-top: 8px; }
+  .step-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 6px; }
+  .step-desc { font-size: .9rem; color: var(--text-dim); }
+
+  /* ── ROI BANNER ── */
+  #roi {
+    padding: 80px 0;
+    background: linear-gradient(135deg, rgba(139,92,246,.1) 0%, rgba(0,180,216,.08) 100%);
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  .roi-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+  .roi-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 2.2rem; font-weight: 700; letter-spacing: -.025em; margin-bottom: 20px;
+  }
+  .roi-desc { color: var(--text-dim); font-size: 1rem; line-height: 1.7; }
+  .roi-numbers { display: flex; flex-direction: column; gap: 16px; }
+  .roi-row {
+    background: rgba(255,255,255,.04); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+    display: flex; align-items: center; gap: 20px;
+    position: relative; overflow: hidden;
+  }
+  .roi-row::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--row-color, var(--neon-cyan));
+  }
+  .roi-icon { font-size: 1.6rem; }
+  .roi-label { color: var(--text-dim); font-size: .85rem; }
+  .roi-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.1rem; color: var(--text-main); }
+  .roi-badge {
+    margin-left: auto; background: rgba(6,214,160,.15); color: var(--neon-green);
+    border: 1px solid rgba(6,214,160,.3); border-radius: 20px;
+    padding: 4px 14px; font-size: .78rem; font-weight: 700; white-space: nowrap;
+  }
+
+  /* ── MODEL LOGOS ── */
+  #models { padding: 80px 0; }
+  .models-row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .model-badge {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 50px; padding: 12px 28px;
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: .9rem;
+    transition: all .2s;
+  }
+  .model-badge:hover { border-color: var(--neon-cyan); transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+  .model-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── CTA ── */
+  #cta {
+    padding: 120px 0;
+    text-align: center;
+    background: radial-gradient(ellipse 70% 60% at 50% 100%, rgba(139,92,246,.12) 0%, transparent 70%);
+  }
+  .cta-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 700; letter-spacing: -.03em; margin-bottom: 20px;
+  }
+  .cta-sub { color: var(--text-dim); font-size: 1.1rem; margin-bottom: 44px; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border); padding: 32px 0;
+    text-align: center; color: var(--text-muted); font-size: .82rem;
+  }
+  .footer-logo {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    font-size: 1.1rem; margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    display: inline-block;
+  }
+
+  /* ── Animations ── */
+  .fade-in { opacity: 0; transform: translateY(30px); transition: opacity .7s ease, transform .7s ease; }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* ── Glow card hero ── */
+  .hero-visual {
+    position: relative; flex-shrink: 0;
+  }
+  .dashboard-mock {
+    background: var(--bg-card); border: 1px solid rgba(0,180,216,.2);
+    border-radius: 16px; padding: 24px; width: 460px;
+    box-shadow: 0 0 80px rgba(0,180,216,.15), 0 40px 100px rgba(0,0,0,.5);
+    animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-12px); }
+  }
+  .mock-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .mock-title { font-size: .75rem; color: var(--text-muted); margin-left: 8px; }
+  .mock-agent {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,.03);
+    font-size: .78rem;
+  }
+  .mock-agent .a-icon { font-size: 1rem; width: 24px; text-align: center; }
+  .mock-agent .a-name { flex: 1; color: var(--text-dim); }
+  .mock-agent .a-status {
+    font-size: .68rem; font-weight: 700; padding: 2px 10px;
+    border-radius: 10px;
+  }
+  .a-done { background: rgba(6,214,160,.15); color: var(--neon-green); }
+  .a-run  { background: rgba(0,180,216,.15); color: var(--neon-blue); animation: blink .8s step-end infinite; }
+  .a-wait { background: rgba(255,255,255,.05); color: var(--text-muted); }
+  @keyframes blink { 50% { opacity: .4; } }
+
+  .mock-summary {
+    margin-top: 16px; padding: 16px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0,180,216,.08), rgba(139,92,246,.08));
+    border: 1px solid rgba(0,180,216,.15);
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+    text-align: center;
+  }
+  .mock-kpi-val { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.1rem; }
+  .mock-kpi-lbl { font-size: .6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  /* Hero two-col */
+  .hero-inner { display: flex; align-items: center; gap: 80px; justify-content: space-between; }
+  .hero-content { flex: 1; }
+
+  /* Progress bars in mock */
+  .mock-progress { height: 3px; border-radius: 2px; background: rgba(255,255,255,.06); margin-top: 6px; overflow: hidden; }
+  .mock-progress-fill { height: 100%; border-radius: 2px; animation: fill-bar 2s ease-out forwards; }
+  @keyframes fill-bar { from { width: 0; } }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    .hero-inner { flex-direction: column; }
+    .dashboard-mock { width: 100%; }
+    .metrics-grid { grid-template-columns: repeat(2,1fr); }
+    .features-grid { grid-template-columns: 1fr; }
+    .outputs-grid  { grid-template-columns: repeat(2,1fr); }
+    .roi-inner { grid-template-columns: 1fr; }
+    .metric-card:first-child, .metric-card:last-child { border-radius: 0; }
+    .metric-card:nth-child(1) { border-radius: 12px 0 0 0; }
+    .metric-card:nth-child(2) { border-radius: 0 12px 0 0; }
+    .metric-card:nth-child(3) { border-radius: 0 0 0 12px; }
+    .metric-card:nth-child(4) { border-radius: 0 0 12px 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Background orbs -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">ECI <span>⚡</span> Estimate</div>
+    <div class="nav-links">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#compare">Compare</a>
+      <a href="#roi">ROI</a>
+    </div>
+    <button class="nav-cta">Request Demo</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-inner">
+      <div class="hero-content">
+        <div class="hero-eyebrow">AI-Powered Presales Intelligence</div>
+        <h1 class="hero-title">
+          From Scope Document<br>to <span class="grad">Boardroom-Ready</span><br>Proposal in 90s
+        </h1>
+        <p class="hero-sub">
+          11 specialised AI agents analyse your scope document simultaneously — delivering a complete, client-ready estimation package. Consistent. Intelligent. Impressive.
+        </p>
+        <div class="hero-btns">
+          <a href="#pipeline" class="btn-primary">See How It Works →</a>
+          <a href="#compare" class="btn-ghost">Compare to Manual</a>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-chip">
+            <div class="stat-num">11</div>
+            <div class="stat-lbl">AI Agents</div>
+          </div>
+          <div class="stat-chip">
+            <div class="stat-num">&lt;90s</div>
+            <div class="stat-lbl">Per Proposal</div>
+          </div>
+          <div class="stat-chip">
+            <div class="stat-num">9</div>
+            <div class="stat-lbl">Output Formats</div>
+          </div>
+          <div class="stat-chip">
+            <div class="stat-num">5</div>
+            <div class="stat-lbl">AI Providers</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard mock-up -->
+      <div class="hero-visual">
+        <div class="dashboard-mock">
+          <div class="mock-bar">
+            <div class="mock-dot" style="background:#ff5f57"></div>
+            <div class="mock-dot" style="background:#ffbd2e"></div>
+            <div class="mock-dot" style="background:#28c840"></div>
+            <div class="mock-title">⚡ ECI Business Estimation — Processing</div>
+          </div>
+          <div class="mock-agent"><span class="a-icon">🔍</span><span class="a-name">Requirements Analyst</span><span class="a-status a-done">✓ Done</span></div>
+          <div class="mock-agent"><span class="a-icon">📊</span><span class="a-name">Cost Estimator</span><span class="a-status a-done">✓ Done</span></div>
+          <div class="mock-agent"><span class="a-icon">⏱️</span><span class="a-name">Time Planner</span><span class="a-status a-done">✓ Done</span></div>
+          <div class="mock-agent"><span class="a-icon">⚠️</span><span class="a-name">Risk Analyst</span><span class="a-status a-done">✓ Done</span></div>
+          <div class="mock-agent"><span class="a-icon">🏗️</span><span class="a-name">Architecture Designer</span><span class="a-status a-run">⟳ Running</span></div>
+          <div class="mock-agent"><span class="a-icon">👥</span><span class="a-name">Team Composer</span><span class="a-status a-wait">Queued</span></div>
+          <div class="mock-agent"><span class="a-icon">📝</span><span class="a-name">SOW Generator</span><span class="a-status a-wait">Queued</span></div>
+          <div class="mock-progress"><div class="mock-progress-fill" style="width:62%;background:linear-gradient(90deg,#00b4d8,#8b5cf6)"></div></div>
+          <div class="mock-summary">
+            <div><div class="mock-kpi-val" style="color:#00d4aa">2,840h</div><div class="mock-kpi-lbl">Est. Hours</div></div>
+            <div><div class="mock-kpi-val" style="color:#00b4d8">$4,200</div><div class="mock-kpi-lbl">Infra/mo</div></div>
+            <div><div class="mock-kpi-val" style="color:#f72585">Medium</div><div class="mock-kpi-lbl">Risk</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- METRICS BAR -->
+<section id="metrics">
+  <div class="container">
+    <div class="metrics-grid">
+      <div class="metric-card" style="--grad-color:linear-gradient(90deg,#00b4d8,#00d4aa);--num-grad:linear-gradient(135deg,#00d4aa,#00b4d8)">
+        <div class="metric-num">70%</div>
+        <div class="metric-unit">Reduction</div>
+        <div class="metric-lbl">Presales effort saved</div>
+      </div>
+      <div class="metric-card" style="--grad-color:linear-gradient(90deg,#8b5cf6,#f72585);--num-grad:linear-gradient(135deg,#8b5cf6,#f72585)">
+        <div class="metric-num">±8%</div>
+        <div class="metric-unit">Consistency</div>
+        <div class="metric-lbl">Estimate variance</div>
+      </div>
+      <div class="metric-card" style="--grad-color:linear-gradient(90deg,#ffd166,#f72585);--num-grad:linear-gradient(135deg,#ffd166,#f72585)">
+        <div class="metric-num">&lt;£1</div>
+        <div class="metric-unit">Per Run</div>
+        <div class="metric-lbl">vs £3,000 manual cost</div>
+      </div>
+      <div class="metric-card" style="--grad-color:linear-gradient(90deg,#06d6a0,#00b4d8);--num-grad:linear-gradient(135deg,#06d6a0,#00b4d8)">
+        <div class="metric-num">9</div>
+        <div class="metric-unit">Formats</div>
+        <div class="metric-lbl">Every run, auto-generated</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section id="pipeline">
+  <div class="container">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">The Intelligence Engine</div>
+      <h2 class="sec-title">11 Specialist Agents. <span class="accent">One Button.</span></h2>
+      <p class="sec-sub">Each agent is purpose-built for its domain. They run in parallel, cross-reference each other's outputs, and produce results no single model can match.</p>
+    </div>
+    <div class="pipeline-wrap fade-in">
+      <div class="pipe-flow">
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(0,180,216,.15);--glow-color:rgba(0,180,216,.4)">🔍<span class="pipe-num">1</span></div>
+          <div class="pipe-label">Requirements Analyst</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(139,92,246,.15);--glow-color:rgba(139,92,246,.4)">🔍<span class="pipe-num">0</span></div>
+          <div class="pipe-label">Completeness Checker</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(247,37,133,.15);--glow-color:rgba(247,37,133,.4)">📊<span class="pipe-num">2</span></div>
+          <div class="pipe-label">Cost Estimator</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(255,209,102,.15);--glow-color:rgba(255,209,102,.4)">⏱️<span class="pipe-num">3</span></div>
+          <div class="pipe-label">Time Planner</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(239,68,68,.15);--glow-color:rgba(239,68,68,.4)">⚠️<span class="pipe-num">4</span></div>
+          <div class="pipe-label">Risk Analyst</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(0,212,170,.15);--glow-color:rgba(0,212,170,.4)">🏗️<span class="pipe-num">5</span></div>
+          <div class="pipe-label">Architecture Designer</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(0,180,216,.15);--glow-color:rgba(0,180,216,.4)">👥<span class="pipe-num">6</span></div>
+          <div class="pipe-label">Team Composer</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(139,92,246,.15);--glow-color:rgba(139,92,246,.4)">📝<span class="pipe-num">7</span></div>
+          <div class="pipe-label">SOW Generator</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(6,214,160,.15);--glow-color:rgba(6,214,160,.4)">❓<span class="pipe-num">8</span></div>
+          <div class="pipe-label">Discovery Engine</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(255,209,102,.15);--glow-color:rgba(255,209,102,.4)">💰<span class="pipe-num">9</span></div>
+          <div class="pipe-label">Live Azure Pricer</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-node" style="background:rgba(247,37,133,.15);--glow-color:rgba(247,37,133,.4)">✍️<span class="pipe-num">10</span></div>
+          <div class="pipe-label">Proposal Writer</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE DIAGRAM -->
+<section id="architecture">
+  <div class="container">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">System Architecture</div>
+      <h2 class="sec-title">Enterprise-Grade <span class="accent">Platform Design</span></h2>
+      <p class="sec-sub">Multi-provider AI, persistent run storage, real-time pricing, and rich integrations — all in one cohesive platform.</p>
+    </div>
+    <div class="arch-diagram fade-in">
+      <svg class="arch-svg" viewBox="0 0 1100 640" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="gBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#00b4d8;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1"/>
+          </linearGradient>
+          <linearGradient id="gCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#00d4aa;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#00b4d8;stop-opacity:1"/>
+          </linearGradient>
+          <linearGradient id="gPurple" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#f72585;stop-opacity:1"/>
+          </linearGradient>
+          <linearGradient id="gGold" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#ffd166;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#f72585;stop-opacity:1"/>
+          </linearGradient>
+          <linearGradient id="gGreen" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#06d6a0;stop-opacity:1"/>
+            <stop offset="100%" style="stop-color:#00b4d8;stop-opacity:1"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#00b4d8" opacity=".7"/>
+          </marker>
+          <marker id="arrowCyan" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#00d4aa" opacity=".7"/>
+          </marker>
+          <marker id="arrowPurple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#8b5cf6" opacity=".7"/>
+          </marker>
+        </defs>
+
+        <!-- Background lanes -->
+        <rect x="0" y="0" width="1100" height="640" fill="#0f172a" rx="12"/>
+
+        <!-- Lane: Document Input -->
+        <rect x="16" y="16" width="200" height="608" fill="rgba(0,180,216,.04)" rx="10" stroke="rgba(0,180,216,.12)" stroke-width="1"/>
+        <text x="116" y="40" text-anchor="middle" fill="#00b4d8" font-size="11" font-weight="700" font-family="DM Sans,sans-serif" letter-spacing="1">INPUT</text>
+
+        <!-- Lane: AI Engine -->
+        <rect x="232" y="16" width="380" height="608" fill="rgba(139,92,246,.04)" rx="10" stroke="rgba(139,92,246,.12)" stroke-width="1"/>
+        <text x="422" y="40" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="700" font-family="DM Sans,sans-serif" letter-spacing="1">AI INTELLIGENCE LAYER</text>
+
+        <!-- Lane: Outputs -->
+        <rect x="628" y="16" width="220" height="608" fill="rgba(6,214,160,.04)" rx="10" stroke="rgba(6,214,160,.12)" stroke-width="1"/>
+        <text x="738" y="40" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="700" font-family="DM Sans,sans-serif" letter-spacing="1">OUTPUTS</text>
+
+        <!-- Lane: Integrations -->
+        <rect x="864" y="16" width="220" height="608" fill="rgba(255,209,102,.04)" rx="10" stroke="rgba(255,209,102,.12)" stroke-width="1"/>
+        <text x="974" y="40" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="700" font-family="DM Sans,sans-serif" letter-spacing="1">INTEGRATIONS</text>
+
+        <!-- INPUT BOXES -->
+        <!-- PDF/DOCX -->
+        <rect x="32" y="60" width="168" height="50" rx="8" fill="rgba(0,180,216,.12)" stroke="#00b4d8" stroke-width="1" filter="url(#glow)"/>
+        <text x="116" y="80" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="DM Sans,sans-serif">📄 PDF / DOCX</text>
+        <text x="116" y="98" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Scope Documents</text>
+
+        <!-- XLSX / Images -->
+        <rect x="32" y="126" width="168" height="50" rx="8" fill="rgba(0,180,216,.08)" stroke="rgba(0,180,216,.4)" stroke-width="1"/>
+        <text x="116" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="DM Sans,sans-serif">🖼️ XLSX / Images</text>
+        <text x="116" y="164" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Multi-format Upload</text>
+
+        <!-- SharePoint -->
+        <rect x="32" y="192" width="168" height="50" rx="8" fill="rgba(0,180,216,.08)" stroke="rgba(0,180,216,.4)" stroke-width="1"/>
+        <text x="116" y="212" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="DM Sans,sans-serif">☁️ SharePoint</text>
+        <text x="116" y="230" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Auto Document Sync</text>
+
+        <!-- Transcripts -->
+        <rect x="32" y="258" width="168" height="50" rx="8" fill="rgba(0,180,216,.08)" stroke="rgba(0,180,216,.4)" stroke-width="1"/>
+        <text x="116" y="278" text-anchor="middle" fill="#e2e8f0" font-size="13" font-family="DM Sans,sans-serif">🎙️ Transcripts</text>
+        <text x="116" y="296" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Teams / Zoom / SRT</text>
+
+        <!-- AI PROVIDER SELECTOR -->
+        <rect x="248" y="60" width="348" height="64" rx="10" fill="rgba(139,92,246,.15)" stroke="#8b5cf6" stroke-width="1.5" filter="url(#glow)"/>
+        <text x="422" y="87" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700" font-family="Space Grotesk,sans-serif">🤖 AI PROVIDER LAYER</text>
+        <text x="325" y="108" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Azure OpenAI</text>
+        <text x="392" y="108" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Claude</text>
+        <text x="447" y="108" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Gemini</text>
+        <text x="501" y="108" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Qwen</text>
+        <text x="555" y="108" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Vertex AI</text>
+
+        <!-- AGENT GRID -->
+        <!-- Row 1 agents -->
+        <rect x="248" y="144" width="104" height="44" rx="7" fill="rgba(0,180,216,.1)" stroke="rgba(0,180,216,.5)" stroke-width="1"/>
+        <text x="300" y="162" text-anchor="middle" fill="#00b4d8" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🔍 Requirements</text>
+        <text x="300" y="178" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Analyst · Agent 1</text>
+
+        <rect x="362" y="144" width="104" height="44" rx="7" fill="rgba(139,92,246,.1)" stroke="rgba(139,92,246,.5)" stroke-width="1"/>
+        <text x="414" y="162" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📊 Cost</text>
+        <text x="414" y="178" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Estimator · Agent 2</text>
+
+        <rect x="476" y="144" width="104" height="44" rx="7" fill="rgba(247,37,133,.1)" stroke="rgba(247,37,133,.5)" stroke-width="1"/>
+        <text x="528" y="162" text-anchor="middle" fill="#f72585" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">⏱️ Time</text>
+        <text x="528" y="178" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Planner · Agent 3</text>
+
+        <!-- Row 2 agents -->
+        <rect x="248" y="204" width="104" height="44" rx="7" fill="rgba(239,68,68,.1)" stroke="rgba(239,68,68,.5)" stroke-width="1"/>
+        <text x="300" y="222" text-anchor="middle" fill="#ef4444" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">⚠️ Risk</text>
+        <text x="300" y="238" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Analyst · Agent 4</text>
+
+        <rect x="362" y="204" width="104" height="44" rx="7" fill="rgba(0,212,170,.1)" stroke="rgba(0,212,170,.5)" stroke-width="1"/>
+        <text x="414" y="222" text-anchor="middle" fill="#00d4aa" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🏗️ Architecture</text>
+        <text x="414" y="238" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Designer · Agent 5</text>
+
+        <rect x="476" y="204" width="104" height="44" rx="7" fill="rgba(0,180,216,.1)" stroke="rgba(0,180,216,.5)" stroke-width="1"/>
+        <text x="528" y="222" text-anchor="middle" fill="#00b4d8" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">👥 Team</text>
+        <text x="528" y="238" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Composer · Agent 6</text>
+
+        <!-- Row 3 agents -->
+        <rect x="248" y="264" width="104" height="44" rx="7" fill="rgba(139,92,246,.1)" stroke="rgba(139,92,246,.5)" stroke-width="1"/>
+        <text x="300" y="282" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📝 SOW</text>
+        <text x="300" y="298" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Generator · Agent 7</text>
+
+        <rect x="362" y="264" width="104" height="44" rx="7" fill="rgba(6,214,160,.1)" stroke="rgba(6,214,160,.5)" stroke-width="1"/>
+        <text x="414" y="282" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">❓ Discovery</text>
+        <text x="414" y="298" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Engine · Agent 8</text>
+
+        <rect x="476" y="264" width="104" height="44" rx="7" fill="rgba(255,209,102,.1)" stroke="rgba(255,209,102,.5)" stroke-width="1"/>
+        <text x="528" y="282" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">💰 Azure Pricer</text>
+        <text x="528" y="298" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Live API · Agent 9</text>
+
+        <!-- Proposal Writer - Full width -->
+        <rect x="248" y="328" width="332" height="52" rx="10" fill="rgba(247,37,133,.12)" stroke="#f72585" stroke-width="1.5" filter="url(#glow)"/>
+        <text x="414" y="352" text-anchor="middle" fill="#f72585" font-size="13" font-weight="700" font-family="Space Grotesk,sans-serif">✍️ PROPOSAL WRITER — Agent 10</text>
+        <text x="414" y="370" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans,sans-serif">Assembles all agent outputs into a unified proposal narrative</text>
+
+        <!-- Scenario Builder -->
+        <rect x="248" y="398" width="332" height="44" rx="8" fill="rgba(0,212,170,.1)" stroke="rgba(0,212,170,.5)" stroke-width="1"/>
+        <text x="414" y="416" text-anchor="middle" fill="#00d4aa" font-size="12" font-weight="600" font-family="DM Sans,sans-serif">🔀 Scenario Modeller — What-If Engine</text>
+        <text x="414" y="432" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Brooks' Law · Seniority factors · 3-scenario comparison</text>
+
+        <!-- Storage -->
+        <rect x="248" y="460" width="156" height="44" rx="8" fill="rgba(100,116,139,.1)" stroke="rgba(100,116,139,.4)" stroke-width="1"/>
+        <text x="326" y="478" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">💾 SQLite Run Library</text>
+        <text x="326" y="494" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Persistent · Searchable</text>
+
+        <!-- Notifications -->
+        <rect x="420" y="460" width="160" height="44" rx="8" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="500" y="478" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🔔 Notification System</text>
+        <text x="500" y="494" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Real-time · In-app bell</text>
+
+        <!-- Command Palette -->
+        <rect x="248" y="522" width="332" height="40" rx="8" fill="rgba(139,92,246,.08)" stroke="rgba(139,92,246,.3)" stroke-width="1"/>
+        <text x="414" y="538" text-anchor="middle" fill="#8b5cf6" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">⌨️ Command Palette (Ctrl+K) · Template Library</text>
+        <text x="414" y="553" text-anchor="middle" fill="#64748b" font-size="10" font-family="DM Sans,sans-serif">Keyboard-first navigation · Reusable content blocks</text>
+
+        <!-- OUTPUT BOXES -->
+        <rect x="644" y="60" width="188" height="40" rx="7" fill="rgba(6,214,160,.1)" stroke="rgba(6,214,160,.5)" stroke-width="1"/>
+        <text x="738" y="75" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📊 Excel Workbook</text>
+        <text x="738" y="91" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">5 sheets — full breakdown</text>
+
+        <rect x="644" y="112" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="127" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📄 PDF Proposal</text>
+        <text x="738" y="143" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Branded · Cover page</text>
+
+        <rect x="644" y="164" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="179" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📊 PowerPoint Deck</text>
+        <text x="738" y="195" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Slide-ready presentation</text>
+
+        <rect x="644" y="216" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="231" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📝 Word SOW</text>
+        <text x="738" y="247" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Editable contract terms</text>
+
+        <rect x="644" y="268" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="283" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🔀 Scenario Excel</text>
+        <text x="738" y="299" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">What-if comparison</text>
+
+        <rect x="644" y="320" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="335" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🎬 Video Narration</text>
+        <text x="738" y="351" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">HeyGen · D-ID · ElevenLabs</text>
+
+        <rect x="644" y="372" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="387" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🌐 3D Architecture</text>
+        <text x="738" y="403" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Three.js fly-through</text>
+
+        <rect x="644" y="424" width="188" height="40" rx="7" fill="rgba(6,214,160,.08)" stroke="rgba(6,214,160,.4)" stroke-width="1"/>
+        <text x="738" y="439" text-anchor="middle" fill="#06d6a0" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📦 ZIP Bundle</text>
+        <text x="738" y="455" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">All formats in one archive</text>
+
+        <!-- INTEGRATION BOXES -->
+        <rect x="880" y="60" width="188" height="40" rx="7" fill="rgba(255,209,102,.1)" stroke="rgba(255,209,102,.5)" stroke-width="1"/>
+        <text x="974" y="75" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">☁️ SharePoint Upload</text>
+        <text x="974" y="91" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Auto-save proposals</text>
+
+        <rect x="880" y="112" width="188" height="40" rx="7" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="974" y="127" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📧 Email / SMTP</text>
+        <text x="974" y="143" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Attach PDF + Excel</text>
+
+        <rect x="880" y="164" width="188" height="40" rx="7" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="974" y="179" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🔑 Azure Key Vault</text>
+        <text x="974" y="195" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Secure secret mgmt</text>
+
+        <rect x="880" y="216" width="188" height="40" rx="7" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="974" y="231" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">💲 Azure Retail Prices</text>
+        <text x="974" y="247" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Live infrastructure costs</text>
+
+        <rect x="880" y="268" width="188" height="40" rx="7" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="974" y="283" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">🔐 Microsoft SSO</text>
+        <text x="974" y="299" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">Azure AD Authentication</text>
+
+        <rect x="880" y="320" width="188" height="40" rx="7" fill="rgba(255,209,102,.08)" stroke="rgba(255,209,102,.4)" stroke-width="1"/>
+        <text x="974" y="335" text-anchor="middle" fill="#ffd166" font-size="11" font-weight="600" font-family="DM Sans,sans-serif">📹 HeyGen / D-ID</text>
+        <text x="974" y="351" text-anchor="middle" fill="#64748b" font-size="9" font-family="DM Sans,sans-serif">AI Video Avatar API</text>
+
+        <!-- CONNECTION LINES -->
+        <!-- Input → AI Layer -->
+        <line x1="200" y1="85"  x2="248" y2="166" stroke="#00b4d8" stroke-width="1" stroke-opacity=".4" stroke-dasharray="4 3" marker-end="url(#arrowBlue)"/>
+        <line x1="200" y1="151" x2="248" y2="226" stroke="#00b4d8" stroke-width="1" stroke-opacity=".3" stroke-dasharray="4 3"/>
+        <line x1="200" y1="217" x2="248" y2="85"  stroke="#00b4d8" stroke-width="1" stroke-opacity=".3" stroke-dasharray="4 3"/>
+        <line x1="200" y1="283" x2="248" y2="286" stroke="#00b4d8" stroke-width="1" stroke-opacity=".3" stroke-dasharray="4 3"/>
+
+        <!-- AI Layer → Outputs -->
+        <line x1="580" y1="166" x2="644" y2="80"  stroke="#06d6a0" stroke-width="1" stroke-opacity=".4" stroke-dasharray="4 3" marker-end="url(#arrowCyan)"/>
+        <line x1="580" y1="350" x2="644" y2="340" stroke="#06d6a0" stroke-width="1" stroke-opacity=".4" stroke-dasharray="4 3" marker-end="url(#arrowCyan)"/>
+        <line x1="580" y1="415" x2="644" y2="444" stroke="#06d6a0" stroke-width="1" stroke-opacity=".3" stroke-dasharray="4 3"/>
+
+        <!-- Outputs → Integrations -->
+        <line x1="832" y1="80"  x2="880" y2="80"  stroke="#ffd166" stroke-width="1" stroke-opacity=".5" stroke-dasharray="4 3" marker-end="url(#arrowBlue)"/>
+        <line x1="832" y1="132" x2="880" y2="132" stroke="#ffd166" stroke-width="1" stroke-opacity=".4" stroke-dasharray="4 3"/>
+        <line x1="832" y1="340" x2="880" y2="340" stroke="#ffd166" stroke-width="1" stroke-opacity=".4" stroke-dasharray="4 3"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES GRID -->
+<section id="features">
+  <div class="container">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">Platform Capabilities</div>
+      <h2 class="sec-title">Everything Your Presales Team <span class="accent">Actually Needs</span></h2>
+    </div>
+    <div class="features-grid">
+      <div class="feat-card fade-in" style="--card-glow:rgba(0,180,216,.06);--card-border:rgba(0,180,216,.3)">
+        <div class="feat-icon" style="background:rgba(0,180,216,.12)">🔀</div>
+        <div class="feat-title">Scenario Modelling</div>
+        <div class="feat-desc">Run 3 scenarios simultaneously with Brooks' Law team scaling, seniority factors, and contract type premiums. Answer "what if?" questions in the room.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(139,92,246,.06);--card-border:rgba(139,92,246,.3)">
+        <div class="feat-icon" style="background:rgba(139,92,246,.12)">💰</div>
+        <div class="feat-title">Live Azure Pricing</div>
+        <div class="feat-desc">Fetches real-time prices from the Azure Retail Prices API. Every infrastructure estimate is backed by actual 2025 market data, not guesses.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(247,37,133,.06);--card-border:rgba(247,37,133,.3)">
+        <div class="feat-icon" style="background:rgba(247,37,133,.12)">🌐</div>
+        <div class="feat-title">3D Architecture Viewer</div>
+        <div class="feat-desc">Interactive Three.js fly-through of the proposed solution. Click nodes for service details. Auto-rotate for hands-off client presentations.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(255,209,102,.06);--card-border:rgba(255,209,102,.3)">
+        <div class="feat-icon" style="background:rgba(255,209,102,.12)">🎬</div>
+        <div class="feat-title">AI Video Narrator</div>
+        <div class="feat-desc">Generates a presenter video narrating your executive summary via HeyGen, D-ID, or ElevenLabs. Send it to clients before the meeting.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(6,214,160,.06);--card-border:rgba(6,214,160,.3)">
+        <div class="feat-icon" style="background:rgba(6,214,160,.12)">🧠</div>
+        <div class="feat-title">Continuous Learning</div>
+        <div class="feat-desc">Records actual vs estimated hours/cost. Derives correction factors per tech category. Future estimates get more accurate automatically.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(0,180,216,.06);--card-border:rgba(0,180,216,.3)">
+        <div class="feat-icon" style="background:rgba(0,180,216,.12)">🔍</div>
+        <div class="feat-title">Scope Completeness Check</div>
+        <div class="feat-desc">Agent 0 analyses your document before the main pipeline, identifying gaps and generating a checklist of questions to ask before submission.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(139,92,246,.06);--card-border:rgba(139,92,246,.3)">
+        <div class="feat-icon" style="background:rgba(139,92,246,.12)">💬</div>
+        <div class="feat-title">Proposal-Aware AI Chat</div>
+        <div class="feat-desc">Chat with an AI that has full context of your specific proposal. Not generic answers — answers rooted in your actual scope, costs, risks, and architecture.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(6,214,160,.06);--card-border:rgba(6,214,160,.3)">
+        <div class="feat-icon" style="background:rgba(6,214,160,.12)">🗂️</div>
+        <div class="feat-title">Persistent Run Library</div>
+        <div class="feat-desc">Every estimation auto-saved to SQLite. Architect review gate, searchable history, restore any run, compare any two. Nothing is ever lost.</div>
+      </div>
+      <div class="feat-card fade-in" style="--card-glow:rgba(247,37,133,.06);--card-border:rgba(247,37,133,.3)">
+        <div class="feat-icon" style="background:rgba(247,37,133,.12)">⌨️</div>
+        <div class="feat-title">Command Palette</div>
+        <div class="feat-desc">Press Ctrl+K. Type what you want. Navigate, download, test connections, clear chat — keyboard-first power for heavy users.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OUTPUTS -->
+<section id="outputs" style="background:rgba(255,255,255,.01);border-top:1px solid var(--border)">
+  <div class="container" style="padding-top:100px;padding-bottom:100px">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">Every Run Produces</div>
+      <h2 class="sec-title">9 Professional Deliverables. <span class="accent">Automatically.</span></h2>
+    </div>
+    <div class="outputs-grid fade-in">
+      <div class="output-card"><div class="output-icon">📊</div><div><div class="output-title">Excel Workbook (5 sheets)</div><div class="output-desc">Cost, Timeline, Risk Register, Infra Costs, Summary</div></div></div>
+      <div class="output-card"><div class="output-icon">📄</div><div><div class="output-title">Branded PDF Proposal</div><div class="output-desc">Cover page, all sections, ECI formatting</div></div></div>
+      <div class="output-card"><div class="output-icon">📊</div><div><div class="output-title">PowerPoint Deck</div><div class="output-desc">Presentation-ready slides, one per section</div></div></div>
+      <div class="output-card"><div class="output-icon">📝</div><div><div class="output-title">Statement of Work</div><div class="output-desc">Milestone payments, acceptance criteria, T&Cs</div></div></div>
+      <div class="output-card"><div class="output-icon">❓</div><div><div class="output-title">Discovery Prep Deck</div><div class="output-desc">Prioritised questions for the first client meeting</div></div></div>
+      <div class="output-card"><div class="output-icon">🔀</div><div><div class="output-title">Scenario Comparison</div><div class="output-desc">What-if analysis, 3 scenarios side by side</div></div></div>
+      <div class="output-card"><div class="output-icon">🎬</div><div><div class="output-title">AI Video Narration</div><div class="output-desc">MP4 presenter video of the executive summary</div></div></div>
+      <div class="output-card"><div class="output-icon">🔗</div><div><div class="output-title">JSON Export</div><div class="output-desc">API-ready structured data for integrations</div></div></div>
+      <div class="output-card"><div class="output-icon">📦</div><div><div class="output-title">ZIP Bundle</div><div class="output-desc">All formats in one archive — full handover package</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section id="compare">
+  <div class="container" style="padding:100px 40px">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">Why ECI Estimate</div>
+      <h2 class="sec-title">The Tool Your Competitors <span class="accent">Don't Have</span></h2>
+    </div>
+    <div class="fade-in">
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th style="text-align:center;color:#64748b">Manual Process</th>
+          <th style="text-align:center;color:#64748b">Generic AI Tool</th>
+          <th class="col-eci">⚡ ECI Estimate</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Time to complete proposal</td><td class="col-bad">8–40 hours</td><td class="col-bad">2–4 hours</td><td class="col-eci">Under 90 seconds</td></tr>
+        <tr><td>Consistency across consultants</td><td class="col-bad"><span class="cross">✗</span> Low</td><td class="col-bad"><span class="dash">~</span> Medium</td><td class="col-eci"><span class="tick">✓</span> ±8% variance</td></tr>
+        <tr><td>Live Azure infrastructure pricing</td><td class="col-bad"><span class="cross">✗</span> Manual lookup</td><td class="col-bad"><span class="cross">✗</span> None</td><td class="col-eci"><span class="tick">✓</span> Real-time API</td></tr>
+        <tr><td>Risk identification & scoring</td><td class="col-bad"><span class="dash">~</span> Ad hoc</td><td class="col-bad"><span class="dash">~</span> Basic</td><td class="col-eci"><span class="tick">✓</span> Scored register</td></tr>
+        <tr><td>Real-time scenario modelling</td><td class="col-bad"><span class="cross">✗</span> Hours of rework</td><td class="col-bad"><span class="cross">✗</span> None</td><td class="col-eci"><span class="tick">✓</span> 3 scenarios live</td></tr>
+        <tr><td>Learns from past projects</td><td class="col-bad"><span class="dash">~</span> Tribal knowledge</td><td class="col-bad"><span class="cross">✗</span> None</td><td class="col-eci"><span class="tick">✓</span> Auto correction</td></tr>
+        <tr><td>3D architecture visualisation</td><td class="col-bad"><span class="cross">✗</span> Requires designer</td><td class="col-bad"><span class="cross">✗</span> None</td><td class="col-eci"><span class="tick">✓</span> Three.js viewer</td></tr>
+        <tr><td>Video narration</td><td class="col-bad"><span class="cross">✗</span> Hire presenter</td><td class="col-bad"><span class="cross">✗</span> None</td><td class="col-eci"><span class="tick">✓</span> HeyGen / D-ID</td></tr>
+        <tr><td>AI model flexibility</td><td class="col-bad">—</td><td class="col-bad">Single vendor</td><td class="col-eci"><span class="tick">✓</span> 5 providers</td></tr>
+        <tr><td>Cost per proposal</td><td class="col-bad">£800–£3,000</td><td class="col-bad">£200/mo licence</td><td class="col-eci">Under £1</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ROI -->
+<section id="roi">
+  <div class="container">
+    <div class="roi-inner">
+      <div>
+        <div class="sec-eyebrow">Return on Investment</div>
+        <h2 class="roi-title">ROI Is Not a<br>Projection. It's<br><span style="color:var(--neon-cyan)">Arithmetic.</span></h2>
+        <p class="roi-desc">The maths is simple: a senior consultant costs £800–£3,000 per proposal. This tool costs under £1. Every proposal after the first is pure margin recovery. At 10 proposals a month, you recover the annual platform cost in the first week.</p>
+      </div>
+      <div class="roi-numbers">
+        <div class="roi-row" style="--row-color:#06d6a0">
+          <div class="roi-icon">⏱️</div>
+          <div>
+            <div class="roi-label">Time saved per proposal</div>
+            <div class="roi-value">Up to 38 hours → Under 2 minutes</div>
+          </div>
+          <div class="roi-badge">99.9% faster</div>
+        </div>
+        <div class="roi-row" style="--row-color:#00b4d8">
+          <div class="roi-icon">💷</div>
+          <div>
+            <div class="roi-label">Cost per proposal (AI API)</div>
+            <div class="roi-value">Under £1 vs £800–£3,000 manual</div>
+          </div>
+          <div class="roi-badge">3000× cheaper</div>
+        </div>
+        <div class="roi-row" style="--row-color:#8b5cf6">
+          <div class="roi-icon">📈</div>
+          <div>
+            <div class="roi-label">Proposal throughput increase</div>
+            <div class="roi-value">From 2–3/week to 20+/week per consultant</div>
+          </div>
+          <div class="roi-badge">8× more capacity</div>
+        </div>
+        <div class="roi-row" style="--row-color:#ffd166">
+          <div class="roi-icon">🎯</div>
+          <div>
+            <div class="roi-label">Consistency improvement</div>
+            <div class="roi-value">Every consultant at senior level quality</div>
+          </div>
+          <div class="roi-badge">Measurable</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AI MODELS -->
+<section id="models">
+  <div class="container">
+    <div class="sec-header fade-in">
+      <div class="sec-eyebrow">Zero Vendor Lock-In</div>
+      <h2 class="sec-title">Use Your Existing <span class="accent">AI Agreements</span></h2>
+      <p class="sec-sub">Switch models with one click. Your Azure agreement, your Anthropic credits, your GCP project — it all works.</p>
+    </div>
+    <div class="models-row fade-in">
+      <div class="model-badge">
+        <div class="model-dot" style="background:#00b4d8"></div>
+        Azure OpenAI (GPT-4o)
+      </div>
+      <div class="model-badge">
+        <div class="model-dot" style="background:#8b5cf6"></div>
+        Claude (Opus · Sonnet · Haiku)
+      </div>
+      <div class="model-badge">
+        <div class="model-dot" style="background:#06d6a0"></div>
+        Google Gemini 2.0
+      </div>
+      <div class="model-badge">
+        <div class="model-dot" style="background:#ffd166"></div>
+        Qwen (DashScope · Azure Foundry)
+      </div>
+      <div class="model-badge">
+        <div class="model-dot" style="background:#f72585"></div>
+        Vertex AI (Claude via GCP)
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="container">
+    <div class="cta-title">
+      Your Next Proposal<br>Writes Itself.
+    </div>
+    <p class="cta-sub">Upload a scope document. Hit one button. Walk into the meeting with a complete package.</p>
+    <div class="hero-btns" style="justify-content:center">
+      <a href="#" class="btn-primary">Request a Live Demo →</a>
+      <a href="#pipeline" class="btn-ghost">See the Pipeline</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-logo">⚡ ECI Business Estimation Tool</div>
+    <p>AI-Powered Presales Intelligence Platform &nbsp;·&nbsp; Internal Product &nbsp;·&nbsp; 2026</p>
+    <p style="margin-top:8px;font-size:.75rem">11 Agents &nbsp;·&nbsp; 9 Formats &nbsp;·&nbsp; 5 AI Providers &nbsp;·&nbsp; Under 90 Seconds</p>
+  </div>
+</footer>
+
+<script>
+  // Intersection observer for fade-in animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 120);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // Animated counter numbers
+  function animateCount(el, target, suffix='') {
+    let start = 0;
+    const duration = 1800;
+    const step = target / (duration / 16);
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) { start = target; clearInterval(timer); }
+      el.textContent = (suffix === '%' || suffix === '×')
+        ? Math.round(start) + suffix
+        : suffix === 'h' ? Math.round(start).toLocaleString() + suffix
+        : Math.round(start);
+    }, 16);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+# ════════════════════════════════════════════════════════════════════════
+#  ECI Business Estimation Tool — Configuration Template
+#
+#  SETUP:
+#    1. Copy this file:  cp config.yaml.example config.yaml
+#    2. Fill in your real values in config.yaml
+#    3. NEVER commit config.yaml — it is in .gitignore
+# ════════════════════════════════════════════════════════════════════════
+
+# ── AI Providers ─────────────────────────────────────────────────────────
+providers:
+
+  azure:
+    api_key:     ""          # Azure OpenAI resource API key
+    endpoint:    ""          # https://your-resource.openai.azure.com
+    deployment:  "gpt-4o"   # Your deployment name, e.g. gpt-4o
+    api_version: "2024-06-01"
+
+  claude:
+    api_key:  ""             # sk-ant-...  or Azure AI Services key
+    model:    "claude-sonnet-4-6"
+    endpoint: ""             # Azure AI Services URL (leave blank for standard Anthropic API)
+
+  claude_opus:
+    api_key:    ""           # same key as claude section (Azure AI Services)
+    model:      "claude-opus-4-8"
+    deployment: "claude-opus-4-8"
+    endpoint:   ""           # Azure AI Services URL for Opus deployment
+
+  gemini:
+    api_key: ""              # AIza...  (free at aistudio.google.com)
+    model:   "gemini-2.0-flash"
+
+  grok:
+    endpoint:    ""          # https://yourfoundry.services.ai.azure.com/
+    key:         ""          # Azure AI Foundry API key
+    deployment:  "grok-4-1-fast-reasoning"
+    api_version: "2024-05-01-preview"
+
+  deepseek:
+    endpoint:   ""           # https://your-resource.openai.azure.com/openai/v1/
+    key:        ""           # Azure AI Foundry API key
+    deployment: "DeepSeek-V3.1"
+
+  qwen:
+    # mode: "dashscope"  — pay-as-you-go via DashScope
+    # mode: "foundry"    — custom deployment on Azure AI Foundry
+    mode: "dashscope"
+    # DashScope (mode=dashscope)
+    api_key: ""              # DashScope key
+    model:   "qwen-plus"
+    # Azure AI Foundry (mode=foundry)
+    endpoint:    ""          # https://your-resource.services.ai.azure.com
+    foundry_key: ""
+    deployment:  ""          # e.g. qwen3-32b-ft-...
+    api_version: "2024-06-01"
+
+  vertex:
+    # No API key needed — uses gcloud auth application-default login
+    project_id: ""           # GCP project ID
+    region:     "us-east5"
+    model:      "claude-sonnet-4-5@20251001"
+
+  codex:
+    api_key:     ""          # Azure OpenAI resource API key
+    endpoint:    ""          # https://your-resource.openai.azure.com
+    deployment:  "gpt-5.3-codex"
+    api_version: "2025-04-01-preview"
+
+  nano:
+    endpoint:   ""           # https://your-foundry-resource.openai.azure.com/openai/v1/
+    key:        ""           # Azure AI Foundry API key
+    deployment: "gpt-5.4-nano"
+
+# ── Feature → Model Routing ───────────────────────────────────────────────
+# Choose which AI provider handles each pipeline agent.
+# Valid values: azure | claude | claude_opus | gemini | qwen | vertex | codex | nano | deepseek | grok
+# "default" applies to any feature not explicitly listed here.
+routing:
+  default: "azure"
+  # Uncomment and change to route individual features to different providers:
+  # requirements:  "azure"
+  # cost:          "azure"
+  # time:          "azure"
+  # risk:          "azure"
+  # architecture:  "azure"
+  # team:          "azure"
+  # sow:           "azure"
+  # discovery:     "azure"
+  # proposal:      "azure"
+  # completeness:  "azure"
+  # chat:          "claude"   # e.g. use Claude for chat only
+  # scenario:      "azure"
+  # live_demo:     "nano"     # gpt-5.4-nano is fastest for demo generation
+
+# ── Integrations ─────────────────────────────────────────────────────────
+integrations:
+
+  sharepoint:
+    site_url:      ""        # https://yourcompany.sharepoint.com/sites/Presales
+    client_id:     ""        # Azure AD app client ID
+    client_secret: ""
+    tenant_id:     ""
+
+  email:
+    smtp_server: "smtp.office365.com"
+    smtp_port:   587
+    sender:      ""          # presales@yourcompany.com
+    password:    ""
+
+  narrator:
+    elevenlabs_api_key: ""
+    heygen_api_key:     ""
+    heygen_avatar_id:   ""
+    heygen_voice_id:    ""
+    did_api_key:        ""   # free trial at d-id.com
+
+  milvus:
+    host: ""                          # e.g. 20.62.9.198 or your-cluster.zillizcloud.com
+    port: 19530                       # 19530 for gRPC (self-hosted), 443 for Zilliz Cloud
+    user: ""
+    password: ""
+    db_name: ""                       # Milvus database name
+    embedding_endpoint: ""            # Azure OpenAI endpoint for embeddings (can differ from main)
+    embedding_key: ""                 # API key for the embedding endpoint
+    embedding_deployment: "text-embedding-3-small"   # Embedding model deployment name
+    embedding_api_version: "2025-01-01-preview"

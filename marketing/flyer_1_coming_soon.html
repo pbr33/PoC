@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ECI Estimate — Coming Soon Flyer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700;800&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:#020817;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:20px;
+    font-family:'DM Sans',sans-serif;
+  }
+
+  /* A4 page */
+  .page{
+    width:794px;height:1123px;
+    background:#020817;
+    position:relative;overflow:hidden;
+    box-shadow:0 60px 160px rgba(0,0,0,.9);
+  }
+
+  /* ── Gradient mesh background ── */
+  .mesh{
+    position:absolute;inset:0;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 20%, rgba(139,92,246,.18) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 80% 70%, rgba(0,180,216,.15) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 35% at 50% 90%, rgba(247,37,133,.12) 0%, transparent 50%),
+      radial-gradient(ellipse 70% 60% at 50% 0%,  rgba(0,212,170,.08)  0%, transparent 50%);
+  }
+
+  /* ── Grid lines ── */
+  .grid{
+    position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size:40px 40px;
+  }
+
+  /* ── Top stripe ── */
+  .stripe-top{
+    position:absolute;top:0;left:0;right:0;height:5px;
+    background:linear-gradient(90deg,#00d4aa,#00b4d8,#8b5cf6,#f72585,#ffd166);
+  }
+
+  /* ── Nav header ── */
+  .nav{
+    position:absolute;top:0;left:0;right:0;
+    padding:24px 52px;
+    display:flex;align-items:center;justify-content:space-between;
+    z-index:10;
+  }
+  .logo{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:15px;font-weight:700;
+    background:linear-gradient(135deg,#00b4d8,#8b5cf6);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    letter-spacing:-.01em;
+  }
+  .nav-tag{
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:20px;padding:5px 14px;
+    font-size:10px;font-weight:700;letter-spacing:.1em;
+    color:#64748b;text-transform:uppercase;
+  }
+
+  /* ── Content ── */
+  .content{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    padding:100px 60px 80px;
+    z-index:5;
+  }
+
+  /* Eyebrow */
+  .eyebrow{
+    display:flex;align-items:center;gap:10px;
+    margin-bottom:36px;
+  }
+  .eyebrow-line{width:32px;height:1px;background:linear-gradient(90deg,transparent,#00b4d8);}
+  .eyebrow-text{
+    font-size:11px;font-weight:700;letter-spacing:.2em;
+    text-transform:uppercase;color:#00b4d8;
+  }
+  .eyebrow-line.r{background:linear-gradient(90deg,#00b4d8,transparent);}
+
+  /* Main headline */
+  .headline{
+    text-align:center;margin-bottom:48px;
+  }
+  .headline .kicker{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;font-weight:600;letter-spacing:.15em;
+    text-transform:uppercase;color:#475569;
+    margin-bottom:20px;display:block;
+  }
+  .headline h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:76px;font-weight:800;
+    line-height:.95;letter-spacing:-.05em;
+    margin-bottom:0;
+  }
+  .headline h1 .line1{color:#e2e8f0;display:block;}
+  .headline h1 .line2{
+    background:linear-gradient(135deg,#00d4aa 0%,#00b4d8 40%,#8b5cf6 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    display:block;
+  }
+  .headline h1 .line3{color:#e2e8f0;display:block;}
+
+  /* Sub copy */
+  .sub{
+    text-align:center;max-width:520px;margin-bottom:56px;
+  }
+  .sub p{
+    font-size:16px;line-height:1.7;color:#64748b;
+  }
+  .sub strong{color:#94a3b8;}
+
+  /* ── Countdown / teaser numbers ── */
+  .tease-row{
+    display:flex;gap:16px;margin-bottom:60px;
+    justify-content:center;
+  }
+  .tease-box{
+    width:120px;height:120px;
+    background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:16px;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+    transition:transform .2s;
+  }
+  .tease-box::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:var(--tc,linear-gradient(90deg,#00b4d8,#00d4aa));
+  }
+  .tease-num{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:36px;font-weight:800;line-height:1;
+    background:var(--tc,linear-gradient(135deg,#00d4aa,#00b4d8));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .tease-lbl{
+    font-size:9px;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:#475569;margin-top:6px;
+    text-align:center;padding:0 8px;
+  }
+
+  /* Redacted mystery element */
+  .mystery{
+    display:flex;flex-direction:column;gap:10px;
+    align-items:center;margin-bottom:56px;
+    width:100%;max-width:480px;
+  }
+  .mystery-row{
+    height:14px;border-radius:7px;
+    background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));
+    animation:shimmer 2.5s ease-in-out infinite;
+  }
+  @keyframes shimmer{
+    0%,100%{opacity:.5}
+    50%{opacity:1}
+  }
+  .mystery-row:nth-child(1){width:85%;}
+  .mystery-row:nth-child(2){width:70%;}
+  .mystery-row:nth-child(3){width:78%;}
+  .mystery-caption{
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:#334155;margin-top:6px;font-weight:600;
+  }
+
+  /* Release badge */
+  .release-badge{
+    background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(0,180,216,.15));
+    border:1px solid rgba(139,92,246,.3);
+    border-radius:50px;padding:12px 36px;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;font-weight:700;
+    color:#e2e8f0;letter-spacing:.04em;
+    display:flex;align-items:center;gap:12px;
+  }
+  .release-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:#8b5cf6;
+    box-shadow:0 0 12px #8b5cf6;
+    animation:pulse 2s infinite;
+  }
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.6}}
+
+  /* ── Bottom section ── */
+  .bottom{
+    position:absolute;bottom:0;left:0;right:0;
+    padding:28px 52px;
+    display:flex;align-items:center;justify-content:space-between;
+    border-top:1px solid rgba(255,255,255,.05);
+    z-index:10;
+  }
+  .bottom-left{
+    font-size:10px;color:#334155;letter-spacing:.05em;
+  }
+  .bottom-left strong{color:#475569;}
+  .bottom-tags{
+    display:flex;gap:8px;
+  }
+  .btag{
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:20px;padding:4px 12px;
+    font-size:9px;font-weight:600;letter-spacing:.08em;
+    color:#475569;text-transform:uppercase;
+  }
+  .btag.hi{border-color:rgba(0,212,170,.3);color:#00d4aa;}
+
+  /* ── Decorative corner element ── */
+  .corner-tl,.corner-br{
+    position:absolute;width:80px;height:80px;
+    z-index:6;
+  }
+  .corner-tl{top:52px;left:30px;}
+  .corner-br{bottom:60px;right:30px;transform:rotate(180deg);}
+  .corner-tl::before,.corner-br::before{
+    content:'';position:absolute;
+    top:0;left:0;width:24px;height:2px;
+    background:linear-gradient(90deg,#00b4d8,transparent);
+  }
+  .corner-tl::after,.corner-br::after{
+    content:'';position:absolute;
+    top:0;left:0;width:2px;height:24px;
+    background:linear-gradient(180deg,#00b4d8,transparent);
+  }
+
+  /* ── Large watermark text ── */
+  .watermark{
+    position:absolute;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:180px;font-weight:800;
+    color:rgba(255,255,255,.015);
+    letter-spacing:-.06em;
+    bottom:-20px;left:50%;
+    transform:translateX(-50%);
+    white-space:nowrap;
+    pointer-events:none;
+    z-index:1;
+  }
+
+  @media print{
+    body{background:#020817;padding:0;}
+    .page{box-shadow:none;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="stripe-top"></div>
+  <div class="mesh"></div>
+  <div class="grid"></div>
+  <div class="watermark">ECI</div>
+  <div class="corner-tl"></div>
+  <div class="corner-br"></div>
+
+  <!-- Nav -->
+  <div class="nav">
+    <div class="logo">⚡ ECI Business Estimation</div>
+    <div class="nav-tag">Coming Soon</div>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+    <div class="eyebrow">
+      <div class="eyebrow-line"></div>
+      <div class="eyebrow-text">Presales Will Never Be the Same</div>
+      <div class="eyebrow-line r"></div>
+    </div>
+
+    <div class="headline">
+      <span class="kicker">Introducing</span>
+      <h1>
+        <span class="line1">Something</span>
+        <span class="line2">Big</span>
+        <span class="line3">Is Coming.</span>
+      </h1>
+    </div>
+
+    <div class="sub">
+      <p>We've spent months building the presales tool your team has always needed.<br>
+      <strong>11 AI specialists. One button. Everything done.</strong><br>
+      The wait is almost over.</p>
+    </div>
+
+    <!-- Teaser numbers -->
+    <div class="tease-row">
+      <div class="tease-box" style="--tc:linear-gradient(135deg,#00d4aa,#00b4d8)">
+        <div class="tease-num">11</div>
+        <div class="tease-lbl">AI Agents Working<br>In Parallel</div>
+      </div>
+      <div class="tease-box" style="--tc:linear-gradient(135deg,#8b5cf6,#f72585)">
+        <div class="tease-num">&lt;90</div>
+        <div class="tease-lbl">Seconds per<br>Full Proposal</div>
+      </div>
+      <div class="tease-box" style="--tc:linear-gradient(135deg,#ffd166,#f72585)">
+        <div class="tease-num">9</div>
+        <div class="tease-lbl">Professional<br>Output Formats</div>
+      </div>
+      <div class="tease-box" style="--tc:linear-gradient(135deg,#06d6a0,#00b4d8)">
+        <div class="tease-num">&lt;£1</div>
+        <div class="tease-lbl">Per Complete<br>Estimation Run</div>
+      </div>
+    </div>
+
+    <!-- Mystery redacted preview -->
+    <div class="mystery">
+      <div class="mystery-row"></div>
+      <div class="mystery-row"></div>
+      <div class="mystery-row"></div>
+      <div class="mystery-caption">Full feature reveal coming soon</div>
+    </div>
+
+    <!-- Release badge -->
+    <div class="release-badge">
+      <div class="release-dot"></div>
+      Product Launch — Q2 2026 &nbsp;·&nbsp; Request Early Access
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom">
+    <div class="bottom-left">
+      <strong>ECI Business Estimation Tool</strong><br>
+      AI-Powered Presales Intelligence Platform · Internal Release
+    </div>
+    <div class="bottom-tags">
+      <div class="btag">Azure OpenAI</div>
+      <div class="btag">Claude</div>
+      <div class="btag">Gemini</div>
+      <div class="btag hi">5 AI Providers</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GLO Finance · AS-IS Process Map · Tesco Global Logistics</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#03060F;--surface:#080E1C;--s2:#0C1222;
+  --border:rgba(255,255,255,.06);--b2:rgba(255,255,255,.11);
+  --text:#DDE6F5;--dim:#4E6280;--mute:#7C94B0;
+  --c-eqos:#00E5C0;--c-lm:#4FB3FF;--c-ab:#8CA3BF;
+  --c-isos:#FFD04A;--c-otm:#FF6B6B;--c-tap:#8899AA;
+  --c-ofi:#C57BFF;--c-edi:#FFA050;--c-ms:#FF7A28;
+  --c-fusion:#38C6FF;--c-tungsten:#3DECAA;
+  --c-transp:#5EF0B8;--c-nbs:#52E67A;--c-hmrc:#FF4D6A;
+  --header-h:68px;--label-w:172px;--phase-h:72px;
+  --col-w:300px;--col-w-wide:340px;--col-w-sm:260px;
+  --row-h:108px;--gap:0px;
+  --amber:#F59E0B;--amber-dim:#78500A;
+}
+
+html,body{width:100%;height:100%;overflow:hidden;
+  background:var(--bg);color:var(--text);
+  font-family:'Space Grotesk',sans-serif;
+  -webkit-font-smoothing:antialiased}
+
+/* ─── ANIMATED BG ──────────────────────────────── */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 90% 60% at 20% -10%,rgba(56,198,255,.055) 0%,transparent 55%),
+    radial-gradient(ellipse 70% 70% at 90% 110%,rgba(197,123,255,.045) 0%,transparent 55%),
+    radial-gradient(ellipse 50% 50% at 60% 50%,rgba(0,229,192,.025) 0%,transparent 60%)}
+
+/* Dot grid */
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(255,255,255,.022) 1px,transparent 1px);
+  background-size:24px 24px}
+
+/* ─── HEADER ───────────────────────────────────── */
+#hdr{
+  position:fixed;top:0;left:0;right:0;height:var(--header-h);z-index:200;
+  background:rgba(4,8,18,.92);backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--b2);
+  display:flex;align-items:center;justify-content:space-between;padding:0 18px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6)}
+
+.hdr-l{display:flex;flex-direction:column;gap:1px}
+.badge{
+  display:inline-flex;align-items:center;gap:5px;width:fit-content;
+  background:rgba(56,198,255,.1);border:1px solid rgba(56,198,255,.25);
+  border-radius:20px;padding:2px 9px;
+  font-size:9px;color:#7FD4F7;letter-spacing:.8px;text-transform:uppercase;
+  font-family:'JetBrains Mono',monospace;margin-bottom:2px}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;
+  background:#38C6FF;box-shadow:0 0 6px #38C6FF;animation:blink 1.8s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.hdr-title{font-size:16px;font-weight:700;letter-spacing:-.3px;color:#EEF4FF}
+.hdr-sub{font-size:10px;color:var(--mute)}
+
+.hdr-r{display:flex;align-items:center;gap:10px}
+
+.vtoggle{display:flex;border-radius:8px;overflow:hidden;
+  border:1px solid var(--b2);background:rgba(0,0,0,.35)}
+.vbtn{padding:7px 18px;font-size:11px;font-weight:600;cursor:pointer;
+  border:none;background:transparent;color:var(--mute);
+  transition:all .2s ease;white-space:nowrap;font-family:'Space Grotesk',sans-serif}
+.vbtn.on{background:linear-gradient(135deg,#1565C0,#0D47A1);color:#EEF4FF;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.vbtn:not(.on):hover{background:rgba(255,255,255,.05);color:var(--text)}
+
+.leg{display:flex;align-items:center;gap:14px;padding:5px 12px;
+  border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,.2)}
+.li{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--mute)}
+.ls{width:14px;height:9px;border-radius:2px;border:1.5px solid}
+.ls.p{border-color:#4FB3FF;background:rgba(79,179,255,.08)}
+.ls.o{border-color:#3DECAA;background:rgba(61,236,170,.12);border-width:2px}
+.ls.d{width:9px;height:9px;border-radius:1px;transform:rotate(45deg);
+  border-color:var(--amber);background:rgba(245,158,11,.1)}
+
+.ibtn{width:30px;height:30px;border-radius:7px;border:1px solid var(--b2);
+  background:rgba(255,255,255,.04);color:var(--text);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  transition:all .15s}
+.ibtn:hover{background:rgba(255,255,255,.1)}
+
+/* ─── VIEWPORT ─────────────────────────────────── */
+#vp{position:fixed;top:var(--header-h);left:0;right:0;bottom:0;
+  overflow:hidden;z-index:1;cursor:grab}
+#vp.drag{cursor:grabbing}
+#canvas{position:absolute;top:0;left:0;transform-origin:0 0;
+  will-change:transform;user-select:none}
+
+/* ─── PHASE HEADER ROW ─────────────────────────── */
+#phase-row{display:flex;position:relative;z-index:30}
+
+.corner{
+  min-width:var(--label-w);max-width:var(--label-w);
+  min-height:var(--phase-h);
+  background:linear-gradient(160deg,#040B1A 0%,#071020 100%);
+  border-right:1px solid var(--b2);border-bottom:1px solid var(--b2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;padding:8px}
+.c-title{font-size:9.5px;font-weight:700;color:#4FB3FF;
+  letter-spacing:.8px;text-transform:uppercase}
+.c-sub{font-size:8px;color:var(--dim);text-align:center}
+
+.ph{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px 10px;border-right:1px solid rgba(255,255,255,.05);
+  border-bottom:1px solid rgba(255,255,255,.06);
+  position:relative;overflow:hidden;min-height:var(--phase-h);
+  cursor:pointer;transition:filter .18s}
+.ph::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(160deg,rgba(255,255,255,.055) 0%,transparent 50%);pointer-events:none}
+.ph::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);opacity:.5}
+.ph-num{
+  font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;
+  color:rgba(255,255,255,.08);position:absolute;bottom:0;right:6px;line-height:1;
+  letter-spacing:-2px}
+.ph-name{font-size:10.5px;font-weight:700;color:rgba(255,255,255,.9);
+  text-align:center;line-height:1.3;z-index:1;letter-spacing:.1px}
+.ph-count{font-size:8px;color:rgba(255,255,255,.35);z-index:1;margin-top:2px;
+  font-family:'JetBrains Mono',monospace}
+.ph:hover{filter:brightness(1.18)}
+.ph.faded{filter:brightness(.35)}
+
+/* ─── SYSTEM ROWS ──────────────────────────────── */
+#grid{position:relative}
+.srow{display:flex;align-items:stretch;border-bottom:1px solid var(--border);
+  transition:opacity .25s ease}
+.srow.faded{opacity:.18}
+
+/* Label */
+.slabel{
+  min-width:var(--label-w);max-width:var(--label-w);
+  display:flex;flex-direction:column;justify-content:center;
+  padding:8px 10px 8px 14px;
+  border-right:1px solid var(--b2);
+  position:sticky;left:0;z-index:20;
+  background:rgba(3,6,15,.97);
+  cursor:pointer;gap:2px;transition:background .15s;
+  position:relative}
+.slabel:hover{background:rgba(8,14,28,.97)}
+.sbar{position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:0 2px 2px 0}
+.sicon{font-size:13px;line-height:1;margin-bottom:1px}
+.sname{font-size:10px;font-weight:700;color:rgba(255,255,255,.88);line-height:1.25}
+.sdesc{font-size:8px;color:var(--dim);line-height:1.2}
+
+/* Cells */
+.cell{
+  display:flex;flex-direction:column;gap:4px;padding:6px 5px;
+  border-right:1px solid rgba(255,255,255,.04);
+  position:relative;min-height:var(--row-h)}
+.cell:hover{background:rgba(255,255,255,.012)}
+.srow:nth-child(even) .cell{background:rgba(255,255,255,.006)}
+
+/* ─── PROCESS BOXES ────────────────────────────── */
+.pb{
+  border-radius:6px;padding:5px 7px;
+  font-size:9.5px;line-height:1.35;font-weight:500;
+  cursor:pointer;position:relative;overflow:hidden;
+  transition:all .2s cubic-bezier(.4,0,.2,1);
+  border:1px solid;
+  display:flex;align-items:center;justify-content:center;
+  text-align:center;white-space:pre-line;
+  min-height:36px;color:rgba(255,255,255,.88);flex-shrink:0}
+.pb::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.07) 0%,transparent 55%);
+  pointer-events:none}
+
+/* Process type */
+.pb.p{background:rgba(255,255,255,.025);
+  box-shadow:0 1px 4px rgba(0,0,0,.4)}
+/* Output type - highlighted */
+.pb.o{background:rgba(255,255,255,.05);
+  border-width:1.5px;font-weight:700;
+  box-shadow:0 0 14px rgba(var(--rc),0,.06)}
+/* Decision diamond */
+.pb.d{
+  transform:rotate(45deg) scale(.82);
+  background:rgba(245,158,11,.06);
+  border-color:var(--amber) !important;
+  border-width:1.5px;
+  box-shadow:0 0 20px rgba(245,158,11,.15);
+  min-width:50px;min-height:50px;
+  align-self:center;padding:3px}
+.pb.d .pt{transform:rotate(-45deg) scale(1.2);display:block;
+  font-size:8.5px;font-weight:700;color:#FCD34D}
+/* Hover */
+.pb.p:hover,.pb.o:hover{
+  transform:translateY(-3px) scale(1.025);
+  background:rgba(255,255,255,.08);z-index:15;
+  box-shadow:0 0 0 1.5px currentColor,0 0 24px rgba(var(--rc),0,.18),0 8px 24px rgba(0,0,0,.5)}
+.pb.d:hover{transform:rotate(45deg) scale(.9);
+  box-shadow:0 0 28px rgba(245,158,11,.4)}
+.pb.bold{font-weight:700}
+/* Filter states */
+.pb.glow{box-shadow:0 0 0 2px currentColor,0 0 20px currentColor !important;z-index:20}
+.pb.ghost{opacity:.1;pointer-events:none}
+
+/* ─── SVG ARROWS ───────────────────────────────── */
+#arrowsvg{
+  position:absolute;top:0;left:0;pointer-events:none;
+  overflow:visible;z-index:10}
+
+/* ─── TOOLTIP ───────────────────────────────────── */
+#tip{
+  position:fixed;z-index:500;pointer-events:none;
+  max-width:270px;padding:12px 14px;
+  background:rgba(8,14,28,.98);
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:10px;
+  box-shadow:0 24px 60px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.04);
+  opacity:0;transform:translateY(6px) scale(.97);
+  transition:opacity .14s,transform .14s;
+  backdrop-filter:blur(20px)}
+#tip.show{opacity:1;transform:none}
+.tt{font-size:11.5px;font-weight:700;color:#EEF4FF;
+  margin-bottom:5px;padding-bottom:6px;
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.tt-badge{display:inline-flex;align-items:center;padding:1px 7px;
+  border-radius:4px;font-size:8.5px;font-weight:600;letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:6px}
+.tt-badge.p{background:rgba(79,179,255,.15);color:#93C5FD}
+.tt-badge.o{background:rgba(61,236,170,.15);color:#6EE7B7}
+.tt-badge.d{background:rgba(245,158,11,.15);color:#FCD34D}
+.tb{font-size:10.5px;color:#A8BFDC;line-height:1.55}
+.ts{margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06);
+  font-size:9px;color:var(--dim);display:flex;align-items:center;gap:4px}
+.ts span{font-weight:600}
+
+/* ─── ZOOM ─────────────────────────────────────── */
+#zc{position:fixed;bottom:50px;right:14px;
+  display:flex;flex-direction:column;gap:3px;z-index:100}
+.zb{width:32px;height:32px;border-radius:7px;
+  background:rgba(8,14,28,.95);border:1px solid var(--b2);
+  color:var(--text);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:700;transition:all .15s;
+  backdrop-filter:blur(10px)}
+.zb:hover{background:rgba(20,40,80,.95)}
+#zl{font-size:9px;color:var(--mute);text-align:center;padding:3px;
+  font-family:'JetBrains Mono',monospace;
+  background:rgba(8,14,28,.85);border:1px solid var(--border);border-radius:5px}
+
+/* ─── BOTTOM BANNER ────────────────────────────── */
+#banner{
+  position:fixed;bottom:0;left:0;right:60px;
+  background:linear-gradient(90deg,rgba(245,158,11,.08),rgba(245,158,11,.04));
+  border-top:1px solid rgba(245,158,11,.18);
+  padding:5px 18px;font-size:9.5px;color:#D4A030;
+  z-index:100;display:flex;align-items:center;gap:7px;
+  font-family:'JetBrains Mono',monospace}
+#banner strong{color:#FCD34D;font-weight:700}
+#banner::before{content:'⚠';font-size:11px}
+
+/* ─── VIEW TRANSITION ──────────────────────────── */
+.srow,.ph{transition:opacity .25s ease}
+
+/* ─── SCROLLBAR ────────────────────────────────── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
+
+/* ─── LOAD ANIMATION ───────────────────────────── */
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.srow{animation:rise .45s ease both}
+.srow:nth-child(1){animation-delay:.04s}.srow:nth-child(2){animation-delay:.08s}
+.srow:nth-child(3){animation-delay:.12s}.srow:nth-child(4){animation-delay:.16s}
+.srow:nth-child(5){animation-delay:.2s}.srow:nth-child(6){animation-delay:.24s}
+.srow:nth-child(7){animation-delay:.28s}.srow:nth-child(8){animation-delay:.32s}
+.srow:nth-child(9){animation-delay:.36s}.srow:nth-child(10){animation-delay:.4s}
+.srow:nth-child(11){animation-delay:.44s}.srow:nth-child(12){animation-delay:.48s}
+.srow:nth-child(13){animation-delay:.52s}.srow:nth-child(14){animation-delay:.56s}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.ph{animation:slideDown .35s ease both}
+.ph:nth-child(2){animation-delay:.04s}.ph:nth-child(3){animation-delay:.08s}
+.ph:nth-child(4){animation-delay:.12s}.ph:nth-child(5){animation-delay:.16s}
+.ph:nth-child(6){animation-delay:.2s}.ph:nth-child(7){animation-delay:.24s}
+.ph:nth-child(8){animation-delay:.28s}.ph:nth-child(9){animation-delay:.32s}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="hdr">
+  <div class="hdr-l">
+    <div class="badge">Tesco · Global Logistics Finance · AS-IS Discovery 2026</div>
+    <div class="hdr-title">GLO Finance End-to-End Process Map</div>
+    <div class="hdr-sub">Systems/ERP (Left Lanes) · Process Activities / Teams (Top Lanes) · Click any element to filter</div>
+  </div>
+  <div class="hdr-r">
+    <div class="leg">
+      <div class="li"><div class="ls p"></div>Process Step</div>
+      <div class="li"><div class="ls o"></div>Key Output</div>
+      <div class="li"><div class="ls d"></div>Decision</div>
+    </div>
+    <div class="vtoggle">
+      <button class="vbtn on" id="v1btn" onclick="setView(1)">V1 · Process Activities</button>
+      <button class="vbtn" id="v2btn" onclick="setView(2)">V2 · Teams View</button>
+    </div>
+    <button class="ibtn" title="Reset zoom" onclick="resetZoom()">⊙</button>
+    <button class="ibtn" title="Clear filter" onclick="clearFilter()">✕</button>
+  </div>
+</div>
+
+<!-- VIEWPORT -->
+<div id="vp">
+  <div id="canvas">
+    <!-- Phase header row -->
+    <div id="phase-row"></div>
+    <!-- Grid -->
+    <div id="grid"></div>
+    <!-- SVG overlay for arrows -->
+    <svg id="arrowsvg"></svg>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div id="tip"><div class="tt" id="tt"></div><div id="tt-badge" class="tt-badge"></div><div class="tb" id="tb"></div><div class="ts" id="ts"></div></div>
+
+<!-- Zoom controls -->
+<div id="zc">
+  <button class="zb" onclick="zoom(1)">+</button>
+  <div id="zl">100%</div>
+  <button class="zb" onclick="zoom(-1)">−</button>
+</div>
+
+<!-- Bottom banner -->
+<div id="banner"><strong>ISOS / OTM Decommission Impact:</strong> OTM is the sole system-generated source for freight billing. ISOS drives product PO, AR invoicing, customs data &amp; IMS. Both trigger cascading dependencies across all swim lanes.</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════
+
+const SYSTEMS=[
+  {id:'eqos', name:'EQOS / NeoGrid',              desc:'Supplier & Factory Master', color:'#00E5C0', icon:'⚙'},
+  {id:'lm',   name:'LM / MM / UK Systems',         desc:'LM · MM · Denver WMS · NBS', color:'#4FB3FF', icon:'📦'},
+  {id:'ab',   name:'AB INITIO',                    desc:'Integration & Data Layer',  color:'#8CA3BF', icon:'🔗'},
+  {id:'isos', name:'ISOS',                         desc:'International Sourcing OS', color:'#FFD04A', icon:'🏭'},
+  {id:'otm',  name:'OTM',                          desc:'Oracle Transportation Mgmt',color:'#FF6B6B', icon:'🚢'},
+  {id:'tap',  name:'TAP / Teradata',               desc:'Analytics Platform',        color:'#8899AA', icon:'📊'},
+  {id:'ofi',  name:'Oracle Financials (OFI)',       desc:'AP · AR · Payments',        color:'#C57BFF', icon:'💰'},
+  {id:'edi',  name:'EDI / Documentum',             desc:'Data Format & PDF Store',   color:'#FFA050', icon:'📄'},
+  {id:'ms',   name:'Tender Tool / MS Access DB',   desc:'Freight Procurement & Billing DB', color:'#FF7A28', icon:'🗄'},
+  {id:'fusion',name:'Oracle Fusion',               desc:'Procurement & PO Module',   color:'#38C6FF', icon:'🔷'},
+  {id:'tung', name:'Tungsten Network',             desc:'e-Invoice Submission Portal',color:'#3DECAA', icon:'📨'},
+  {id:'transp',name:'Transportin / Transporeon',   desc:'TICB · Merchant Haulage',   color:'#5EF0B8', icon:'🚛'},
+  {id:'nbs',  name:'NBS / WMS / CM-UK',            desc:'Duty Rates · Customs WH',   color:'#52E67A', icon:'🏛'},
+  {id:'hmrc', name:'HMRC / HSBC Banking',          desc:'Customs Authority · Payments',color:'#FF4D6A', icon:'🏦'},
+];
+
+// ── V1: L3 Process Activities as columns ──────────────────────────
+const V1_COLS=[
+  {label:'Supplier Data\nMaintenance',  color:'#0D2140', num:'01', w:265},
+  {label:'Freight Rate\nProcurement',   color:'#2A0E00', num:'02', w:280},
+  {label:'PO Creation\n& Enrichment',  color:'#0A1E35', num:'03', w:285},
+  {label:'PO Ack &\nBusiness Monitor', color:'#1E0835', num:'04', w:280},
+  {label:'Shipment\nExecution',        color:'#260A0A', num:'05', w:265},
+  {label:'Self-Billing &\nInvoice Validation',color:'#062015', num:'06', w:330},
+  {label:'Invoice Processing\n& Payment',color:'#071530', num:'07', w:305},
+  {label:'Customs\n& Duty',           color:'#0C0C14', num:'08', w:275},
+];
+
+// ── V2: Teams as columns ──────────────────────────────────────────
+const V2_COLS=[
+  {label:'MDM /\nSSUP Team',     color:'#0D2140', num:'T1', w:240},
+  {label:'Procurement\nTeam',    color:'#2A0E00', num:'T2', w:240},
+  {label:'Buyers /\nCommercial', color:'#0A1E35', num:'T3', w:235},
+  {label:'Operations\nTeam',     color:'#1E0835', num:'T4', w:235},
+  {label:'Freight\nForwarders',  color:'#260A0A', num:'T5', w:240},
+  {label:'TISL Self-Billing\nTeam',color:'#062015',num:'T6', w:290},
+  {label:'AP Invoice\nTeam',     color:'#071530', num:'T7', w:265},
+  {label:'Customs &\nTax Team',  color:'#0C1814', num:'T8', w:265},
+  {label:'HMRC / WTA /\nExternal',color:'#1A0A10',num:'T9', w:255},
+];
+
+// ── Box data: [{row,col,label,type:'p'|'o'|'d',detail,bold?,conn?}]
+// type p=process, o=output/key, d=decision diamond, conn=arrows from this box
+const V1_BOXES=[
+  // ── Phase 0: Supplier Data Maintenance ──
+  {id:'e0a', row:'eqos',col:0,label:'Supplier + Factory\nSetup in EQOS',type:'o',bold:true,
+   detail:'MDM creates via NeoGrid tasks. Hierarchy mapping, factory compliance, bank detail validation, contact details. EQOS = supplier master of truth.',sys:'EQOS'},
+  {id:'lm0a',row:'lm',  col:0,label:'Supplier Data\n(LM-CE GM &\nMM-Clothing)',type:'p',
+   detail:'LM: CE GM & Clothing data. MM: UK Clothing POs only. AB INITIO integration layer processes data from NBS/GDS.',sys:'LM / MM'},
+  {id:'ab0a',row:'ab',  col:0,label:'AB INITIO\nIntegration Layer',type:'p',
+   detail:'Transaction processing. Receives product data from NBS/GDS. Supplier data (UK GM?) flows through AB INITIO.',sys:'AB INITIO'},
+  {id:'is0a',row:'isos',col:0,label:'EQOS→ISOS\n15-min push feed',type:'p',
+   detail:'Supplier data, compliance status, sourcing hierarchies flow from EQOS. Non-compliant factory prevents PO transmission.',sys:'ISOS'},
+  {id:'is0d',row:'isos',col:0,label:'Supplier\nCompliant?',type:'d',
+   detail:'ISOS validates factory/supplier compliance. FAIL → PO set to Cancelled. LM does NOT receive this cancellation status back.',sys:'ISOS'},
+  {id:'of0a',row:'ofi', col:0,label:'OFI Vendor\nAssigned (weekly)',type:'p',
+   detail:'EQOS → OFI weekly batch interface. Multiple EQOS suppliers with same tax# collapse to one Oracle vendor. Each factory = one vendor site.',sys:'Oracle Financials'},
+
+  // ── Phase 1: Freight Rate Procurement ──
+  {id:'ms1a',row:'ms', col:1,label:'Tender Tool\nInitiation',type:'p',bold:true,
+   detail:'Matt Butcher & Samit Bera initiate formal freight tender 1-2x/year. Standalone tender tool OUTSIDE all Tesco systems — no integration with ISOS, OTM, or Oracle.',sys:'Tender Tool'},
+  {id:'ms1b',row:'ms', col:1,label:'Multi-Round\nNegotiation\n(Excel/email)',type:'p',
+   detail:'Multiple negotiation rounds per carrier (CMA, MSC, Maersk, LMN, HMN) and per lane. All Excel-based email exchanges. No ERP integration whatsoever.',sys:'MS Access / Excel'},
+  {id:'ms1c',row:'ms', col:1,label:'Rate Card\nFinalised &\nDistributed',type:'o',bold:true,
+   detail:'Detailed Excel rate card per carrier. Contains: BAF (fuel surcharge), THC origin/dest, GOH (garments), SCG (container guarantee), port-to-port freight, per container type (20/40/40HC/45ft). 10-15 updates/year. Manual email distribution.',sys:'Rate Card (Excel)'},
+  {id:'ot1a',row:'otm', col:1,label:'Rate Card\nMaintenance\n(~10-15x/yr)',type:'p',
+   detail:'Emergency surcharges, new lane additions, quarterly rate reviews. Rate card mismatch between Procurement and Self-Billing team = incorrect freight cost = HMRC customs risk.',sys:'OTM (context)'},
+
+  // ── Phase 2: PO Creation & Enrichment ──
+  {id:'lm2a',row:'lm',  col:2,label:'Buyer Raises\nPO in LM',type:'p',bold:true,
+   detail:'Buyers create product POs. LM→BizTalk/XCOM→ISOS. PO types: PO1 (UK inbound), PO3 (ISOS→OTM), PO5 (UK home), PO6 (CE clothing+home).',sys:'LM'},
+  {id:'ab2a',row:'ab',  col:2,label:'AB INITIO\nIntegration',type:'p',
+   detail:'Transaction processing for PO data. Supplier data (UK GM?) flows through to ISOS.',sys:'AB INITIO'},
+  {id:'is2a',row:'isos',col:2,label:'ISOS: Receive\n& Enhance PO',type:'p',
+   detail:'ISOS validates: supplier active, factory approved, cost non-zero, delivery date valid. Assigns freight forwarder. LSP determined by transport lane/FF mapping tables. PO amendment history stored here only.',sys:'ISOS'},
+  {id:'is2b',row:'isos',col:2,label:'ISOS: OTM PO +\nEHD + Commodity\nCode',type:'p',
+   detail:'ISOS receives OTM PO copy with PO EHD and commodity code assigned. Older PO versions rejected.',sys:'ISOS'},
+  {id:'ot2a',row:'otm', col:2,label:'OTM: Enhances\nPO → Issues to\nSupplier & LSP',type:'p',
+   detail:'OTM enhances PO further. Issues PO PDF via email to supplier. Issues PO to orig/dest LSP. Sends copy of enhanced PO back to ISOS.',sys:'OTM'},
+
+  // ── Phase 3: PO Ack & Business Monitor ──
+  {id:'is3a',row:'isos',col:3,label:'IV0 from FF\n→ ISOS via BizTalk',type:'p',
+   detail:'Freight forwarder triggers IV0 electronic message into ISOS. Booking data enters ISOS through BizTalk.',sys:'ISOS'},
+  {id:'is3b',row:'isos',col:3,label:'ISOS 2-way Cost\nValidation (auto)',type:'p',
+   detail:'PO cost (from LM) vs Supplier IV0 cost. If PO cost < IV0 cost → cost exception appears in OTM Business Monitor for buyer to resolve. No manual intervention in validation.',sys:'ISOS'},
+  {id:'ot3d',row:'otm', col:3,label:'Cost\nMatch?',type:'d',
+   detail:'OTM Business Monitor. Buyer/Merchandiser approves, rejects, or sets alternate cost. Required before ISOS generates 78-column extract. Stuck POs have no ISOS line.',sys:'OTM Business Monitor'},
+  {id:'ot3a',row:'otm', col:3,label:'Buyer Decision\nin Business Monitor',type:'p',
+   detail:'"Use Supplier Cost" / "Use PO Cost" / "Alternate Cost". Approved cost + comments flow back to ISOS. AP gets 2 daily reports: BM fallout (morning) + DQ report (after processing).',sys:'OTM'},
+  {id:'ta3a',row:'tap', col:3,label:'TAP pulls PO-TPN\n& Shipment Data\n→ Teradata',type:'p',
+   detail:'TAP: 31 tables of OTM data. Finance & Commercial Teams link to Tableau for KPI/operational reporting (e.g. NET / Intake Planning / OTF).',sys:'TAP / Teradata'},
+  {id:'lm3a',row:'lm',  col:3,label:'Milestone Update\n& LM PO Freeze',type:'p',
+   detail:'Denver receives PO, passes receipt qty and dates. LM closes PO. Milestone updates flow back.',sys:'LM / Denver WMS'},
+
+  // ── Phase 4: Shipment Execution ──
+  {id:'is4a',row:'isos',col:4,label:'SM1: FF Triggers\nShipment Events',type:'p',
+   detail:'Shipment data flows into ISOS (SM1). ISOS processes only latest version received. Older versions from FF system delays are rejected. Version filtering logic applied.',sys:'ISOS'},
+  {id:'ot4a',row:'otm', col:4,label:'SM2: OTM Receives\nShipment Data\n(BL, Container)',type:'p',
+   detail:'OTM receives: shipment bookings, container numbers, BL details, shipment dates, milestone timestamps. OTM = system of record for planned vs actual shipment tracking.',sys:'OTM'},
+  {id:'ot4b',row:'otm', col:4,label:'SM3 → DW/MM/LM\nSM4 → FF via BizTalk',type:'p',
+   detail:'SM3: OTM→DW/MM/LM (system-to-system). SM4: ISOS→FF via BizTalk (shipment confirmation to freight forwarder).',sys:'OTM'},
+  {id:'lm4a',row:'lm',  col:4,label:'Denver WMS:\nGoods-In Complete',type:'p',
+   detail:'WMS marks physical receipt. Data sent via IT automation → CSG (third party) → CM-UK. Goods-Out movements captured for removal declarations.',sys:'Denver WMS'},
+  {id:'nb4a',row:'nbs', col:4,label:'WMS→CSG→CM-UK\nCustoms Warehouse',type:'p',
+   detail:'CM-UK updates customs warehouse stock the day after arrival. F&F clothing: bonded warehouse, duty paid on store delivery.',sys:'CM-UK'},
+
+  // ── Phase 5: Self-Billing & Invoice Validation ──
+  {id:'ot5a',row:'otm',  col:5,label:'OTM: Daily Inbound\nReport → Shared\nMailbox ~12:50 PM',type:'o',bold:true,
+   detail:'Automated daily report. Delivered to shared mailbox AND shared folder. Contains all shipment details: carrier, container type, origin/dest, ETA/ETD, sailing date, container counts. PRIMARY & SOLE system-generated billing input.',sys:'OTM'},
+  {id:'ot5b',row:'otm',  col:5,label:'OTM: PO Priority\nUpdate (3-4x/wk)',type:'p',
+   detail:'Self-Billing team executes OTM system update on behalf of Global Logistics. Actions: Add Order Base Events → Order Priority → High. Then "Send Priority to FF". 5-min processing time.',sys:'OTM'},
+  {id:'ms5a',row:'ms',   col:5,label:'Upload OTM File\nto MS Access DB',type:'p',
+   detail:'Manual daily upload. NO automated integration between OTM and MS Access. A&A data also uploaded. MS Access = unsupported by Tesco IT. Original builder left 5+ years ago.',sys:'MS Access DB'},
+  {id:'ms5b',row:'ms',   col:5,label:'Extract Weekly\nInvoice File (Mon)',type:'p',
+   detail:'Per carrier extractions: CMA, MSC, Maersk, LMN, HMN. Two additional carriers fully manual (not database-driven). Charge types: Freight, BAF, Origin THC, Haulage, Dest THC, SCG, GOH.',sys:'MS Access DB'},
+  {id:'ms5c',row:'ms',   col:5,label:'Rolling File\n(Excel Master)',type:'o',bold:true,
+   detail:'Single source of truth for all self-billing. Tracks: Container numbers, Departure dates, Carrier name, Charge amounts (USD/GBP/EUR), Carrier Confirmation (YES/NO), Payment Status (YES/NO). NO SYSTEM BACKUP EXISTS.',sys:'Excel Rolling File'},
+  {id:'is5a',row:'isos', col:5,label:'ISOS: Master\nSupplier Download\n(Monday only)',type:'p',
+   detail:'ONLY ISOS interaction for Self-Billing team. Single weekly Monday download of Master Supplier Details. Used as input for operational reports.',sys:'ISOS'},
+  {id:'tr5a',row:'transp',col:5,label:'Transportin:\nTICB Report\n(Mon/Wed/Fri)',type:'p',
+   detail:'Auto-email triggers TICB report download. Transport data (sell rate, charges, vehicle type, origin/dest). Combined with IMS from Jeevan Team (Sourcing) → CE customs value declaration.',sys:'Transportin'},
+  {id:'fu5a',row:'fusion',col:5,label:'Oracle Fusion:\nCreate Purchase\nRequisition',type:'p',
+   detail:'Manual creation. Duplicate previous week\'s requisition to save time. Fields: Description, Currency (USD/GBP/EUR), Supplier (carrier), GL Account 502100 (Freight Adj), Cost Centre (F&F Primary Logistics), Entity TSL 1002.',sys:'Oracle Fusion'},
+  {id:'fu5d',row:'fusion',col:5,label:'CC Owner\nApproved?',type:'d',
+   detail:'Cost Centre Owner receives auto-triggered approval email from Oracle Fusion. On approval, PO is automatically generated.',sys:'Oracle Fusion'},
+  {id:'fu5b',row:'fusion',col:5,label:'PO Auto-Generated\n(P1002-XXXXXX)',type:'o',bold:true,
+   detail:'ALL POs under Tesco Stores Limited (TSL). Currency split: USD = origin charges, GBP = UK destination, EUR = CE destination. Oracle auto-sends PO to carrier email (if registered). Some carriers not updated = manual send.',sys:'Oracle Fusion'},
+
+  // ── Phase 6: Invoice Processing & Payment ──
+  {id:'tu6a',row:'tung', col:6,label:'Carrier/FF Submits\nInvoice in Tungsten',type:'p',bold:true,
+   detail:'Carrier logs into Tungsten Network portal. Creates invoice referencing PO number. Invoice amount ≤ PO value. 95%+ = 1 invoice : 1 PO. Tungsten charges per invoice → carriers minimise count.',sys:'Tungsten'},
+  {id:'tu6d',row:'tung', col:6,label:'Invoice\nValid?',type:'d',
+   detail:'Tungsten auto-validates: PO number exists in Fusion, currency matches, invoice value ≤ PO value. Interface team (Tungsten→Fusion) not yet identified.',sys:'Tungsten'},
+  {id:'fu6a',row:'fusion',col:6,label:'Invoice → Fusion\n(~24hrs auto)',type:'p',
+   detail:'Custom Tungsten-to-Oracle Fusion interface. Invoice appears in Payables with status "Validated". AP Invoice Team (Ashika\'s team) monitors and manages from this point.',sys:'Oracle Fusion'},
+  {id:'fu6b',row:'fusion',col:6,label:'AP: Payment\nProcessed (30-60d)',type:'p',bold:true,
+   detail:'30/40/60 day payment terms from invoice validation. Intercompany: TSL (Fusion) pays all freight incl. CE. Recharge to CE entity (R12) handled separately by Finance Controller (Lata).',sys:'Oracle Fusion'},
+  {id:'of6a',row:'ofi',  col:6,label:'3-way Match:\nISOS+EDI+Documentum',type:'p',
+   detail:'AP verifies: Price, Quantity, Invoice#, Supplier#, Currency, Shipment details. FAIL → DQ issue. AP shares BM fallout + DQ reports daily with FF. 78-col ISOS extract required first.',sys:'Oracle Financials'},
+  {id:'of6b',row:'ofi',  col:6,label:'AP Invoice\nCreated (auto)',type:'p',
+   detail:'OFI generates AP invoice automatically. No workflow approval required for product invoices. Payment terms: typically 90 days. Weekly payment runs via HSBC.',sys:'Oracle Financials'},
+  {id:'of6c',row:'ofi',  col:6,label:'AR Invoice →\nUK / ROI / CE',type:'o',
+   detail:'Strictly 1:1 with AP invoice. UK/ROI: Oracle Fusion auto. CE: manual RIMS entry → Oracle R12. Commission invoices: 1.5% (3rd way), 3.5% (standard), 4.25% (specific categories).',sys:'Oracle Financials'},
+  {id:'ed6a',row:'edi',  col:6,label:'EDI: 78-col →\n69-col OFI CSV',type:'p',
+   detail:'EDI auto-formats ISOS 78-column extract. Removes 8-9 OFI-incompatible fields. Produces OFI-ready CSV.',sys:'EDI'},
+  {id:'ed6b',row:'edi',  col:6,label:'Documentum: PDF\nIndexed (manual)',type:'p',
+   detail:'Manual indexing of 6-7 mandatory fields: PO#, Currency, Supplier#, Quantity, Invoice Amount, Invoice#. PDF vs Packing List cross-check. Mismatch = reject + flag to FF.',sys:'Documentum'},
+  {id:'hm6a',row:'hmrc', col:6,label:'HSBC: Payment\nBatch Released',type:'p',bold:true,
+   detail:'Weekly payment batch. Manager + second-level approval required. Options: Standard (90d), Vendor Financing via HSBC (~30d early payment, supplier bears cost), Letter of Credit (Bangladesh suppliers).',sys:'HSBC Banking'},
+
+  // ── Phase 7: Customs & Duty ──
+  {id:'ot7a',row:'otm',  col:7,label:'OTM: CSS Report\n→ WTA (auto)',type:'o',bold:true,
+   detail:'Sent automatically from OTM to clearing agent WTA. Contains: Container#, PO#s, transport mode, vessel+voyage, ETA, carton count/weight. WTA starts SFD prep several days before arrival.',sys:'OTM'},
+  {id:'ot7b',row:'otm',  col:7,label:'Commodity Codes\n→ NBS (weekly)',type:'p',
+   detail:'OTM sends weekly HS code extract to NBS. Incorrect HS code = incorrect duty rate = under/over declaration to HMRC = legal risk.',sys:'OTM'},
+  {id:'is7a',row:'isos', col:7,label:'IMS Data Pack\n(AP+AR refs)\n→ Customs',type:'o',bold:true,
+   detail:'Generated after invoice processed in ISOS (~7 days after vessel departure). AP sends daily IMS packs (incl. AR/AP invoice refs) to Customs before overnight batch. Missing IMS = WTA holds container.',sys:'ISOS'},
+  {id:'nb7a',row:'nbs',  col:7,label:'NBS: Duty Rates\nfrom HS Codes',type:'p',
+   detail:'NBS = duty rate master for Finance. Fetches: duty rate, origin rules, preference rules. Sends to QL Accrual process. Accrual = Duty Rate × Customs Value × Quantity.',sys:'NBS'},
+  {id:'nb7b',row:'nbs',  col:7,label:'CM-UK: Customs\nWarehouse (F&F)',type:'p',
+   detail:'Bonded warehouse for F&F Clothing. Duty paid when stock leaves to stores. WMS→CSG→CM-UK flow. Goods-Out → CSG removal declarations.',sys:'CM-UK'},
+  {id:'eq7a',row:'eqos', col:7,label:'TISL: Duty\nDeferment Account\n(16th of month)',type:'p',
+   detail:'TISL pays Customs Duty via DDA. Home: duty at import, paid 16th next month. F&F Clothing: duty at store delivery, paid 16th next month.',sys:'TISL / EQOS'},
+  {id:'hm7a',row:'hmrc', col:7,label:'WTA: SFD at\nBorder',type:'p',bold:true,
+   detail:'Simplified Frontier Declaration at border. CSS + IMS both mandatory inputs. Missing IMS = container held. HMRC grants near-automatic clearance under SCDP (Tesco is authorised).',sys:'WTA / HMRC'},
+  {id:'hm7b',row:'hmrc', col:7,label:'SDI Submission\n(10th next month)',type:'p',
+   detail:'Supplementary Declaration. All imports 1st-31st must be declared by 10th. IMS delays → Customs team pushes hard. Documentation retained 7 years (legal requirement: 6).',sys:'HMRC'},
+];
+
+// ── V2 boxes (teams perspective) ─────────────────────────────────
+const V2_BOXES=[
+  // T0: MDM/SSUP
+  {id:'v2_t0a',row:'eqos',col:0,label:'EQOS: Supplier +\nFactory Setup\n& Compliance',type:'o',bold:true,
+   detail:'MDM team creates supplier/factory records via NeoGrid tasks. Compliance, bank details, factory hierarchy. EQOS = master of truth.',sys:'MDM / SSUP Team'},
+  {id:'v2_t0b',row:'isos',col:0,label:'ISOS receives\nEQOS data\n(15-min push)',type:'p',
+   detail:'Supplier data, compliance flags, sourcing hierarchies pushed from EQOS to ISOS every 15 minutes.',sys:'MDM Team → ISOS'},
+  {id:'v2_t0c',row:'ofi', col:0,label:'OFI Vendor\nAssigned\n(weekly batch)',type:'p',
+   detail:'MDM submission back via NeoGrid. EQOS weekly batch to OFI creates Oracle vendor records.',sys:'MDM → OFI'},
+
+  // T1: Procurement
+  {id:'v2_t1a',row:'ms',  col:1,label:'Tender Tool:\nRate Tender\n(1-2x/year)',type:'p',bold:true,
+   detail:'Matt Butcher & Samit Bera. Standalone tender tool. No Tesco ERP integration.',sys:'Procurement Team'},
+  {id:'v2_t1b',row:'ms',  col:1,label:'Rate Card\nNegotiated &\nFinalised',type:'o',
+   detail:'Detailed Excel rate card per carrier. All charge components. Manual email distribution to Self-Billing team and Operations team.',sys:'Procurement Team'},
+  {id:'v2_t1c',row:'fusion',col:1,label:'Oracle Fusion:\nPO raised on\ncontainer arrival',type:'p',
+   detail:'Procurement team also involved in PO approval in Oracle Fusion. Manual process with duplicate function.',sys:'Procurement Team'},
+
+  // T2: Buyers
+  {id:'v2_t2a',row:'lm',  col:2,label:'Buyer Raises\nPO in LM\n(product)',type:'p',bold:true,
+   detail:'Buyers create POs. LM→BizTalk/XCOM→ISOS. Multiple buyers across countries and categories.',sys:'Buyers / Commercial'},
+  {id:'v2_t2b',row:'otm', col:2,label:'Business Monitor:\nBuyer approves\ncost exceptions',type:'p',
+   detail:'Buyers approve/reject/alternate cost in OTM Business Monitor. Governs release of ISOS 78-col extract.',sys:'Buyers / Commercial'},
+
+  // T3: Operations
+  {id:'v2_t3a',row:'ms',  col:3,label:'Rate Card used\nto book carrier\nspace',type:'p',
+   detail:'Operations Team (John Finch\'s team) uses agreed rate cards to book shipment space with carriers. Bookings per Bill of Lading.',sys:'Operations Team'},
+  {id:'v2_t3b',row:'otm', col:3,label:'Shipment\nbookings populate\nOTM',type:'p',
+   detail:'Confirmed bookings flow into OTM. OTM tracks through shipment execution lifecycle.',sys:'Operations → OTM'},
+
+  // T4: Freight Forwarders
+  {id:'v2_t4a',row:'isos',col:4,label:'FF: Triggers IV0\n→ ISOS via BizTalk',type:'p',bold:true,
+   detail:'Freight forwarder sends IV0 electronic invoice into ISOS. Shipment data flow initiation.',sys:'Freight Forwarders'},
+  {id:'v2_t4b',row:'otm', col:4,label:'FF: Triggers SM1\nshipment events\n→ OTM',type:'p',
+   detail:'Origin FF enters shipment details. SM1 data flows into ISOS then OTM (SM2).',sys:'Freight Forwarders'},
+  {id:'v2_t4c',row:'edi', col:4,label:'FF coordinates\nresolution of\nDQ issues',type:'p',
+   detail:'FF coordinates with suppliers and buyers to resolve mismatches. Resubmits IV0 if needed. Receives daily BM fallout + DQ reports from AP.',sys:'Freight Forwarders'},
+
+  // T5: TISL Self-Billing
+  {id:'v2_t5a',row:'otm',  col:5,label:'Receive OTM\nDaily Inbound\nReport',type:'o',bold:true,
+   detail:'Core self-billing trigger. Daily automated OTM report received in shared mailbox ~12:50 PM.',sys:'TISL Self-Billing'},
+  {id:'v2_t5b',row:'ms',   col:5,label:'MS Access DB:\nUpload + Extract\nWeekly File (Mon)',type:'p',
+   detail:'Upload OTM data to MS Access. Extract weekly invoice file per carrier on Mondays.',sys:'TISL Self-Billing'},
+  {id:'v2_t5c',row:'ms',   col:5,label:'Rolling File:\nRate Card Val +\nCarrier Agreement',type:'o',
+   detail:'Excel Rolling File = master tracker. Rate card validation. Send to carrier for confirmation. Update status to "Cost Agreed = YES".',sys:'TISL Self-Billing'},
+  {id:'v2_t5d',row:'fusion',col:5,label:'Oracle Fusion:\nCreate PO (req →\napproval → PO)',type:'p',
+   detail:'Weekly Friday PO raise. Filter Rolling File: Cost Agreed=YES, Payment=No, Arrived this week. Create requisition → CC Owner approves → PO auto-generated.',sys:'TISL Self-Billing'},
+  {id:'v2_t5e',row:'isos', col:5,label:'ISOS: Master\nSupplier Download\n(Monday only)',type:'p',
+   detail:'Only ISOS interaction. Single weekly Monday download. Used as operational report input.',sys:'TISL Self-Billing'},
+  {id:'v2_t5f',row:'transp',col:5,label:'Transportin:\nTICB Report\n(3x/week)',type:'p',
+   detail:'Mon/Wed/Fri auto-email triggers download. CE customs value compliance.',sys:'TISL Self-Billing'},
+  {id:'v2_t5g',row:'otm',  col:5,label:'OTM: PO Priority\nUpdate (ad-hoc)',type:'p',
+   detail:'3-4x/week on behalf of Global Logistics. Actions→Add Order Base Events→Order Priority→High. Then Send Priority to FF.',sys:'TISL Self-Billing'},
+
+  // T6: AP Invoice
+  {id:'v2_t6a',row:'tung', col:6,label:'Tungsten: Carrier\nsubmits invoice\n(auto-validated)',type:'p',bold:true,
+   detail:'Carrier logs in, creates invoice ≤ PO value. Tungsten auto-validates PO/currency/value match.',sys:'AP Invoice Team'},
+  {id:'v2_t6b',row:'fusion',col:6,label:'Invoice → Fusion\n(~24hrs auto)',type:'p',
+   detail:'Custom Tungsten→Fusion interface. Invoice status = Validated in Oracle Fusion Payables.',sys:'AP Invoice Team'},
+  {id:'v2_t6c',row:'ofi',  col:6,label:'OFI: 3-way Match\nAP Invoice +\nAR Invoice',type:'p',
+   detail:'3-way match: ISOS 69-col CSV + Documentum PDF. AP Invoice created automatically. AR Invoice: 1:1. CE = RIMS → R12.',sys:'AP Invoice Team'},
+  {id:'v2_t6d',row:'hmrc', col:6,label:'HSBC: Payment\nbatch (30-90 days)',type:'o',bold:true,
+   detail:'Weekly payment run. Manager + second-level approval. Standard/Vendor Finance/LC options.',sys:'AP Invoice Team'},
+
+  // T7: Customs & Tax
+  {id:'v2_t7a',row:'otm',  col:7,label:'OTM: CSS Report\n→ WTA (auto)',type:'o',bold:true,
+   detail:'Auto-sent from OTM. Container, PO, vessel, ETA. WTA starts SFD preparation days before arrival.',sys:'Customs & Tax Team'},
+  {id:'v2_t7b',row:'isos', col:7,label:'IMS Data Pack\n(AP+AR refs)\n→ Customs',type:'o',
+   detail:'Daily IMS pack sent to Customs before overnight batch. Both AP and AR invoice copies included.',sys:'Customs & Tax Team'},
+  {id:'v2_t7c',row:'nbs',  col:7,label:'NBS: Duty rates\n+ QL Accrual\nprocess',type:'p',
+   detail:'Duty Rate × Customs Value × Quantity = Accrual. NBS is the duty rate master.',sys:'Customs & Tax Team'},
+  {id:'v2_t7d',row:'eqos', col:7,label:'TISL: Duty\nDeferment Account\n(16th of month)',type:'p',
+   detail:'Monthly duty payment via DDA. Home: at import. F&F: at store delivery. Both → 16th next month.',sys:'Customs & Tax Team'},
+
+  // T8: HMRC/WTA/External
+  {id:'v2_t8a',row:'hmrc', col:8,label:'WTA: SFD at\nBorder (CSS+IMS)',type:'p',bold:true,
+   detail:'Simplified Frontier Declaration. CSS and IMS both mandatory. Missing IMS = container held by WTA.',sys:'WTA (External)'},
+  {id:'v2_t8b',row:'nbs',  col:8,label:'CM-UK: Customs\nWarehouse +\nGoods-Out',type:'p',
+   detail:'Bonded warehouse for F&F. WMS→CSG→CM-UK. Goods-Out movements captured for removal declarations.',sys:'CM-UK / CSG'},
+  {id:'v2_t8c',row:'hmrc', col:8,label:'HMRC: SDI\nSubmission\n(10th next month)',type:'p',
+   detail:'All imports from 1st-31st declared by 10th. Tesco authorised under SCDP/AEO. 7-year document retention.',sys:'HMRC'},
+];
+
+// Key connections to draw (from-box-id → to-box-id, label)
+const V1_CONNS=[
+  {f:'e0a',t:'is0a',l:'15-min push'},
+  {f:'e0a',t:'of0a',l:'weekly batch'},
+  {f:'lm0a',t:'ab0a',l:''},
+  {f:'ms1a',t:'ms1b',l:''},
+  {f:'ms1b',t:'ms1c',l:''},
+  {f:'lm2a',t:'is2a',l:'BizTalk'},
+  {f:'is2a',t:'ot2a',l:'BizTalk'},
+  {f:'is3a',t:'is3b',l:''},
+  {f:'is3b',t:'ot3d',l:'mismatch'},
+  {f:'ot3d',t:'ot3a',l:''},
+  {f:'is4a',t:'ot4a',l:'SM2'},
+  {f:'ot4a',t:'ot4b',l:'SM3/SM4'},
+  {f:'ot5a',t:'ms5a',l:'daily trigger'},
+  {f:'ms5a',t:'ms5b',l:''},
+  {f:'ms5b',t:'ms5c',l:''},
+  {f:'ms5c',t:'fu5a',l:'Friday filter'},
+  {f:'fu5a',t:'fu5d',l:''},
+  {f:'fu5d',t:'fu5b',l:'approved'},
+  {f:'fu5b',t:'tu6a',l:'PO copy'},
+  {f:'tu6a',t:'tu6d',l:''},
+  {f:'tu6d',t:'fu6a',l:'~24hrs'},
+  {f:'fu6a',t:'fu6b',l:''},
+  {f:'of6a',t:'of6b',l:''},
+  {f:'of6b',t:'of6c',l:''},
+  {f:'of6a',t:'hm6a',l:'payment batch'},
+  {f:'ot7a',t:'hm7a',l:'CSS'},
+  {f:'is7a',t:'hm7a',l:'IMS'},
+  {f:'ot7b',t:'nb7a',l:'HS codes'},
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let currentView=1, scale=1, tx=0, ty=0;
+let isDragging=false, dragSx=0, dragSy=0, dragTx=0, dragTy=0;
+let activeFilter=null; // 'row:id' | 'col:idx' | null
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════════════════════
+function getCols(){ return currentView===1?V1_COLS:V2_COLS; }
+function getBoxes(){ return currentView===1?V1_BOXES:V2_BOXES; }
+
+function sysColor(id){ return SYSTEMS.find(s=>s.id===id)?.color||'#888'; }
+
+function buildGrid(){
+  const cols=getCols(), boxes=getBoxes();
+  // Build lookup: key = rowId+':'+colIdx → [box,...]
+  const lookup={};
+  boxes.forEach(b=>{
+    const k=`${b.row}:${b.col}`;
+    if(!lookup[k])lookup[k]=[];
+    lookup[k].push(b);
+  });
+
+  // Phase header row
+  const phRow=document.getElementById('phase-row');
+  phRow.innerHTML='';
+  phRow.appendChild(makeCorner());
+  cols.forEach((col,ci)=>{
+    const count=boxes.filter(b=>b.col===ci).length;
+    phRow.appendChild(makePhaseHeader(col,ci,count));
+  });
+
+  // System rows
+  const grid=document.getElementById('grid');
+  grid.innerHTML='';
+  SYSTEMS.forEach(sys=>{
+    const row=document.createElement('div');
+    row.className='srow';
+    row.dataset.row=sys.id;
+    row.style.minHeight=getRowH(sys.id)+'px';
+    // Label
+    row.appendChild(makeSysLabel(sys));
+    // Cells
+    cols.forEach((col,ci)=>{
+      const cell=document.createElement('div');
+      cell.className='cell';
+      cell.dataset.col=ci;
+      cell.style.width=col.w+'px';
+      cell.style.minHeight=getRowH(sys.id)+'px';
+      // Add boxes
+      const bxs=lookup[`${sys.id}:${ci}`]||[];
+      bxs.forEach(b=>cell.appendChild(makeBox(b,sys)));
+      row.appendChild(cell);
+    });
+    grid.appendChild(row);
+  });
+
+  // Draw arrows after layout
+  setTimeout(drawArrows,100);
+}
+
+function getRowH(id){
+  const hmap={eqos:90,lm:100,ab:78,isos:108,otm:114,tap:78,
+    ofi:102,edi:88,ms:124,fusion:118,tung:88,transp:78,nbs:88,hmrc:98};
+  return hmap[id]||90;
+}
+
+function makeCorner(){
+  const d=document.createElement('div');
+  d.className='corner';
+  d.innerHTML='<div class="c-title">Systems / ERP</div><div class="c-sub">'+(currentView===1?'L3 Process Activities ▶':'Teams / Roles ▶')+'</div>';
+  return d;
+}
+
+function makePhaseHeader(col,ci,count){
+  const d=document.createElement('div');
+  d.className='ph';
+  d.dataset.col=ci;
+  d.style.width=col.w+'px';
+  d.style.background='linear-gradient(160deg,'+col.color+' 0%,'+col.color+'CC 100%)';
+  d.innerHTML=`<div class="ph-name">${col.label.replace(/\n/g,'<br>')}</div><div class="ph-count">${count} activities</div><div class="ph-num">${col.num}</div>`;
+  d.onclick=()=>filterBy('col',ci);
+  return d;
+}
+
+function makeSysLabel(sys){
+  const d=document.createElement('div');
+  d.className='slabel';
+  d.dataset.row=sys.id;
+  d.innerHTML=`<div class="sbar" style="background:${sys.color}"></div><div class="sicon">${sys.icon}</div><div class="sname" style="color:${sys.color}">${sys.name}</div><div class="sdesc">${sys.desc}</div>`;
+  d.onclick=()=>filterBy('row',sys.id);
+  return d;
+}
+
+function makeBox(b,sys){
+  const d=document.createElement('div');
+  d.className=`pb ${b.type}${b.bold?' bold':''}`;
+  d.dataset.id=b.id;
+  d.dataset.row=b.row;
+  d.dataset.col=b.col;
+  d.style.borderColor=sys.color;
+  d.style.color=sys.color;
+  if(b.type==='o') d.style.boxShadow=`0 0 12px ${sys.color}18`;
+
+  const inner=document.createElement('span');
+  inner.className='pt';
+  inner.innerHTML=b.label.replace(/\n/g,'<br>');
+  d.appendChild(inner);
+
+  d.addEventListener('mouseenter',e=>showTip(e,b,sys));
+  d.addEventListener('mousemove',e=>moveTip(e));
+  d.addEventListener('mouseleave',()=>hideTip());
+  d.onclick=e=>{ e.stopPropagation(); filterBy('box',b.id,b); };
+  return d;
+}
+
+// ─── ARROWS ──────────────────────────────────────
+function drawArrows(){
+  const svg=document.getElementById('arrowsvg');
+  svg.innerHTML=`<defs>
+    <marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(255,255,255,.25)"/>
+    </marker>
+    <marker id="ah2" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(255,255,255,.12)"/>
+    </marker>
+  </defs>`;
+
+  if(currentView!==1) return; // Only V1 has defined connections
+
+  V1_CONNS.forEach(conn=>{
+    const fromEl=document.querySelector(`[data-id="${conn.f}"]`);
+    const toEl=document.querySelector(`[data-id="${conn.t}"]`);
+    if(!fromEl||!toEl) return;
+
+    const canvas=document.getElementById('canvas');
+    const cr=canvas.getBoundingClientRect();
+    const fr=fromEl.getBoundingClientRect();
+    const tr=toEl.getBoundingClientRect();
+
+    const x1=(fr.right-cr.left)/scale;
+    const y1=(fr.top+fr.height/2-cr.top)/scale;
+    const x2=(tr.left-cr.left)/scale;
+    const y2=(tr.top+tr.height/2-cr.top)/scale;
+
+    const sameSide=Math.abs(y1-y2)<4;
+    let path;
+    if(sameSide){
+      const mx=(x1+x2)/2;
+      path=`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+    } else {
+      const mx=(x1+x2)/2;
+      path=`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+    }
+
+    const pathEl=document.createElementNS('http://www.w3.org/2000/svg','path');
+    pathEl.setAttribute('d',path);
+    pathEl.setAttribute('fill','none');
+    pathEl.setAttribute('stroke','rgba(255,255,255,.2)');
+    pathEl.setAttribute('stroke-width','1.2');
+    pathEl.setAttribute('stroke-dasharray','4 3');
+    pathEl.setAttribute('marker-end','url(#ah)');
+    pathEl.style.animation='flowDash 2.5s linear infinite';
+    svg.appendChild(pathEl);
+
+    if(conn.l){
+      const tx=(x1+x2)/2, ty=(y1+y2)/2;
+      const lab=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lab.setAttribute('x',tx); lab.setAttribute('y',ty-3);
+      lab.setAttribute('text-anchor','middle');
+      lab.setAttribute('font-size','8');
+      lab.setAttribute('fill','rgba(255,255,255,.3)');
+      lab.setAttribute('font-family','JetBrains Mono, monospace');
+      lab.textContent=conn.l;
+      svg.appendChild(lab);
+    }
+  });
+
+  // Set SVG size
+  const canvas=document.getElementById('canvas');
+  svg.setAttribute('width',canvas.scrollWidth);
+  svg.setAttribute('height',canvas.scrollHeight);
+
+  // Add CSS animation for dash flow
+  if(!document.getElementById('svganim')){
+    const s=document.createElement('style');
+    s.id='svganim';
+    s.textContent='@keyframes flowDash{to{stroke-dashoffset:-28}}';
+    document.head.appendChild(s);
+  }
+}
+
+// ─── TOOLTIP ─────────────────────────────────────
+function showTip(e,b,sys){
+  const tip=document.getElementById('tip');
+  document.getElementById('tt').textContent=b.label.replace(/\n/g,' – ');
+  const badge=document.getElementById('tt-badge');
+  badge.className=`tt-badge ${b.type}`;
+  badge.textContent={p:'Process Step',o:'Key Output',d:'Decision Point'}[b.type];
+  document.getElementById('tb').textContent=b.detail||'';
+  const ts=document.getElementById('ts');
+  ts.innerHTML=`<div class="sbar" style="background:${sys.color};width:6px;height:6px;border-radius:50%"></div><span>${b.sys||sys.name}</span>`;
+  tip.classList.add('show');
+  moveTip(e);
+}
+function moveTip(e){
+  const tip=document.getElementById('tip');
+  const x=e.clientX+14, y=e.clientY-10;
+  const maxX=window.innerWidth-tip.offsetWidth-10;
+  const maxY=window.innerHeight-tip.offsetHeight-10;
+  tip.style.left=Math.min(x,maxX)+'px';
+  tip.style.top=Math.max(10,Math.min(y,maxY))+'px';
+}
+function hideTip(){ document.getElementById('tip').classList.remove('show'); }
+
+// ─── FILTERING ───────────────────────────────────
+function filterBy(type, val, boxData){
+  if(activeFilter===`${type}:${val}`){ clearFilter(); return; }
+  activeFilter=`${type}:${val}`;
+
+  const allRows=document.querySelectorAll('.srow');
+  const allPhs=document.querySelectorAll('.ph');
+  const allBoxes=document.querySelectorAll('.pb');
+
+  allRows.forEach(r=>r.classList.add('faded'));
+  allPhs.forEach(p=>p.classList.add('faded'));
+  allBoxes.forEach(b=>{ b.classList.add('ghost'); b.classList.remove('glow'); });
+
+  if(type==='row'){
+    // Highlight all boxes in this row
+    const rowEl=document.querySelector(`.srow[data-row="${val}"]`);
+    if(rowEl) rowEl.classList.remove('faded');
+    document.querySelectorAll(`.pb[data-row="${val}"]`).forEach(b=>{
+      b.classList.remove('ghost'); b.classList.add('glow');
+    });
+    // Unhide cols that have boxes in this row
+    const colsWithBoxes=new Set(getBoxes().filter(b=>b.row===val).map(b=>b.col));
+    colsWithBoxes.forEach(ci=>{
+      document.querySelectorAll(`.srow`).forEach(r=>{ const c=r.querySelector(`.cell[data-col="${ci}"]`); });
+      document.querySelectorAll(`.ph[data-col="${ci}"]`).forEach(p=>p.classList.remove('faded'));
+    });
+  } else if(type==='col'){
+    // Highlight all boxes in this col
+    const phEl=document.querySelector(`.ph[data-col="${val}"]`);
+    if(phEl) phEl.classList.remove('faded');
+    document.querySelectorAll(`.pb[data-col="${val}"]`).forEach(b=>{
+      b.classList.remove('ghost'); b.classList.add('glow');
+    });
+    // Unhide rows that have boxes in this col
+    const rowsWithBoxes=new Set(getBoxes().filter(b=>b.col===val).map(b=>b.row));
+    rowsWithBoxes.forEach(rid=>{
+      const rowEl=document.querySelector(`.srow[data-row="${rid}"]`);
+      if(rowEl) rowEl.classList.remove('faded');
+    });
+  } else if(type==='box' && boxData){
+    // Highlight this box and its row
+    const rowEl=document.querySelector(`.srow[data-row="${boxData.row}"]`);
+    if(rowEl) rowEl.classList.remove('faded');
+    const ph=document.querySelector(`.ph[data-col="${boxData.col}"]`);
+    if(ph) ph.classList.remove('faded');
+    const el=document.querySelector(`.pb[data-id="${val}"]`);
+    if(el){ el.classList.remove('ghost'); el.classList.add('glow'); }
+  }
+}
+
+function clearFilter(){
+  activeFilter=null;
+  document.querySelectorAll('.srow').forEach(r=>r.classList.remove('faded'));
+  document.querySelectorAll('.ph').forEach(p=>p.classList.remove('faded'));
+  document.querySelectorAll('.pb').forEach(b=>{ b.classList.remove('ghost','glow'); });
+}
+
+// ─── VIEW TOGGLE ─────────────────────────────────
+function setView(v){
+  currentView=v;
+  clearFilter();
+  document.getElementById('v1btn').classList.toggle('on',v===1);
+  document.getElementById('v2btn').classList.toggle('on',v===2);
+  buildGrid();
+  resetZoom();
+}
+
+// ─── ZOOM & PAN ───────────────────────────────────
+function applyTransform(){
+  document.getElementById('canvas').style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
+  document.getElementById('zl').textContent=Math.round(scale*100)+'%';
+}
+
+function zoom(dir){
+  const factor=dir>0?1.15:1/1.15;
+  const vp=document.getElementById('vp');
+  const cx=vp.offsetWidth/2, cy=vp.offsetHeight/2;
+  tx=(tx-cx)*factor+cx;
+  ty=(ty-cy)*factor+cy;
+  scale=Math.min(Math.max(scale*factor,.25),3);
+  applyTransform();
+  setTimeout(drawArrows,50);
+}
+
+function resetZoom(){
+  scale=.72; tx=0; ty=0;
+  applyTransform();
+  setTimeout(drawArrows,100);
+}
+
+// Mouse wheel zoom
+document.getElementById('vp').addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY<0?1.1:1/1.1;
+  const vp=document.getElementById('vp');
+  const rect=vp.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  tx=(tx-mx)*factor+mx;
+  ty=(ty-my)*factor+my;
+  scale=Math.min(Math.max(scale*factor,.2),3.5);
+  applyTransform();
+  setTimeout(drawArrows,60);
+},{passive:false});
+
+// Drag to pan
+const vp=document.getElementById('vp');
+vp.addEventListener('mousedown',e=>{
+  if(e.target.closest('.pb,.slabel,.ph')) return;
+  isDragging=true;
+  dragSx=e.clientX; dragSy=e.clientY;
+  dragTx=tx; dragTy=ty;
+  vp.classList.add('drag');
+});
+document.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  tx=dragTx+(e.clientX-dragSx);
+  ty=dragTy+(e.clientY-dragSy);
+  applyTransform();
+});
+document.addEventListener('mouseup',()=>{ isDragging=false; vp.classList.remove('drag'); });
+
+// Close filter on canvas click
+document.getElementById('canvas').addEventListener('click',e=>{
+  if(!e.target.closest('.pb,.slabel,.ph')) clearFilter();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') clearFilter();
+  if(e.key==='1') setView(1);
+  if(e.key==='2') setView(2);
+  if(e.key==='+') zoom(1);
+  if(e.key==='-') zoom(-1);
+  if(e.key==='0') resetZoom();
+});
+
+// ─── INIT ─────────────────────────────────────────
+buildGrid();
+resetZoom();
+</script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" width="420" height="420">
+  <defs>
+    <!-- Backgrounds -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#04080f"/>
+      <stop offset="50%"  stop-color="#0b172e"/>
+      <stop offset="100%" stop-color="#060d1e"/>
+    </linearGradient>
+    <radialGradient id="bgr" cx="50%" cy="40%" r="60%">
+      <stop offset="0%"   stop-color="#0a2240"/>
+      <stop offset="100%" stop-color="#04080f"/>
+    </radialGradient>
+
+    <!-- Icon gradient (diagonal across icon region) -->
+    <linearGradient id="hg" x1="108" y1="72" x2="292" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#00d4aa"/>
+      <stop offset="48%"  stop-color="#00b4d8"/>
+      <stop offset="100%" stop-color="#7b61ff"/>
+    </linearGradient>
+
+    <!-- Text gradient -->
+    <linearGradient id="tg" x1="48" y1="0" x2="372" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#00d4aa"/>
+      <stop offset="42%"  stop-color="#00c8e8"/>
+      <stop offset="100%" stop-color="#7b61ff"/>
+    </linearGradient>
+
+    <!-- Tagline gradient -->
+    <linearGradient id="tag-g" x1="130" y1="0" x2="290" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#00b4d8"/>
+      <stop offset="100%" stop-color="#7b61ff"/>
+    </linearGradient>
+
+    <!-- Central orb radial -->
+    <radialGradient id="orb" cx="45%" cy="38%" r="60%">
+      <stop offset="0%"   stop-color="#e8fffc" stop-opacity="1"/>
+      <stop offset="22%"  stop-color="#00d4aa" stop-opacity="0.95"/>
+      <stop offset="60%"  stop-color="#00b4d8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#7b61ff" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Halo radial -->
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#00d4aa" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#00d4aa" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Pulse ring radial -->
+    <radialGradient id="pulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#00b4d8" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#00b4d8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Soft glow filter -->
+    <filter id="g1" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Strong glow filter -->
+    <filter id="g2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Very strong glow -->
+    <filter id="g3" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="11" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Text glow -->
+    <filter id="tgf" x="-15%" y="-55%" width="130%" height="210%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#00cce8" flood-opacity="0.55"/>
+    </filter>
+    <!-- Outer border glow -->
+    <filter id="bglow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#00d4aa" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- ══════════════════════════════════════════════
+       BACKGROUND
+  ══════════════════════════════════════════════ -->
+  <rect width="420" height="420" rx="24" fill="url(#bg)"/>
+  <rect width="420" height="420" rx="24" fill="url(#bgr)" opacity="0.55"/>
+
+  <!-- Glowing border ring -->
+  <rect width="418" height="418" rx="23" x="1" y="1"
+    fill="none" stroke="url(#hg)" stroke-width="1.2" opacity="0.35" filter="url(#bglow)"/>
+
+  <!-- ── Scattered neural background dots ── -->
+  <!-- Top area -->
+  <circle cx="36"  cy="40"  r="1.5" fill="#00d4aa" opacity="0.28"/>
+  <circle cx="70"  cy="24"  r="1"   fill="#7b61ff"  opacity="0.22"/>
+  <circle cx="54"  cy="68"  r="1"   fill="#00b4d8"  opacity="0.18"/>
+  <circle cx="352" cy="30"  r="1.5" fill="#00b4d8"  opacity="0.22"/>
+  <circle cx="375" cy="56"  r="1"   fill="#00d4aa"  opacity="0.20"/>
+  <circle cx="328" cy="20"  r="1"   fill="#7b61ff"  opacity="0.18"/>
+  <circle cx="395" cy="90"  r="1"   fill="#00d4aa"  opacity="0.12"/>
+  <circle cx="22"  cy="95"  r="1"   fill="#7b61ff"  opacity="0.12"/>
+  <!-- Sides -->
+  <circle cx="18"  cy="162" r="1.5" fill="#00b4d8"  opacity="0.20"/>
+  <circle cx="14"  cy="228" r="1"   fill="#7b61ff"  opacity="0.16"/>
+  <circle cx="400" cy="150" r="1.5" fill="#00d4aa"  opacity="0.20"/>
+  <circle cx="402" cy="240" r="1"   fill="#00b4d8"  opacity="0.16"/>
+  <!-- Bottom -->
+  <circle cx="48"  cy="372" r="1.5" fill="#7b61ff"  opacity="0.22"/>
+  <circle cx="370" cy="376" r="1.5" fill="#00d4aa"  opacity="0.22"/>
+  <circle cx="185" cy="408" r="1"   fill="#00b4d8"  opacity="0.10"/>
+  <circle cx="235" cy="408" r="1"   fill="#7b61ff"  opacity="0.10"/>
+
+  <!-- Faint connecting lines between dots -->
+  <line x1="36"  y1="40"  x2="70"  y2="24"  stroke="#00d4aa" stroke-width="0.4" opacity="0.09"/>
+  <line x1="328" y1="20"  x2="352" y2="30"  stroke="#7b61ff"  stroke-width="0.4" opacity="0.09"/>
+  <line x1="352" y1="30"  x2="375" y2="56"  stroke="#00b4d8"  stroke-width="0.4" opacity="0.09"/>
+  <line x1="18"  y1="162" x2="14"  y2="228" stroke="#00b4d8"  stroke-width="0.4" opacity="0.08"/>
+  <line x1="400" y1="150" x2="402" y2="240" stroke="#00d4aa"  stroke-width="0.4" opacity="0.08"/>
+
+  <!-- ══════════════════════════════════════════════
+       ICON: Neural Hexagon Matrix
+       Center: (210, 162)  [slightly right of midpoint for visual balance]
+
+       OUTER HEX  R=84:
+         right  (294, 162)   br (252, 234.7≈235)
+         bl     (168, 235)   left (126, 162)
+         tl     (168, 89)    tr  (252, 89)
+
+       MIDDLE HEX R=56:
+         right  (266, 162)   br (238, 210.5≈210)
+         bl     (182, 210)   left (154, 162)
+         tl     (182, 114)   tr  (238, 114)
+
+       INNER HEX R=30:
+         right  (240, 162)   br (225, 188)
+         bl     (195, 188)   left (180, 162)
+         tl     (195, 136)   tr  (225, 136)
+  ══════════════════════════════════════════════ -->
+
+  <!-- Ambient halo -->
+  <circle cx="210" cy="162" r="128" fill="url(#halo)"/>
+  <!-- Pulse ring -->
+  <circle cx="210" cy="162" r="108" fill="url(#pulse)"/>
+
+  <!-- Subtle outer ring (dashed) -->
+  <circle cx="210" cy="162" r="112" fill="none"
+    stroke="#1a3a6a" stroke-width="0.8" stroke-dasharray="3,10" opacity="0.5"/>
+
+  <!-- ── SPOKES: center → outer hex vertices ── -->
+  <line x1="210" y1="162" x2="294" y2="162" stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+  <line x1="210" y1="162" x2="252" y2="235" stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+  <line x1="210" y1="162" x2="168" y2="235" stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+  <line x1="210" y1="162" x2="126" y2="162" stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+  <line x1="210" y1="162" x2="168" y2="89"  stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+  <line x1="210" y1="162" x2="252" y2="89"  stroke="url(#hg)" stroke-width="2"   opacity="0.55" filter="url(#g1)"/>
+
+  <!-- ── OUTER HEXAGON R=84 ── -->
+  <polygon points="294,162 252,235 168,235 126,162 168,89 252,89"
+    fill="none" stroke="url(#hg)" stroke-width="2.5" filter="url(#g1)" opacity="0.92"/>
+
+  <!-- ── MIDDLE HEXAGON R=56 ── -->
+  <polygon points="266,162 238,210 182,210 154,162 182,114 238,114"
+    fill="#00d4aa" fill-opacity="0.025"
+    stroke="url(#hg)" stroke-width="1.8" filter="url(#g1)" opacity="0.78"/>
+
+  <!-- ── INNER HEXAGON R=30 ── -->
+  <polygon points="240,162 225,188 195,188 180,162 195,136 225,136"
+    fill="#7b61ff" fill-opacity="0.045"
+    stroke="url(#hg)" stroke-width="1.3" filter="url(#g1)" opacity="0.65"/>
+
+  <!-- Outer→Middle connector segments -->
+  <line x1="294" y1="162" x2="266" y2="162" stroke="#00d4aa" stroke-width="1"   opacity="0.28"/>
+  <line x1="252" y1="235" x2="238" y2="210" stroke="#00b4d8" stroke-width="1"   opacity="0.28"/>
+  <line x1="168" y1="235" x2="182" y2="210" stroke="#7b61ff"  stroke-width="1"   opacity="0.28"/>
+  <line x1="126" y1="162" x2="154" y2="162" stroke="#00d4aa" stroke-width="1"   opacity="0.28"/>
+  <line x1="168" y1="89"  x2="182" y2="114" stroke="#00b4d8" stroke-width="1"   opacity="0.28"/>
+  <line x1="252" y1="89"  x2="238" y2="114" stroke="#7b61ff"  stroke-width="1"   opacity="0.28"/>
+
+  <!-- Middle→Inner connector segments -->
+  <line x1="266" y1="162" x2="240" y2="162" stroke="#00d4aa" stroke-width="1"   opacity="0.22"/>
+  <line x1="238" y1="210" x2="225" y2="188" stroke="#00b4d8" stroke-width="1"   opacity="0.22"/>
+  <line x1="182" y1="210" x2="195" y2="188" stroke="#7b61ff"  stroke-width="1"   opacity="0.22"/>
+  <line x1="154" y1="162" x2="180" y2="162" stroke="#00d4aa" stroke-width="1"   opacity="0.22"/>
+  <line x1="182" y1="114" x2="195" y2="136" stroke="#00b4d8" stroke-width="1"   opacity="0.22"/>
+  <line x1="238" y1="114" x2="225" y2="136" stroke="#7b61ff"  stroke-width="1"   opacity="0.22"/>
+
+  <!-- ── OUTER VERTEX NODES (glowing) ── -->
+  <circle cx="294" cy="162" r="8" fill="#00d4aa" filter="url(#g3)" opacity="0.9"/>
+  <circle cx="252" cy="235" r="8" fill="#00b4d8" filter="url(#g3)" opacity="0.9"/>
+  <circle cx="168" cy="235" r="8" fill="#7b61ff"  filter="url(#g3)" opacity="0.9"/>
+  <circle cx="126" cy="162" r="8" fill="#00d4aa" filter="url(#g3)" opacity="0.9"/>
+  <circle cx="168" cy="89"  r="8" fill="#00b4d8" filter="url(#g3)" opacity="0.9"/>
+  <circle cx="252" cy="89"  r="8" fill="#7b61ff"  filter="url(#g3)" opacity="0.9"/>
+  <!-- White cores -->
+  <circle cx="294" cy="162" r="3.5" fill="#dffff8"/>
+  <circle cx="252" cy="235" r="3.5" fill="#d8f6ff"/>
+  <circle cx="168" cy="235" r="3.5" fill="#eddaff"/>
+  <circle cx="126" cy="162" r="3.5" fill="#dffff8"/>
+  <circle cx="168" cy="89"  r="3.5" fill="#d8f6ff"/>
+  <circle cx="252" cy="89"  r="3.5" fill="#eddaff"/>
+
+  <!-- ── MIDDLE VERTEX NODES ── -->
+  <circle cx="266" cy="162" r="4.5" fill="#00d4aa" filter="url(#g2)" opacity="0.82"/>
+  <circle cx="238" cy="210" r="4.5" fill="#00b4d8" filter="url(#g2)" opacity="0.82"/>
+  <circle cx="182" cy="210" r="4.5" fill="#7b61ff"  filter="url(#g2)" opacity="0.82"/>
+  <circle cx="154" cy="162" r="4.5" fill="#00d4aa" filter="url(#g2)" opacity="0.82"/>
+  <circle cx="182" cy="114" r="4.5" fill="#00b4d8" filter="url(#g2)" opacity="0.82"/>
+  <circle cx="238" cy="114" r="4.5" fill="#7b61ff"  filter="url(#g2)" opacity="0.82"/>
+
+  <!-- ── INNER VERTEX NODES ── -->
+  <circle cx="240" cy="162" r="3"   fill="#00d4aa" opacity="0.68"/>
+  <circle cx="225" cy="188" r="3"   fill="#00b4d8" opacity="0.68"/>
+  <circle cx="195" cy="188" r="3"   fill="#7b61ff"  opacity="0.68"/>
+  <circle cx="180" cy="162" r="3"   fill="#00d4aa" opacity="0.68"/>
+  <circle cx="195" cy="136" r="3"   fill="#00b4d8" opacity="0.68"/>
+  <circle cx="225" cy="136" r="3"   fill="#7b61ff"  opacity="0.68"/>
+
+  <!-- ── CENTRAL ORB ── -->
+  <!-- Outer corona -->
+  <circle cx="210" cy="162" r="30" fill="url(#orb)" filter="url(#g3)"/>
+  <!-- Ring -->
+  <circle cx="210" cy="162" r="18" fill="none" stroke="#00d4aa"
+    stroke-width="2.8" opacity="0.55" filter="url(#g2)"/>
+  <!-- Inner ring -->
+  <circle cx="210" cy="162" r="10" fill="none" stroke="#00b4d8"
+    stroke-width="1.5" opacity="0.45" filter="url(#g1)"/>
+  <!-- Core glow -->
+  <circle cx="210" cy="162" r="8"  fill="#00d4aa" filter="url(#g3)"/>
+  <!-- Core dot -->
+  <circle cx="210" cy="162" r="4.5" fill="#ffffff" opacity="0.97"/>
+
+  <!-- ══════════════════════════════════════════════
+       TEXT SECTION
+  ══════════════════════════════════════════════ -->
+
+  <!-- Divider line -->
+  <line x1="48" y1="278" x2="372" y2="278" stroke="url(#hg)" stroke-width="1.1" opacity="0.38"/>
+
+  <!-- ── B E L A L ── -->
+  <text x="210" y="324"
+    font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-size="58"
+    font-weight="900"
+    letter-spacing="18"
+    text-anchor="middle"
+    fill="url(#tg)"
+    filter="url(#tgf)">BELAL</text>
+
+  <!-- Full project name -->
+  <text x="210" y="346"
+    font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-size="7.8"
+    letter-spacing="2.1"
+    text-anchor="middle"
+    fill="#3d5280"
+    opacity="0.95">BUSINESS ESTIMATION LEVERAGING AUTOMATED LEARNING</text>
+
+  <!-- Flanking decoration lines + dots for tagline -->
+  <circle cx="46"  cy="366" r="2.2" fill="#00d4aa" opacity="0.55" filter="url(#g1)"/>
+  <line   x1="52"  y1="366" x2="128" y2="366" stroke="#00d4aa" stroke-width="0.7" opacity="0.3"/>
+  <circle cx="374" cy="366" r="2.2" fill="#7b61ff"  opacity="0.55" filter="url(#g1)"/>
+  <line   x1="292" y1="366" x2="368" y2="366" stroke="#7b61ff"  stroke-width="0.7" opacity="0.3"/>
+
+  <!-- AGENT BY ECI -->
+  <text x="210" y="370"
+    font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+    font-size="10.5"
+    letter-spacing="5.5"
+    text-anchor="middle"
+    fill="url(#tag-g)"
+    opacity="0.92">AGENT BY ECI</text>
+
+  <!-- Bottom trinity dots -->
+  <circle cx="196" cy="392" r="2.2" fill="#00d4aa" opacity="0.28" filter="url(#g1)"/>
+  <circle cx="210" cy="396" r="2.8" fill="#7b61ff"  opacity="0.20" filter="url(#g1)"/>
+  <circle cx="224" cy="392" r="2.2" fill="#00b4d8"  opacity="0.28" filter="url(#g1)"/>
+</svg>

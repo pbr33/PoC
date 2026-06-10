@@ -1,0 +1,249 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║   GLO FINANCE AS-IS PROCESS MAP — PROFESSIONAL CLIENT VOICEOVER SCRIPT     ║
+║   Prompt 2: System / ERP View  ·  Estimated delivery time: ~6-7 minutes   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+[TONE: Confident, authoritative, conversational. Speak at a measured pace.
+ Pause at [PAUSE] markers. Click each element as you reference it.]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  OPENING  (0:00 – 0:45)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"What you're looking at is the complete end-to-end finance operations landscape
+ for Tesco's Global Logistics — mapped, verified, and documented for the first
+ time in one single view.
+
+ Every row you see on the left is a real system or ERP platform that Tesco's
+ finance operation runs on today. Every column across the top represents a key
+ business activity — from the moment a supplier is first onboarded, all the
+ way through to paying customs duty to HMRC. [PAUSE]
+
+ What makes this view powerful is not just what it shows — it's what it reveals.
+ Where systems hand off to each other. Where automated processes break down into
+ manual workarounds. And where the real operational risk lives.
+
+ Let me walk you through it."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 1 — THE DIAGRAM STRUCTURE  (0:45 – 1:30)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Point to left swim lane labels]
+
+"Thirteen swim lanes. Each one is a distinct ERP system, platform or tool.
+ Not a business team — a system. Because in Tesco's finance world, the system
+ boundaries are where the complexity lives.
+
+ At the top, we have eight activity phases — the L3 process steps — from
+ Supplier Setup all the way to Customs and Duty settlement.
+
+[Point to the green [A] and orange [M] badges on boxes]
+
+ Every activity box carries a badge. Green means it's automated — the system
+ handles it without human intervention. Orange means it's manual — a person
+ has to do it. You'll notice very quickly where the manual steps cluster. That
+ clustering pattern tells its own story. [PAUSE]
+
+ The arrows between rows — those diagonal connections — are the integration
+ points. They show where data moves from one system to another. Count them.
+ There are over twenty distinct system-to-system integrations in this landscape."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 2 — THE SUPPLIER FOUNDATION  (1:30 – 2:15)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Click SSUP Portal / NeoGrid box, panel opens]
+
+"The process starts here — with a supplier trying to get onto Tesco's books.
+ The SSUP team collects a mandatory document pack: company registration, bank
+ details, letterhead, contacts. All of this goes into NeoGrid manually. [PAUSE]
+
+[Click EQOS box]
+
+ From NeoGrid, it flows into EQOS — Tesco's master data system for every
+ supplier and factory globally. EQOS validates, approves, and creates the
+ record. This is a critical gatekeeping step — until a supplier exists in EQOS,
+ not a single Purchase Order can be raised against them.
+
+ And here's something important — [Click EQOS feed box] — once a supplier is
+ active, EQOS pushes compliance status to ISOS automatically every fifteen
+ minutes. That means if a factory fails a compliance audit at 9 AM, by 9:15
+ all their in-flight POs are blocked. The system reacts in near real-time."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 3 — THE ORDER MACHINE  (2:15 – 3:00)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Click LM/MM box]
+
+"Buyers create Purchase Orders here — in LM or MM depending on the product
+ category. Clothing starts in MM, crosses to LM, then transmits via BizTalk.
+ A fully manual step — [M] badge, orange.
+
+[Click ISOS Validate box]
+
+ That PO lands in ISOS — the central finance and validation hub. ISOS runs
+ four automatic checks: Is the supplier active? Is the factory approved?
+ Is the cost price valid? Is the delivery date correct?
+
+ If anything fails — [point to compliance exception] — ISOS silently cancels
+ the PO. The critical word there is 'silently'. LM does not receive a
+ cancellation message back. The buyer has no idea. They think their PO is live.
+ That is a known, documented gap in the current system landscape. [PAUSE]
+
+[Click OTM box, then BizTalk box]
+
+ If the PO passes — it goes to OTM, which further enriches it and distributes
+ it to the supplier as a PDF. BizTalk handles the transmission at every step.
+ Think of BizTalk as the nervous system connecting all of these platforms
+ together."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 4 — THE INVOICE CHAIN  (3:00 – 4:00)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Click Documentum box]
+
+"Once goods ship and an invoice arrives, look what happens here — Documentum.
+ The supplier sends a PDF invoice. It arrives in Documentum, and someone
+ manually keys in six or seven fields — PO number, currency, supplier ID,
+ quantity, amount. Every. Single. Invoice. [PAUSE]
+
+ This is one of the highest-volume manual activities in the entire finance
+ operation. At Tesco's import scale, that represents thousands of manual
+ keystrokes per week, with the attendant risk of human error.
+
+[Click BizTalk IV0 box]
+
+ Simultaneously — on a completely separate channel — the Freight Forwarder
+ sends an electronic IV0 invoice message via BizTalk to ISOS. Two invoices
+ for the same shipment. Two completely separate systems. They need to reconcile.
+
+[Click ISOS 78-column extract box]
+
+ ISOS merges everything — PO data, supplier master, shipment data, IV0
+ values — into a 78-column extract. This extract only contains POs that have
+ passed cost validation. If a buyer hasn't resolved a cost mismatch in the
+ OTM Business Monitor, that invoice simply doesn't appear here.
+
+[Click BizTalk EDI box]
+
+ EDI then automatically trims that to 69 columns in OFI format. Fully
+ automated. Clean. This is the input into the 3-way match.
+
+[Click Oracle 11i OFI AP box]
+
+ Once matched — Oracle Financials 11i creates the AP invoice automatically.
+ No workflow approval required. Payment goes to HSBC on 90-day terms,
+ Vendor Financing, or Letter of Credit depending on the supplier profile."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 5 — THE FREIGHT BILLING STORY  (4:00 – 4:45)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Click MS Access box]
+
+"Now look at this row — MS Access. A self-built Microsoft Access database,
+ maintained by a single analyst in Bangalore, is the operational backbone of
+ Tesco's entire freight self-billing process. [PAUSE]
+
+ Every Monday, the analyst manually uploads the OTM Daily File. There is no
+ automated connection between OTM and MS Access. They extract the weekly
+ invoicing data by carrier, clean it, paste it into an Excel Rolling File,
+ email it to each carrier for agreement — and then, on Friday, raise a
+ Purchase Requisition in Oracle Fusion.
+
+ The Rolling File has no system backup.
+
+[Click Oracle Fusion PO box]
+
+ Oracle Fusion generates the PO automatically and emails it to the carrier.
+
+[Click Tungsten box]
+
+ The carrier then logs into Tungsten Network and submits a formal eInvoice
+ against that PO. Tungsten validates it, and within 24 hours it flows
+ automatically into Oracle Fusion Payables.
+
+ The contrast here is striking — a state-of-the-art Oracle Fusion and Tungsten
+ setup at the end of a process that starts with a manually-maintained,
+ single-point-of-failure MS Access database."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SECTION 6 — CUSTOMS & THE FINAL MILE  (4:45 – 5:30)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Click OTM CSS box]
+
+"In the bottom rows, we have customs. OTM automatically generates a Customs
+ Summary Sheet for every active shipment and sends it to WTA — Tesco's
+ clearing agent — days before the vessel arrives. That's proactive, automated,
+ and it works well.
+
+[Click WTA SFD box]
+
+ WTA combines that CSS with IMS invoice data received from OFI, and files
+ the Simplified Frontier Declaration at the UK border. Tesco's AEO status
+ means this gives near-automatic HMRC clearance.
+
+[Click NBS/DDA box]
+
+ Meanwhile — OTM sends HS codes to NBS weekly. NBS calculates duty rates.
+ The accrual is posted to the General Ledger in OFI. And on the 16th of each
+ month, TISL pays Customs Duty through the Duty Deferment Account.
+
+ Automated, systematic, and compliant. The customs lane is one of the most
+ well-engineered parts of this entire process."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CLOSING — THE OPPORTUNITY  (5:30 – 6:15)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Pan back to show full diagram]
+
+"So what does this map tell us?
+
+ Thirteen systems. Over twenty integration points. A process that spans from
+ a supplier uploading a document in NeoGrid all the way to HMRC receiving
+ duty payment — and everything in between touches a different platform.
+
+ Some of this is highly automated and works exceptionally well. OTM's CSS
+ generation, ISOS's real-time compliance feed, Oracle Fusion's PO automation,
+ Tungsten's eInvoicing — these are modern, scalable, and reliable.
+
+ But there are pressure points. Manual PDF indexing in Documentum at scale.
+ A single MS Access database with no backup driving the freight billing cycle.
+ A silent PO cancellation in ISOS that buyers never see. Quarterly rate cards
+ managed in Excel. [PAUSE]
+
+ This is precisely the kind of visibility that enables intelligent
+ transformation. You can't improve what you can't see — and now we can see
+ all of it.
+
+ The question isn't whether there's opportunity here. The question is where
+ to start, and in what sequence, to unlock maximum value with minimum
+ disruption to a finance operation that processes hundreds of thousands of
+ transactions every year.
+
+ That's exactly what we'd like to work through with you."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PRESENTATION TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • Open the HTML diagram in Chrome full-screen before the meeting.
+  • Use Ctrl+Scroll (or pinch) to zoom into specific sections as you narrate.
+  • Click each box as you reference it — the detail panel slides in and shows
+    the description, reinforcing your narrative with written detail.
+  • After the walkthrough, invite the client to click and explore themselves.
+  • The diagram scrolls horizontally — use the Fit button to reset the view.
+  • Press Escape to close the detail panel at any time.
+
+  KEY PHRASES TO USE:
+  — "This is verified against the source documentation"
+  — "Every connection you see is a real integration in production"
+  — "The orange [M] badges are where transformation conversations begin"
+  — "This is what the current state actually looks like — before we design
+     what it should look like"

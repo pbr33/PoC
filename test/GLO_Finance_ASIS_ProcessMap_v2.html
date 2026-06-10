@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GLO Finance · AS-IS Process Flow · v2</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#03060F;
+  font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+
+/* dot grid */
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(circle,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:26px 26px}
+
+/* ── HEADER ── */
+#hdr{
+  position:fixed;top:0;left:0;right:0;height:58px;z-index:300;
+  background:rgba(3,6,15,.96);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(255,255,255,.09);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;gap:14px}
+
+.hdr-brand{display:flex;flex-direction:column;gap:1px}
+.hdr-badge{display:inline-flex;align-items:center;gap:5px;
+  background:rgba(0,229,192,.1);border:1px solid rgba(0,229,192,.22);
+  border-radius:20px;padding:1px 8px;font-size:9px;
+  color:#7FFCE5;letter-spacing:.7px;text-transform:uppercase;
+  font-family:'JetBrains Mono',monospace;width:fit-content;margin-bottom:1px}
+.hdr-badge::before{content:'';width:5px;height:5px;border-radius:50%;
+  background:#00E5C0;box-shadow:0 0 5px #00E5C0;
+  animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.hdr-title{font-size:14px;font-weight:700;color:#EEF4FF;letter-spacing:-.2px}
+.hdr-sub{font-size:9.5px;color:#4E6280;margin-top:1px}
+
+.hdr-right{display:flex;align-items:center;gap:10px}
+
+/* Legend */
+.legend{display:flex;align-items:center;gap:14px;padding:5px 12px;
+  border:1px solid rgba(255,255,255,.07);border-radius:8px;
+  background:rgba(0,0,0,.18)}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:9px;color:#4E6280}
+.leg-swatch{width:28px;height:3px;border-radius:3px}
+.leg-box{width:20px;height:13px;border-radius:3px;
+  border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.04)}
+.leg-dia{width:10px;height:10px;border:1.5px solid #F59E0B;
+  transform:rotate(45deg);background:rgba(245,158,11,.08)}
+
+/* Controls */
+.ctrl-btn{height:30px;padding:0 10px;border-radius:6px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
+  color:#94A3B8;font-size:11px;font-weight:600;
+  font-family:'Inter',sans-serif;transition:all .15s;display:flex;
+  align-items:center;gap:5px}
+.ctrl-btn:hover{background:rgba(255,255,255,.09);color:#EEF4FF}
+.ctrl-btn.active{background:rgba(0,229,192,.12);border-color:rgba(0,229,192,.3);
+  color:#6EE7B7}
+
+/* ── VIEWPORT ── */
+#vp{position:fixed;top:58px;left:0;right:0;bottom:0;
+  overflow:hidden;z-index:1;cursor:grab}
+#vp.drag{cursor:grabbing}
+#diagram-root{transform-origin:0 0;user-select:none}
+
+/* ── ZOOM CONTROLS ── */
+#zoom-ctrl{position:fixed;bottom:48px;right:14px;
+  display:flex;flex-direction:column;gap:3px;z-index:200}
+.zb{width:30px;height:30px;border-radius:6px;
+  background:rgba(8,14,28,.95);border:1px solid rgba(255,255,255,.1);
+  color:#94A3B8;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:15px;font-weight:700;
+  transition:all .12s;backdrop-filter:blur(8px)}
+.zb:hover{background:rgba(20,40,80,.95);color:#EEF4FF}
+#zoom-label{font-size:9px;color:#4E6280;text-align:center;padding:3px;
+  font-family:'JetBrains Mono',monospace;
+  background:rgba(8,14,28,.85);border:1px solid rgba(255,255,255,.07);
+  border-radius:5px}
+
+/* ── BOTTOM BAR ── */
+#bottom-bar{
+  position:fixed;bottom:0;left:0;right:48px;z-index:200;
+  background:rgba(3,6,15,.9);border-top:1px solid rgba(255,255,255,.07);
+  padding:4px 18px;font-size:9px;color:#4E6280;
+  font-family:'JetBrains Mono',monospace;
+  display:flex;align-items:center;gap:8px}
+#bottom-bar b{color:#00E5C0}
+
+/* ── TOOLTIP ── */
+#tooltip{
+  position:fixed;z-index:999;pointer-events:none;
+  max-width:280px;padding:11px 14px;
+  background:rgba(8,14,28,.99);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;
+  box-shadow:0 20px 60px rgba(0,0,0,.9);
+  opacity:0;transform:translateY(5px) scale(.97);
+  transition:opacity .12s,transform .12s}
+#tooltip.show{opacity:1;transform:none}
+.tt-title{font-size:11.5px;font-weight:700;color:#EEF4FF;
+  margin-bottom:4px;padding-bottom:5px;
+  border-bottom:1px solid rgba(255,255,255,.07)}
+.tt-type{display:inline-block;padding:1px 6px;border-radius:3px;
+  font-size:8px;font-weight:600;letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:6px}
+.tt-type.process{background:rgba(79,179,255,.15);color:#93C5FD}
+.tt-type.output{background:rgba(0,229,192,.15);color:#6EE7B7}
+.tt-type.decision{background:rgba(245,158,11,.15);color:#FCD34D}
+.tt-body{font-size:10.5px;color:#94A3B8;line-height:1.55}
+.tt-lane{margin-top:7px;padding-top:6px;
+  border-top:1px solid rgba(255,255,255,.06);
+  font-size:9px;color:#4E6280;display:flex;align-items:center;gap:4px}
+.tt-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-badge">Tesco · Global Logistics Finance · AS-IS Process Flow · v2 · 2026</div>
+    <div class="hdr-title">GLO Finance — End-to-End Process Activity Flow</div>
+    <div class="hdr-sub">7 Business Function Lanes · 8 Process Phases · Finance perspective — all steps sequenced with YES / NO decision paths</div>
+  </div>
+  <div class="hdr-right">
+    <div class="legend">
+      <div class="leg-item"><div class="leg-box"></div>Process Step</div>
+      <div class="leg-item"><div class="leg-box" style="border-color:#00E5C0;background:rgba(0,229,192,.08)"></div>Key Output</div>
+      <div class="leg-item"><div class="leg-dia"></div>Decision</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#4ade80"></div>YES path</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:#f97316"></div>NO / Exception</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:rgba(255,255,255,.25);border:none"></div>Main flow</div>
+    </div>
+    <button class="ctrl-btn" onclick="resetView()">⊙ Reset</button>
+    <button class="ctrl-btn" id="fitBtn" onclick="fitToScreen()">⤢ Fit</button>
+  </div>
+</div>
+
+<div id="vp">
+  <div id="diagram-root">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+
+<div id="zoom-ctrl">
+  <button class="zb" onclick="doZoom(1.15)">+</button>
+  <div id="zoom-label">100%</div>
+  <button class="zb" onclick="doZoom(1/1.15)">−</button>
+</div>
+
+<div id="bottom-bar">
+  <b>Read left → right:</b>
+  Each horizontal band = one business function lane.
+  Arrows show the sequence of activities.
+  <b>Green arrows</b> = YES / proceed. &nbsp;
+  <b>Orange arrows</b> = NO / exception handling, loops back to retry.
+  Click any box for detail. Scroll wheel to zoom. Drag to pan.
+</div>
+
+<div id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div class="tt-type" id="tt-type"></div>
+  <div class="tt-body" id="tt-body"></div>
+  <div class="tt-lane" id="tt-lane"><div class="tt-dot" id="tt-dot"></div><span id="tt-lane-name"></span></div>
+</div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════
+//  DESIGN DATA
+// ═══════════════════════════════════════════════════════════
+
+// ─── Lane definitions ────────────────────────────────────
+// Each lane is a horizontal swim-lane band.
+// y_top/y_bot = y bounds on the canvas.
+const LANES = [
+  { id:'vendor',  label:'Supplier &\nVendor Mgmt',    color:'#00E5C0', y_top:76,  y_bot:210,
+    systems:['Supplier Portal','SAP Vendor Master','Compliance Tool'] },
+  { id:'proc',    label:'Procurement\n& Sourcing',     color:'#4FB3FF', y_top:210, y_bot:324,
+    systems:['SAP Ariba','Rate Mgmt System'] },
+  { id:'buying',  label:'Buying &\nCommercial',        color:'#A78BFA', y_top:324, y_bot:448,
+    systems:['Buying System','SAP MM (PO)','Cost Exception Tool'] },
+  { id:'freight', label:'Freight &\nTransportation',   color:'#FFD04A', y_top:448, y_bot:576,
+    systems:['TMS / CargoWise','Carrier Portal','FF System'] },
+  { id:'billing', label:'Self-Billing /\nFinance Ops', color:'#FF6B6B', y_top:576, y_bot:704,
+    systems:['Self-Billing Tool','SAP Finance','Excel / Shared Drive'] },
+  { id:'ap',      label:'Accounts\nPayable',           color:'#C57BFF', y_top:704, y_bot:832,
+    systems:['SAP AP Module','Invoice Portal','Banking System'] },
+  { id:'customs', label:'Customs &\nDuty Compliance',  color:'#52E67A', y_top:832, y_bot:990,
+    systems:['CHIEF / CDS (HMRC)','WTA Customs Portal','SAP GL'] },
+];
+const laneCY = l => (l.y_top + l.y_bot) / 2;
+
+// ─── Phase definitions ────────────────────────────────────
+// Columns across the top of the diagram.
+const PHASES = [
+  { label:'Supplier\nOnboarding',          x_start:200, x_end:486,  color:'rgba(0,229,192,.06)'   },
+  { label:'Freight Rate\nAgreement',        x_start:486, x_end:712,  color:'rgba(79,179,255,.05)'  },
+  { label:'Purchase Order\nIssuance',       x_start:712, x_end:964,  color:'rgba(167,139,250,.05)' },
+  { label:'PO Cost\nConfirmation',          x_start:964, x_end:1156, color:'rgba(255,208,74,.04)'  },
+  { label:'Shipment\nExecution',            x_start:1156,x_end:1614, color:'rgba(255,107,107,.04)' },
+  { label:'Self-Billing &\nInvoice Prep',   x_start:1614,x_end:1994, color:'rgba(197,123,255,.04)' },
+  { label:'Invoice Processing\n& Payment',  x_start:1994,x_end:2464, color:'rgba(82,230,122,.04)'  },
+  { label:'Customs &\nDuty Compliance',     x_start:2464,x_end:3004, color:'rgba(56,198,255,.04)'  },
+];
+
+// ─── Box / Diamond element definitions ───────────────────
+// type: 'box' = process step, 'out' = key output/milestone,
+//       'dia' = decision diamond, 'exc' = exception/small note
+// cx, cy = center on SVG canvas
+const BW=148, BH=46, BR=8;   // box width, height, corner-radius
+const DW=68;                  // diamond half-diagonal
+
+const ELEMS = [
+  // ── Supplier & Vendor Lane ──────────────────────────────
+  { id:'v_reg',    lane:'vendor',  cx:322,  type:'box',
+    label:'Supplier & Factory\nOnboarded',
+    detail:'New supplier and factory details submitted for registration: factory location, compliance certifications, bank payment details, contact information and sourcing category hierarchy.',
+    bold:true },
+  { id:'v_comp',   lane:'vendor',  cx:472,  type:'dia',
+    label:'Factory\nCompliant?',
+    detail:'Factory compliance status validated against sourcing policy — ethical standards, quality certification, factory audit status and regulatory requirements. Non-compliant factories are BLOCKED from receiving purchase orders until compliance is reinstated.' },
+  { id:'v_remed',  lane:'vendor',  cx:472,  cy_off:72, type:'exc',
+    label:'Remediation Required\n↑ Resubmit for review',
+    detail:'Supplier notified of specific compliance gap. Must resolve and resubmit. No POs can be placed until compliance is reinstated.' },
+  { id:'v_vendor', lane:'vendor',  cx:678,  type:'out',
+    label:'Vendor Created in\nFinance System',
+    detail:'Vendor record created in the accounts payable finance system (weekly batch). Maps supplier to a unique vendor code — prerequisite for any invoice to be paid.', bold:true },
+
+  // ── Procurement Lane ────────────────────────────────────
+  { id:'p_tender', lane:'proc',    cx:568,  type:'box',
+    label:'Freight Tender &\nCarrier Negotiations',
+    detail:'Annual/bi-annual freight tender process. Multi-round negotiation with all ocean carriers and haulage providers covering all shipping lanes, container types (20ft/40ft/40HC/45ft) and all charge components: BAF, THC, GOH, SCG, haulage.' },
+  { id:'p_rate',   lane:'proc',    cx:748,  type:'out',
+    label:'Rate Card Agreed\n& Distributed',
+    detail:'Agreed freight rate card distributed to: (1) freight operations team for carrier bookings, (2) self-billing finance team for invoice validation. Updated 10–15 times per year for emergency surcharges or lane changes.', bold:true },
+
+  // ── Buying & Commercial Lane ────────────────────────────
+  { id:'b_po',     lane:'buying',  cx:864,  type:'box',
+    label:'Product Purchase\nOrder Raised by Buyer',
+    detail:'Buyer creates a product PO specifying: product details, quantity, agreed unit cost, delivery date, origin country and supplier/factory. PO types cover UK inbound, CE clothing/home and global sourcing.', bold:true },
+  { id:'b_costd',  lane:'buying',  cx:1082, type:'dia',
+    label:'Supplier Cost\n= PO Cost?',
+    detail:'When the freight forwarder submits booking confirmation, supplier\'s advised cost is compared against the original PO cost. A mismatch triggers a cost exception that must be resolved before shipment proceeds to invoicing.' },
+  { id:'b_excep',  lane:'buying',  cx:1082, cy_off:72, type:'exc',
+    label:'Cost Exception Resolved by Buyer\n↑ Approved cost flows back',
+    detail:'Buyer reviews exception and selects: "Use Supplier Cost", "Use PO Cost", or sets an Alternate Cost. Decision recorded. Exception cleared. Agreed cost updates the PO. Unresolved exceptions block invoice processing.' },
+
+  // ── Freight & Transportation Lane ───────────────────────
+  { id:'f_issue',  lane:'freight', cx:984,  type:'box',
+    label:'PO Validated, FF\nAssigned & PO Issued',
+    detail:'Purchase order validated for completeness. Freight forwarder (logistics service provider) assigned based on shipping lane routing tables. PO formally issued to both the supplier (authorising production/dispatch) and the freight forwarder (authorising shipment booking).' },
+  { id:'f_book',   lane:'freight', cx:1224, type:'box',
+    label:'Carrier Space\nBooked (per Bill of Lading)',
+    detail:'Freight forwarder books ocean carrier space based on the agreed rate card. Each booking is per Bill of Lading specifying: carrier, shipping lane, container type, ETD and ETA. Bookings tied to the specific PO(s) being shipped.' },
+  { id:'f_conf',   lane:'freight', cx:1406, type:'out',
+    label:'Shipment Confirmed —\nBL · Container · Dates',
+    detail:'Carrier confirms booking. Key reference data recorded: Bill of Lading number, container number(s), vessel name, voyage, confirmed ETD and ETA, carton count and weight. Primary reference for customs declarations and self-billing invoice prep.' },
+  { id:'f_arrive', lane:'freight', cx:1584, type:'out',
+    label:'Goods Dispatched &\nArrived at Destination',
+    detail:'Supplier loads goods at origin. Carrier collects and ships. Goods tracked through ocean transit. Warehouse confirms physical receipt at destination. This arrival milestone triggers both self-billing invoice preparation AND customs declaration filing.',
+    bold:true },
+
+  // ── Self-Billing / Finance Ops Lane ─────────────────────
+  { id:'s_inv',    lane:'billing', cx:1714, type:'box',
+    label:'Arrival Data Received —\nWeekly Invoice File Prepared',
+    detail:'Daily arrival report received. Self-billing team compiles weekly invoice file per carrier listing all arrived containers with applicable charge types: ocean freight, BAF, THC origin/destination, GOH, SCG and haulage, per the agreed rate card.' },
+  { id:'s_agreed', lane:'billing', cx:1882, type:'dia',
+    label:'Charges Agreed\nwith Carrier?',
+    detail:'Self-billed invoice file sent to carrier for formal confirmation. Carrier must confirm "Cost Agreed = YES" before a purchase requisition can be raised. Disputed items remain open until resolved.' },
+  { id:'s_disp',   lane:'billing', cx:1882, cy_off:72, type:'exc',
+    label:'Freight Charge Dispute Resolved\n↑ Resubmit for confirmation',
+    detail:'Specific charge discrepancy raised with carrier. Resolved via agreement. Rolling invoice file updated with agreed amount and resubmitted for carrier confirmation.' },
+  { id:'s_po',     lane:'billing', cx:2054, type:'out',
+    label:'Freight PO Raised\n& Approved',
+    detail:'Purchase requisition created per carrier → cost centre owner approves → freight purchase order auto-generated. PO sent to carrier (via portal or email). Carrier is now authorised to submit a tax invoice.', bold:true },
+
+  // ── Accounts Payable Lane ────────────────────────────────
+  { id:'ap_sub',   lane:'ap',      cx:2134, type:'box',
+    label:'Carrier Submits Invoice\nAgainst PO via Portal',
+    detail:'Carrier logs into invoice portal and creates invoice referencing the PO number. Invoice amount must not exceed PO value. Portal auto-validates: PO number exists, currency matches, value ≤ PO.', bold:true },
+  { id:'ap_vald',  lane:'ap',      cx:2312, type:'dia',
+    label:'Invoice Valid\n& Matches PO?',
+    detail:'Auto-validation checks: PO number exists in finance system, invoice currency matches PO, invoice value ≤ PO value. Failed invoices returned to carrier with specific error.' },
+  { id:'ap_rej',   lane:'ap',      cx:2312, cy_off:72, type:'exc',
+    label:'Invoice Rejected — Carrier Corrects\n↑ & Resubmits via Portal',
+    detail:'Carrier receives rejection with specific error. Corrects invoice and resubmits. Invoice remains open until a valid submission is accepted.' },
+  { id:'ap_match', lane:'ap',      cx:2490, type:'box',
+    label:'3-Way Match: Invoice,\nPO & Delivery Records',
+    detail:'AP team performs 3-way match: (1) Invoice — amount, currency, supplier, invoice number, (2) Purchase Order — price, currency, supplier code, (3) Delivery/shipment records — quantity and receipt confirmation. All three must agree.' },
+  { id:'ap_pay',   lane:'ap',      cx:2680, type:'out',
+    label:'Payment Scheduled\n& Released (30–90 Days)',
+    detail:'Matched invoice approved and scheduled per agreed payment terms. Freight carriers: 30–60 days. Weekly payment run with dual approval. Funds transferred via banking system. Intercompany recharged separately by Finance Controller.',
+    bold:true },
+
+  // ── Customs & Duty Lane ──────────────────────────────────
+  { id:'c_report', lane:'customs', cx:2134, type:'box',
+    label:'Customs Summary Report\nSent to Clearing Agent',
+    detail:'Automated report sent to customs clearing agent (WTA) before vessel arrival: container numbers, PO references, transport mode, vessel/voyage, ETA, carton count and weight. Agent uses this to begin preparing the frontier customs declaration.' },
+  { id:'c_datad',  lane:'customs', cx:2312, type:'dia',
+    label:'All Import Data\nAvailable?',
+    detail:'Clearing agent requires both: (1) Customs Summary Report (CSS) — shipment/container details, AND (2) Invoice/merchandise data (IMS) — AP and AR invoice references and customs value. Both must be available. Missing data risks container being held at port.' },
+  { id:'c_miss',   lane:'customs', cx:2312, cy_off:72, type:'exc',
+    label:'Missing Data Escalated — Container Risk\n↑ Data provided, re-check',
+    detail:'Invoice or shipment data not available when vessel arrives. Escalated urgently to AP team (for IMS) and logistics team (for CSS). Container may be held at port until data provided, incurring demurrage costs.' },
+  { id:'c_decl',   lane:'customs', cx:2490, type:'out',
+    label:'Frontier Declaration\nFiled at Border',
+    detail:'Simplified Frontier Declaration (SFD) submitted at UK port of entry. Tesco\'s AEO/SCDP authorisation enables near-automatic HMRC clearance.' },
+  { id:'c_duty',   lane:'customs', cx:2670, type:'box',
+    label:'Duty Rate Applied &\nAccrual Calculated',
+    detail:'Duty rate determined from HS code assigned to product. Accrual: Duty Rate × Customs Value × Quantity. Accrual posted to general ledger. Supplementary Declaration filed with HMRC by 10th of following month.' },
+  { id:'c_end',    lane:'customs', cx:2862, type:'out',
+    label:'✓  Duty Paid via\nDeferment Account',
+    detail:'Duty liability settled via TISL Customs Duty Deferment Account on 16th of following month. Home imports: duty at import. Bonded warehouse (F&F Clothing): duty at store delivery. Supporting docs retained 7+ years. PROCESS COMPLETE.',
+    bold:true },
+];
+
+// ─── Connections ──────────────────────────────────────────
+// type: 'main'=standard, 'yes'=YES path, 'no'=NO/exception,
+//       'loop'=return/retry, 'hand'=cross-lane handoff
+// from_port / to_port: 'r'=right, 'l'=left, 't'=top, 'b'=bottom, 'c'=center
+const CONNS = [
+  // Vendor lane
+  { f:'v_reg',    fp:'r', t:'v_comp',   tp:'l', type:'main', label:'' },
+  { f:'v_comp',   fp:'r', t:'v_vendor', tp:'l', type:'yes',  label:'YES ✓ Compliant' },
+  { f:'v_comp',   fp:'b', t:'v_remed',  tp:'t', type:'no',   label:'NO ✗' },
+  { f:'v_remed',  fp:'l', t:'v_comp',   tp:'l', type:'loop', label:'retry' },
+
+  // Proc lane — independent start
+  { f:'p_tender', fp:'r', t:'p_rate',   tp:'l', type:'main', label:'' },
+
+  // Vendor → Buying (enables PO)
+  { f:'v_vendor', fp:'b', t:'b_po',     tp:'t', type:'hand', label:'vendor enables PO' },
+
+  // Buying lane
+  { f:'b_po',     fp:'b', t:'f_issue',  tp:'t', type:'hand', label:'' },
+  { f:'f_issue',  fp:'t', t:'b_costd',  tp:'l', type:'hand', label:'cost check' },
+  { f:'b_costd',  fp:'r', t:'f_book',   tp:'t', type:'yes',  label:'YES ✓ Costs Match' },
+  { f:'b_costd',  fp:'b', t:'b_excep',  tp:'t', type:'no',   label:'NO ✗' },
+  { f:'b_excep',  fp:'r', t:'f_book',   tp:'t', type:'loop', label:'resolved' },
+
+  // Freight lane
+  { f:'f_book',   fp:'r', t:'f_conf',   tp:'l', type:'main', label:'' },
+  { f:'f_conf',   fp:'r', t:'f_arrive', tp:'l', type:'main', label:'' },
+
+  // Freight → Billing (arrival triggers self-billing)
+  { f:'f_arrive', fp:'b', t:'s_inv',    tp:'t', type:'hand', label:'arrival triggers\nbilling cycle' },
+
+  // Billing lane
+  { f:'s_inv',    fp:'r', t:'s_agreed', tp:'l', type:'main', label:'' },
+  { f:'s_agreed', fp:'r', t:'s_po',     tp:'l', type:'yes',  label:'YES ✓ Agreed' },
+  { f:'s_agreed', fp:'b', t:'s_disp',   tp:'t', type:'no',   label:'NO ✗' },
+  { f:'s_disp',   fp:'l', t:'s_agreed', tp:'l', type:'loop', label:'resolved' },
+
+  // Billing → AP
+  { f:'s_po',     fp:'b', t:'ap_sub',   tp:'t', type:'hand', label:'PO to carrier' },
+
+  // AP lane
+  { f:'ap_sub',   fp:'r', t:'ap_vald',  tp:'l', type:'main', label:'' },
+  { f:'ap_vald',  fp:'r', t:'ap_match', tp:'l', type:'yes',  label:'YES ✓ Valid' },
+  { f:'ap_vald',  fp:'b', t:'ap_rej',   tp:'t', type:'no',   label:'NO ✗' },
+  { f:'ap_rej',   fp:'l', t:'ap_sub',   tp:'b', type:'loop', label:'resubmit' },
+  { f:'ap_match', fp:'r', t:'ap_pay',   tp:'l', type:'yes',  label:'Match OK ✓' },
+
+  // Freight → Customs (arrival also triggers customs, parallel)
+  { f:'f_arrive', fp:'b', t:'c_report', tp:'t', type:'hand', label:'also triggers\ncustoms filing' },
+
+  // Customs lane
+  { f:'c_report', fp:'r', t:'c_datad',  tp:'l', type:'main', label:'' },
+  { f:'c_datad',  fp:'r', t:'c_decl',   tp:'l', type:'yes',  label:'YES ✓ Complete' },
+  { f:'c_datad',  fp:'b', t:'c_miss',   tp:'t', type:'no',   label:'NO ✗' },
+  { f:'c_miss',   fp:'l', t:'c_datad',  tp:'l', type:'loop', label:'data provided' },
+  { f:'c_decl',   fp:'r', t:'c_duty',   tp:'l', type:'main', label:'' },
+  { f:'c_duty',   fp:'r', t:'c_end',    tp:'l', type:'main', label:'' },
+];
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS — resolved element positions
+// ═══════════════════════════════════════════════════════════
+const NS = 'http://www.w3.org/2000/svg';
+
+function laneOf(id){ return LANES.find(l=>l.id===id); }
+
+// Resolve cx,cy for each element
+function resolveElems(){
+  ELEMS.forEach(e=>{
+    const lane = laneOf(e.lane);
+    e._cy = laneCY(lane) + (e.cy_off || 0);
+    e._laneColor = lane.color;
+  });
+}
+
+// Connection ports: given element, return {x,y} of requested port
+function port(elem, p){
+  const { cx, _cy, type } = elem;
+  const isExc = type === 'exc';
+  const w = isExc ? 148 : BW, h = isExc ? 36 : BH;
+  const dR = DW;
+  if(type === 'dia'){
+    switch(p){
+      case 'r': return {x: cx+dR, y: _cy};
+      case 'l': return {x: cx-dR, y: _cy};
+      case 't': return {x: cx,    y: _cy-dR};
+      case 'b': return {x: cx,    y: _cy+dR};
+    }
+  }
+  switch(p){
+    case 'r': return {x: cx+w/2, y: _cy};
+    case 'l': return {x: cx-w/2, y: _cy};
+    case 't': return {x: cx,     y: _cy-h/2};
+    case 'b': return {x: cx,     y: _cy+h/2};
+  }
+}
+
+function elemById(id){ return ELEMS.find(e=>e.id===id); }
+
+// ═══════════════════════════════════════════════════════════
+//  SVG CREATION UTILITIES
+// ═══════════════════════════════════════════════════════════
+function svgEl(tag, attrs={}){
+  const el = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
+  return el;
+}
+
+function mkGradient(svg, id, color, dir='x'){
+  const defs = svg.querySelector('defs') || svg.insertBefore(svgEl('defs'), svg.firstChild);
+  const grad = svgEl('linearGradient', {id, x1: dir==='x'?'0':'0', y1:'0', x2: dir==='x'?'1':'0', y2: dir==='x'?'0':'1'});
+  const hex = color;
+  const s1 = svgEl('stop', {'offset':'0%',   'stop-color':hex, 'stop-opacity':'0.14'});
+  const s2 = svgEl('stop', {'offset':'100%', 'stop-color':hex, 'stop-opacity':'0.06'});
+  grad.appendChild(s1); grad.appendChild(s2);
+  defs.appendChild(grad);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DRAW
+// ═══════════════════════════════════════════════════════════
+function draw(){
+  resolveElems();
+
+  const svg = document.getElementById('svg');
+  svg.innerHTML = '';
+
+  const CANVAS_W = 3080, CANVAS_H = 1010;
+  svg.setAttribute('width', CANVAS_W);
+  svg.setAttribute('height', CANVAS_H);
+
+  const defs = svgEl('defs');
+  // Arrow markers
+  ['main','yes','no','loop','hand'].forEach(t=>{
+    const color = t==='yes'?'#4ade80' : t==='no'||t==='loop'?'#f97316' : t==='hand'?'rgba(148,163,184,.8)' : 'rgba(255,255,255,.45)';
+    const m = svgEl('marker',{id:`arrow-${t}`,markerWidth:'8',markerHeight:'8',
+      refX:'6',refY:'4',orient:'auto'});
+    const p = svgEl('path',{d:'M0,0 L8,4 L0,8 Z',fill:color});
+    m.appendChild(p); defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  // ── Background ──────────────────────────────────────────
+  svg.appendChild(svgEl('rect',{x:0,y:0,width:CANVAS_W,height:CANVAS_H,
+    fill:'#03060F'}));
+
+  // ── Lane bands ──────────────────────────────────────────
+  const LABEL_W = 200;  // wider to fit system badges
+  LANES.forEach((ln,i)=>{
+    const fillA = i%2===0 ? 'rgba(255,255,255,.009)' : 'rgba(0,0,0,.0)';
+    svg.appendChild(svgEl('rect',{x:0, y:ln.y_top, width:CANVAS_W,
+      height:ln.y_bot-ln.y_top, fill:fillA}));
+    // Lane separator line
+    svg.appendChild(svgEl('line',{x1:0, y1:ln.y_bot, x2:CANVAS_W, y2:ln.y_bot,
+      stroke:'rgba(255,255,255,.05)', 'stroke-width':'1'}));
+    // Lane left color bar
+    svg.appendChild(svgEl('rect',{x:0, y:ln.y_top+1, width:3,
+      height:ln.y_bot-ln.y_top-2, fill:ln.color, rx:1}));
+    // Lane label background
+    svg.appendChild(svgEl('rect',{x:3, y:ln.y_top, width:LABEL_W-3,
+      height:ln.y_bot-ln.y_top, fill:'rgba(3,6,15,.85)'}));
+
+    const g = svgEl('g');
+    const laneH = ln.y_bot - ln.y_top;
+    const sys = ln.systems || [];
+    // Total vertical space needed: 2 label lines + divider + system badges
+    // label block height: 2 lines × 14px = 28px
+    // divider gap: 8px
+    // sys badges: sys.length × 14px
+    const totalH = 28 + (sys.length > 0 ? 8 + sys.length * 14 : 0);
+    const startY = ln.y_top + (laneH - totalH) / 2;
+
+    // Function name lines
+    const labelLines = ln.label.split('\n');
+    labelLines.forEach((line, j)=>{
+      const t = svgEl('text',{
+        x: LABEL_W/2+2, y: startY + 10 + j*14,
+        'text-anchor':'middle', 'dominant-baseline':'middle',
+        fill: j===0 ? ln.color : '#4E6280',
+        'font-size': j===0?'11':'9.5', 'font-weight': j===0?'700':'400',
+        'font-family':'Inter,sans-serif',
+        'letter-spacing': j===0?'.3px':'0'
+      });
+      t.textContent = line;
+      g.appendChild(t);
+    });
+
+    // Thin divider line between name and system badges
+    if(sys.length > 0){
+      const divY = startY + 28 + 4;
+      g.appendChild(svgEl('line',{
+        x1:10, y1:divY, x2:LABEL_W-10, y2:divY,
+        stroke:`rgba(${hexToRgb(ln.color)},.18)`, 'stroke-width':'1'
+      }));
+
+      // System badge chips
+      sys.forEach((sysName, si)=>{
+        const badgeY = startY + 36 + si*14;
+        const badgePadH = 3, badgePadV = 2.5;
+        const chipW = LABEL_W - 20;
+        const chipX = 10;
+
+        // Chip background rect
+        g.appendChild(svgEl('rect',{
+          x:chipX, y:badgeY - badgePadH - 4,
+          width:chipW, height:11 + badgePadH*2,
+          rx:3, ry:3,
+          fill:`rgba(${hexToRgb(ln.color)},.07)`,
+          stroke:`rgba(${hexToRgb(ln.color)},.22)`,
+          'stroke-width':'0.75'
+        }));
+        // Small dot
+        g.appendChild(svgEl('circle',{
+          cx:chipX+7, cy:badgeY+0.5,
+          r:'2',
+          fill:ln.color, opacity:'0.6'
+        }));
+        // System name text
+        const st = svgEl('text',{
+          x:chipX+14, y:badgeY+1,
+          'dominant-baseline':'middle',
+          fill:`rgba(255,255,255,.52)`,
+          'font-size':'8', 'font-weight':'500',
+          'font-family':'Inter,sans-serif',
+          'letter-spacing':'.1px'
+        });
+        st.textContent = sysName;
+        g.appendChild(st);
+      });
+    }
+
+    svg.appendChild(g);
+  });
+
+  // ── Phase header row ──────────────────────────────────────
+  // Top header bar (above lane content)
+  svg.appendChild(svgEl('rect',{x:0,y:0,width:CANVAS_W,height:76,
+    fill:'rgba(3,6,15,.95)'}));
+  svg.appendChild(svgEl('line',{x1:0,y1:76,x2:CANVAS_W,y2:76,
+    stroke:'rgba(255,255,255,.09)','stroke-width':'1'}));
+
+  // Corner label
+  {
+    const t1 = svgEl('text',{x:LABEL_W/2+2, y:27,
+      'text-anchor':'middle','dominant-baseline':'middle',
+      fill:'#4E6280','font-size':'8.5','font-weight':'700',
+      'font-family':'Inter,sans-serif','letter-spacing':'.8px'});
+    t1.textContent = 'BUSINESS FUNCTION';
+    svg.appendChild(t1);
+    const t2 = svgEl('text',{x:LABEL_W/2+2, y:44,
+      'text-anchor':'middle','dominant-baseline':'middle',
+      fill:'rgba(255,255,255,.18)','font-size':'7.5','font-weight':'600',
+      'font-family':'Inter,sans-serif','letter-spacing':'.6px'});
+    t2.textContent = 'SYSTEM / ERP / TOOL';
+    svg.appendChild(t2);
+    // Small divider inside corner
+    svg.appendChild(svgEl('line',{x1:16,y1:35,x2:LABEL_W-16,y2:35,
+      stroke:'rgba(255,255,255,.06)','stroke-width':'1'}));
+    svg.appendChild(svgEl('line',{x1:LABEL_W,y1:0,x2:LABEL_W,y2:76,
+      stroke:'rgba(255,255,255,.09)','stroke-width':'1'}));
+  }
+
+  PHASES.forEach((ph, i)=>{
+    const x = ph.x_start, w = ph.x_end - ph.x_start;
+    const cx = x + w/2;
+    // Background fill
+    svg.appendChild(svgEl('rect',{x,y:0,width:w,height:76,fill:ph.color}));
+    // Phase number badge
+    const numEl = svgEl('text',{
+      x: cx, y: 22,
+      'text-anchor':'middle','dominant-baseline':'middle',
+      fill:'rgba(255,255,255,.18)', 'font-size':'26', 'font-weight':'700',
+      'font-family':'JetBrains Mono,monospace'
+    });
+    numEl.textContent = String(i+1).padStart(2,'0');
+    svg.appendChild(numEl);
+    // Phase label text
+    const lines = ph.label.split('\n');
+    lines.forEach((line,j)=>{
+      const t = svgEl('text',{
+        x:cx, y:50 + (j-(lines.length-1)/2)*13,
+        'text-anchor':'middle','dominant-baseline':'middle',
+        fill:'rgba(255,255,255,.75)', 'font-size':'10', 'font-weight':'600',
+        'font-family':'Inter,sans-serif'
+      });
+      t.textContent = line;
+      svg.appendChild(t);
+    });
+    // Right border
+    if(i < PHASES.length-1)
+      svg.appendChild(svgEl('line',{x1:ph.x_end,y1:0,x2:ph.x_end,y2:CANVAS_H,
+        stroke:'rgba(255,255,255,.04)','stroke-width':'1','stroke-dasharray':'3 4'}));
+  });
+
+  // ── Draw connections (behind boxes) ─────────────────────
+  drawConnections(svg);
+
+  // ── Draw elements ────────────────────────────────────────
+  ELEMS.forEach(e=> drawElem(svg, e));
+
+  // ── Vertical label divider ────────────────────────────────
+  svg.appendChild(svgEl('line',{x1:LABEL_W,y1:76,x2:LABEL_W,y2:CANVAS_H,
+    stroke:'rgba(255,255,255,.07)','stroke-width':'1'}));
+}
+
+// ─── Draw a single element ────────────────────────────────
+function drawElem(svg, e){
+  const { cx, _cy, type, _laneColor, bold } = e;
+  const isExc = type === 'exc';
+  const isOut = type === 'out';
+
+  const g = svgEl('g',{'data-id':e.id, style:'cursor:pointer'});
+  g.addEventListener('mouseenter', ev=>showTooltip(ev, e));
+  g.addEventListener('mousemove',  ev=>moveTooltip(ev));
+  g.addEventListener('mouseleave', ()=>hideTooltip());
+
+  if(type === 'dia'){
+    // Diamond
+    const R = DW;
+    const pts = `${cx},${_cy-R} ${cx+R},${_cy} ${cx},${_cy+R} ${cx-R},${_cy}`;
+    g.appendChild(svgEl('polygon',{
+      points:pts,
+      fill:'rgba(245,158,11,.07)',
+      stroke:'#F59E0B',
+      'stroke-width':'1.5',
+      'stroke-linejoin':'round'
+    }));
+    // Diamond glow
+    g.appendChild(svgEl('polygon',{
+      points:pts,
+      fill:'none',
+      stroke:'rgba(245,158,11,.18)',
+      'stroke-width':'5',
+      'stroke-linejoin':'round',
+      'style':'filter:blur(3px)'
+    }));
+    // Text inside diamond
+    const lines = e.label.split('\n');
+    lines.forEach((line,j)=>{
+      const t = svgEl('text',{
+        x:cx, y:_cy + (j-(lines.length-1)/2)*12,
+        'text-anchor':'middle','dominant-baseline':'middle',
+        fill:'#FCD34D','font-size':'9.5','font-weight':'700',
+        'font-family':'Inter,sans-serif'
+      });
+      t.textContent = line;
+      g.appendChild(t);
+    });
+  } else {
+    // Rect (box, out, exc)
+    const w = isExc ? 160 : BW;
+    const h = isExc ? 36  : BH;
+    const opacity = isExc ? 0.6 : 1;
+    const rx = isExc ? 5 : BR;
+    const borderColor = isExc ? `rgba(${hexToRgb(_laneColor)},.35)` : _laneColor;
+    const fillOpacity = isOut ? 0.06 : 0.03;
+    const strokeW = isOut ? '1.8' : isExc ? '1' : '1.2';
+    const strokeDash = isExc ? '4 3' : 'none';
+
+    // Glow for key outputs
+    if(isOut && !isExc){
+      g.appendChild(svgEl('rect',{
+        x:cx-w/2-3, y:_cy-h/2-3,
+        width:w+6, height:h+6, rx:rx+2,
+        fill:`rgba(${hexToRgb(_laneColor)},.06)`,
+        'style':'filter:blur(6px)'
+      }));
+    }
+
+    g.appendChild(svgEl('rect',{
+      x:cx-w/2, y:_cy-h/2,
+      width:w, height:h, rx,
+      fill:`rgba(${hexToRgb(_laneColor)},${fillOpacity})`,
+      stroke:borderColor,
+      'stroke-width':strokeW,
+      'stroke-dasharray':strokeDash,
+      opacity
+    }));
+
+    // Label text
+    const lines = e.label.split('\n');
+    const textColor = isExc ? `rgba(${hexToRgb(_laneColor)},.7)` : _laneColor;
+    const fontSize = isExc ? '8.5' : '9.5';
+    const fontWeight = bold ? '700' : '500';
+    lines.forEach((line,j)=>{
+      const t = svgEl('text',{
+        x:cx, y:_cy + (j-(lines.length-1)/2)*12.5,
+        'text-anchor':'middle','dominant-baseline':'middle',
+        fill:textColor, 'font-size':fontSize, 'font-weight':fontWeight,
+        'font-family':'Inter,sans-serif'
+      });
+      t.textContent = line;
+      g.appendChild(t);
+    });
+  }
+  svg.appendChild(g);
+}
+
+// ─── Draw connections ─────────────────────────────────────
+function drawConnections(svg){
+  CONNS.forEach(c=>{
+    const fEl = elemById(c.f), tEl = elemById(c.t);
+    if(!fEl||!tEl) return;
+    const fp = port(fEl, c.fp);
+    const tp = port(tEl, c.tp);
+
+    const isYes  = c.type==='yes';
+    const isNo   = c.type==='no';
+    const isLoop = c.type==='loop';
+    const isHand = c.type==='hand';
+
+    const stroke   = isYes ? '#4ade80' : isNo ? '#f97316' : isLoop ? '#f97316' : isHand ? 'rgba(148,163,184,.6)' : 'rgba(255,255,255,.32)';
+    const strokeW  = isYes||isNo ? '1.8' : isLoop ? '1.2' : isHand ? '1.4' : '1.3';
+    const dashArr  = isLoop ? '4 3' : 'none';
+    const opacity  = isLoop ? '0.65' : isHand ? '0.75' : '1';
+    const marker   = `url(#arrow-${c.type})`;
+
+    // Build path
+    const d = buildPath(fp, tp, c.type, fEl, tEl);
+
+    const path = svgEl('path',{
+      d, fill:'none', stroke, 'stroke-width':strokeW,
+      'stroke-dasharray':dashArr, opacity,
+      'marker-end':marker, 'stroke-linecap':'round', 'stroke-linejoin':'round'
+    });
+    svg.appendChild(path);
+
+    // Arrow label
+    if(c.label){
+      const isYN = isYes||isNo;
+      drawArrowLabel(svg, fp, tp, c.label, isYes, isNo, d, c.type);
+    }
+  });
+}
+
+function buildPath(fp, tp, type, fEl, tEl){
+  const dx = tp.x - fp.x;
+  const dy = tp.y - fp.y;
+
+  if(type === 'loop'){
+    // Route below / to left: curve around
+    if(fp.x < tp.x){ // forward-ish loop (exception → retry, goes left)
+      const lx = Math.min(fp.x, tp.x) - 50;
+      return `M${fp.x},${fp.y} C${lx},${fp.y} ${lx},${tp.y} ${tp.x},${tp.y}`;
+    } else {
+      const lx = Math.min(fp.x, tp.x) - 46;
+      return `M${fp.x},${fp.y} C${lx},${fp.y} ${lx},${tp.y} ${tp.x},${tp.y}`;
+    }
+  }
+
+  if(type === 'no'){
+    // Straight down from diamond bottom to exception box top
+    return `M${fp.x},${fp.y} C${fp.x},${fp.y+18} ${tp.x},${tp.y-18} ${tp.x},${tp.y}`;
+  }
+
+  if(type === 'hand'){
+    // Cross-lane: S-curve
+    const cx1 = fp.x + (tp.x-fp.x)*0.45;
+    const cy1 = fp.y;
+    const cx2 = tp.x - (tp.x-fp.x)*0.45;
+    const cy2 = tp.y;
+    return `M${fp.x},${fp.y} C${cx1},${cy1} ${cx2},${cy2} ${tp.x},${tp.y}`;
+  }
+
+  // Standard: right→left horizontal with smooth mid-point curve
+  const mx = (fp.x+tp.x)/2;
+  return `M${fp.x},${fp.y} C${mx},${fp.y} ${mx},${tp.y} ${tp.x},${tp.y}`;
+}
+
+function drawArrowLabel(svg, fp, tp, label, isYes, isNo, d, type){
+  const mx = (fp.x + tp.x) / 2;
+  const my = (fp.y + tp.y) / 2 - (isYes||isNo ? 6 : 4);
+
+  const color = isYes ? '#4ade80' : isNo||type==='loop' ? '#f97316' : 'rgba(255,255,255,.42)';
+  const fw = isYes||isNo ? '700' : '400';
+  const fs = isYes||isNo ? '8.5' : '8';
+
+  const lines = label.split('\n');
+  const approxW = Math.max(...lines.map(l=>l.length)) * (isYes||isNo ? 5.4 : 4.8) + 8;
+
+  if(isYes||isNo){
+    // Pill background
+    svg.appendChild(svgEl('rect',{
+      x:mx-approxW/2, y:my-8*(lines.length),
+      width:approxW, height:12*lines.length,
+      rx:4,
+      fill:isYes?'rgba(74,222,128,.1)':'rgba(249,115,22,.1)'
+    }));
+  }
+
+  lines.forEach((line,j)=>{
+    const t = svgEl('text',{
+      x:mx, y:my - (lines.length-1-j)*10,
+      'text-anchor':'middle','dominant-baseline':'middle',
+      fill:color,'font-size':fs,'font-weight':fw,
+      'font-family':'JetBrains Mono,monospace'
+    });
+    t.textContent = line;
+    svg.appendChild(t);
+  });
+}
+
+// ─── Hex color to RGB components ─────────────────────────
+function hexToRgb(hex){
+  // Handle #RRGGBB
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOOLTIP
+// ═══════════════════════════════════════════════════════════
+function showTooltip(ev, e){
+  const tip = document.getElementById('tooltip');
+  const lane = laneOf(e.lane);
+  const label = e.label.replace(/\n/g,' — ');
+
+  document.getElementById('tt-title').textContent = label;
+
+  const typeEl = document.getElementById('tt-type');
+  const typeMap = { box:'Process Activity', out:'Key Output / Milestone', dia:'Decision Point', exc:'Exception Handling' };
+  typeEl.textContent = typeMap[e.type] || e.type;
+  typeEl.className = 'tt-type ' + (e.type==='dia'?'decision':e.type==='out'||e.type==='box'?'process':'process');
+
+  document.getElementById('tt-body').textContent = e.detail || '';
+  document.getElementById('tt-dot').style.background = lane.color;
+  document.getElementById('tt-lane-name').textContent = lane.label.replace(/\n/g,' ');
+  tip.classList.add('show');
+  moveTooltip(ev);
+}
+function moveTooltip(ev){
+  const tip = document.getElementById('tooltip');
+  const x = ev.clientX+14, y = ev.clientY-10;
+  tip.style.left = Math.min(x, window.innerWidth-tip.offsetWidth-10)+'px';
+  tip.style.top  = Math.max(10,Math.min(y, window.innerHeight-tip.offsetHeight-10))+'px';
+}
+function hideTooltip(){ document.getElementById('tooltip').classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+//  PAN & ZOOM
+// ═══════════════════════════════════════════════════════════
+let scale=1, tx=0, ty=0;
+let isDragging=false, dragSx=0, dragSy=0, dragTx=0, dragTy=0;
+
+function applyTransform(){
+  document.getElementById('diagram-root').style.transform=
+    `translate(${tx}px,${ty}px) scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale*100)+'%';
+}
+
+function doZoom(factor){
+  const vp = document.getElementById('vp');
+  const cx = vp.offsetWidth/2, cy = vp.offsetHeight/2;
+  tx = (tx-cx)*factor+cx;
+  ty = (ty-cy)*factor+cy;
+  scale = Math.min(Math.max(scale*factor, .18), 3);
+  applyTransform();
+}
+
+function resetView(){
+  scale = 0.64; tx = 10; ty = 6;
+  applyTransform();
+}
+
+function fitToScreen(){
+  const vp = document.getElementById('vp');
+  const sw = 3050, sh = 1010;
+  const sx = (vp.offsetWidth-20) / sw;
+  const sy = (vp.offsetHeight-20) / sh;
+  scale = Math.min(sx, sy);
+  tx = (vp.offsetWidth  - sw*scale) / 2;
+  ty = (vp.offsetHeight - sh*scale) / 2;
+  applyTransform();
+}
+
+// Mouse-wheel zoom
+document.getElementById('vp').addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+  const vp = document.getElementById('vp');
+  const rect = vp.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  tx = (tx-mx)*factor+mx;
+  ty = (ty-my)*factor+my;
+  scale = Math.min(Math.max(scale*factor, .16), 3.5);
+  applyTransform();
+},{passive:false});
+
+// Drag to pan
+const vp = document.getElementById('vp');
+vp.addEventListener('mousedown',e=>{
+  isDragging=true; dragSx=e.clientX; dragSy=e.clientY;
+  dragTx=tx; dragTy=ty; vp.classList.add('drag');
+});
+document.addEventListener('mousemove',e=>{
+  if(!isDragging) return;
+  tx = dragTx+(e.clientX-dragSx);
+  ty = dragTy+(e.clientY-dragSy);
+  applyTransform();
+});
+document.addEventListener('mouseup',()=>{ isDragging=false; vp.classList.remove('drag'); });
+
+// Keyboard shortcuts
+document.addEventListener('keydown',e=>{
+  if(e.key==='+') doZoom(1.15);
+  if(e.key==='-') doZoom(1/1.15);
+  if(e.key==='0') resetView();
+  if(e.key==='f'||e.key==='F') fitToScreen();
+});
+
+// ── INIT ───────────────────────────────────────────────────
+draw();
+resetView();
+</script>
+</body>
+</html>

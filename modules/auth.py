@@ -33,8 +33,30 @@ def _secret(key: str, default: str = "") -> str:
     except Exception:
         return default
 
+def _detect_base_url() -> str:
+    """Auto-detect the public URL of this Streamlit deployment from request headers.
+
+    Works on any server without configuration — reads the Host header that the
+    browser sent, so it automatically matches whatever URL the user typed.
+    """
+    try:
+        # Streamlit 1.37+ exposes st.context.headers
+        _h = st.context.headers  # type: ignore[attr-defined]
+        host = _h.get("Host", "") or _h.get("host", "")
+        if host and "localhost" not in host and "127.0.0.1" not in host:
+            proto = "https" if _h.get("X-Forwarded-Proto", "").lower() == "https" else "http"
+            return f"{proto}://{host}"
+    except Exception:
+        pass
+    return "http://localhost:8501"
+
+
 def _get_sso_config() -> dict:
-    """Read SSO credentials — env vars > secrets.toml > config.yaml fallback."""
+    """Read SSO credentials — env vars > secrets.toml > config.yaml fallback.
+
+    APP_BASE_URL is auto-detected from the incoming request when not explicitly set,
+    so the same config works on localhost and any server without changes.
+    """
     _mapping = {
         "AAD_CLIENT_ID":     "client_id",
         "AAD_TENANT_ID":     "tenant_id",
@@ -52,6 +74,14 @@ def _get_sso_config() -> dict:
     for env_key, cfg_key in _mapping.items():
         val = _secret(env_key, "") or _sso_cfg.get(cfg_key, "")
         result[env_key] = val
+
+    # Auto-detect base URL if not explicitly configured or still pointing to localhost
+    _explicit = result.get("APP_BASE_URL", "")
+    if not _explicit or "localhost" in _explicit or "127.0.0.1" in _explicit:
+        _auto = _detect_base_url()
+        if "localhost" not in _auto:
+            result["APP_BASE_URL"] = _auto
+
     result.setdefault("APP_BASE_URL", "http://localhost:8501")
     return result
 

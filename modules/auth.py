@@ -13,7 +13,7 @@ except ImportError:
 
 # ── Credentials & Azure AD config (override via .streamlit/secrets.toml) ──
 _ADMIN_USER     = "genaiwithprabhakar"
-_ADMIN_PASS_SHA = hashlib.sha256(b"ECI@2025!Presale").hexdigest()   # default password: ECI@2025!Presale
+_ADMIN_PASS_SHA = "a982f0b44037073bf04460c430c2073913fa5ee7924358441caece8cb99dfc1d"  # password: genaiwithprabhakar
 
 import os as _os
 

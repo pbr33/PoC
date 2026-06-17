@@ -15,22 +15,33 @@ except ImportError:
 _ADMIN_USER     = "genaiwithprabhakar"
 _ADMIN_PASS_SHA = hashlib.sha256(b"ECI@2025!Presale").hexdigest()   # default password: ECI@2025!Presale
 
+import os as _os
+
 def _secret(key: str, default: str = "") -> str:
-    """Safe secrets accessor — returns default when secrets.toml doesn't exist."""
+    """Safe secrets accessor — env var > secrets.toml > default.
+
+    Priority order (highest first):
+      1. Environment variable (set on VM/Docker/systemd)
+      2. .streamlit/secrets.toml
+      3. default value
+    """
+    env_val = _os.environ.get(key, "")
+    if env_val:
+        return env_val
     try:
         return st.secrets.get(key, default) or default
     except Exception:
         return default
 
 def _get_sso_config() -> dict:
-    """Read SSO credentials at render time — secrets.toml first, config.yaml fallback."""
+    """Read SSO credentials — env vars > secrets.toml > config.yaml fallback."""
     _mapping = {
         "AAD_CLIENT_ID":     "client_id",
         "AAD_TENANT_ID":     "tenant_id",
         "AAD_CLIENT_SECRET": "client_secret",
         "APP_BASE_URL":      "app_base_url",
     }
-    # Load config.yaml once for fallback
+    # Load config.yaml as lowest-priority fallback
     try:
         from .config_loader import load_config
         _sso_cfg = load_config().get("integrations", {}).get("sso", {})

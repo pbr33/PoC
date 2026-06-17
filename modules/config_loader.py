@@ -226,6 +226,9 @@ def apply_config_to_session() -> None:
     _set("milvus_embedding_deployment", milvus.get("embedding_deployment", "text-embedding-3-small"))
     _set("milvus_embedding_api_version",milvus.get("embedding_api_version", "2025-01-01-preview"))
 
+    # Environment variables override everything — allows server deployments without config files
+    _apply_env_overrides()
+
 
 def can_view_team_roles() -> bool:
     """Return True if the current user may see the Team & Roles (cost) tab.
@@ -272,6 +275,51 @@ def is_any_ai_configured() -> bool:
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+_ENV_KEY_MAP: dict[str, str] = {
+    # session-state key → environment variable name
+    "azure_api_key":              "AZURE_API_KEY",
+    "azure_endpoint":             "AZURE_ENDPOINT",
+    "azure_deployment":           "AZURE_DEPLOYMENT",
+    "azure_api_version":          "AZURE_API_VERSION",
+    "anthropic_api_key":          "ANTHROPIC_API_KEY",
+    "claude_model":               "CLAUDE_MODEL",
+    "claude_endpoint":            "CLAUDE_ENDPOINT",
+    "claude_opus_api_key":        "CLAUDE_OPUS_API_KEY",
+    "claude_opus_model":          "CLAUDE_OPUS_MODEL",
+    "claude_opus_endpoint":       "CLAUDE_OPUS_ENDPOINT",
+    "gemini_api_key":             "GEMINI_API_KEY",
+    "grok_endpoint":              "GROK_ENDPOINT",
+    "grok_key":                   "GROK_KEY",
+    "deepseek_endpoint":          "DEEPSEEK_ENDPOINT",
+    "deepseek_key":               "DEEPSEEK_KEY",
+    "codex_api_key":              "CODEX_API_KEY",
+    "codex_endpoint":             "CODEX_ENDPOINT",
+    "nano_endpoint":              "NANO_ENDPOINT",
+    "nano_key":                   "NANO_KEY",
+    "qwen_api_key":               "QWEN_API_KEY",
+    "qwen_foundry_key":           "QWEN_FOUNDRY_KEY",
+    "qwen_endpoint":              "QWEN_ENDPOINT",
+    "elevenlabs_api_key":         "ELEVENLABS_API_KEY",
+    "milvus_host":                "MILVUS_HOST",
+    "milvus_password":            "MILVUS_PASSWORD",
+    "milvus_embedding_key":       "MILVUS_EMBEDDING_KEY",
+    "milvus_embedding_endpoint":  "MILVUS_EMBEDDING_ENDPOINT",
+}
+
+
+def _apply_env_overrides() -> None:
+    """Apply environment variable overrides to session state.
+
+    Called at the END of apply_config_to_session so env vars win over config.yaml.
+    This enables server/Docker deployments without any config files.
+    """
+    import os
+    for ss_key, env_name in _ENV_KEY_MAP.items():
+        val = os.environ.get(env_name, "")
+        if val:
+            st.session_state[ss_key] = val
+
 
 def _set(key: str, value) -> None:
     """Write config.yaml value to session state.

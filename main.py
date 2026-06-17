@@ -203,14 +203,26 @@ if not is_any_ai_configured():
 #  MAIN TABS
 # ═══════════════════════════════════════════════════════════════════════
 
-main_t1, main_t2, main_t3 = st.tabs([
-    "⚡ Business Estimation",
-    "🗂️ Run Library",
-    "⚙️ Admin & Training",
-])
-with main_t1:
-    tab_presale()
-with main_t2:
-    tab_run_library()
-with main_t3:
-    tab_admin()
+_is_admin = st.session_state.get("auth_method") == "Admin"
+
+if _is_admin:
+    main_t1, main_t2, main_t3 = st.tabs([
+        "⚡ Business Estimation",
+        "🗂️ Run Library",
+        "⚙️ Admin & Training",
+    ])
+    with main_t1:
+        tab_presale()
+    with main_t2:
+        tab_run_library()
+    with main_t3:
+        tab_admin()
+else:
+    main_t1, main_t2 = st.tabs([
+        "⚡ Business Estimation",
+        "🗂️ Run Library",
+    ])
+    with main_t1:
+        tab_presale()
+    with main_t2:
+        tab_run_library()

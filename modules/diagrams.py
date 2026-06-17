@@ -16,6 +16,305 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  DRAW.IO XML EXPORT  (File > Import > From diagrams.net in Lucidchart)
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_drawio_xml(ar: dict, se: dict = None) -> str:
+    """Generate a draw.io (.drawio) XML file from architecture data.
+
+    Layout mirrors the HTML diagram: horizontal flow tiers (Presentation →
+    Application → AI → Data) with Security and Operations as full-width
+    bands at the bottom.  Import into Lucidchart via File > Import > diagrams.net.
+    """
+    se = se or {}
+
+    # ── reuse the same helpers from generate_arch_html_svg ──────────────
+    def _safe_str(v): return str(v) if v else ""
+    def _safe_list(v): return list(v) if isinstance(v, list) else []
+    def _safe_dict(v): return dict(v) if isinstance(v, dict) else {}
+
+    def _esc(s):
+        return (_safe_str(s).replace("&", "&amp;").replace("<", "&lt;")
+                             .replace(">", "&gt;").replace('"', "&quot;"))
+
+    def _html_attr(html: str) -> str:
+        """XML-encode an HTML string for safe use as an mxCell value attribute.
+        Draw.io stores HTML labels XML-encoded inside the value attribute."""
+        return (html.replace("&", "&amp;").replace("<", "&lt;")
+                    .replace(">", "&gt;").replace('"', "&quot;"))
+
+    comps = _safe_list(ar.get("components"))
+
+    # provider detection (lightweight copy)
+    def _provider(se_d):
+        tech = " ".join(_safe_str(t) for t in _safe_list(se_d.get("technology_stack", []))).lower()
+        proj = _safe_str(se_d.get("project_type", "")).lower()
+        txt  = tech + " " + proj
+        aws_score = sum(1 for kw in ["aws","amazon","s3","ec2","lambda","rds","sqs","sns","eks","ecs","dynamodb","bedrock","cloudfront"] if kw in txt)
+        gcp_score = sum(1 for kw in ["gcp","google cloud","bigquery","cloud run","pub/sub","firebase","vertex","cloud sql"] if kw in txt)
+        az_score  = sum(1 for kw in ["azure","cosmos","entra","azure sql","app service","azure openai","service bus"] if kw in txt)
+        best = max([("aws", aws_score), ("gcp", gcp_score), ("azure", az_score)], key=lambda x: x[1])
+        return best[0] if best[1] >= 1 else "azure"
+
+    def _has_ai(se_d, ar_d):
+        txt = (" ".join(_safe_str(t) for t in _safe_list(se_d.get("technology_stack", [])))
+               + " " + _safe_str(se_d.get("project_type", ""))
+               + " " + " ".join(_safe_str(c.get("name","")) + " " + _safe_str(c.get("azure_service",""))
+                                 for c in _safe_list(ar_d.get("components", [])))).lower()
+        return any(kw in txt for kw in ["openai","gpt","llm","ai search","machine learning","sagemaker","bedrock","vertex","cognitive"])
+
+    provider = _provider(se)
+    has_ai   = _has_ai(se, ar)
+
+    TIER_COLORS = {
+        "azure":        {"stroke": "#0078D4", "fill": "#EBF5FB", "comp_fill": "#DBEEFF"},
+        "aws":          {"stroke": "#FF9900", "fill": "#FFF8EE", "comp_fill": "#FFE8C0"},
+        "gcp":          {"stroke": "#4285F4", "fill": "#E8F0FE", "comp_fill": "#C8DCFF"},
+        "application":  {"stroke": "#00B294", "fill": "#E6FFF9", "comp_fill": "#C0F5EB"},
+        "ai":           {"stroke": "#5C2D91", "fill": "#F5F0FF", "comp_fill": "#DDD0F8"},
+        "data":         {"stroke": "#107C10", "fill": "#E8F5E9", "comp_fill": "#C8EAC8"},
+        "security":     {"stroke": "#D83B01", "fill": "#FFF3ED", "comp_fill": "#FFD5BB"},
+        "operations":   {"stroke": "#E6A800", "fill": "#FFFBF0", "comp_fill": "#FFE98A"},
+    }
+    pres_colors  = TIER_COLORS.get(provider, TIER_COLORS["azure"])
+    app_colors   = TIER_COLORS["application"]
+    ai_colors    = TIER_COLORS["ai"]
+    data_colors  = TIER_COLORS["data"]
+    sec_colors   = TIER_COLORS["security"]
+    ops_colors   = TIER_COLORS["operations"]
+
+    TYPE_MAP = {
+        "front door":"presentation","cdn":"presentation","web app":"presentation","react":"presentation",
+        "angular":"presentation","spa":"presentation","api management":"presentation",
+        "app service":"presentation","cloudfront":"presentation","alb":"presentation",
+        "api gateway":"presentation","load balancer":"presentation","cloud cdn":"presentation",
+        "cloud endpoints":"presentation","cloud load":"presentation","static web":"presentation",
+        "function":"application","functions":"application","service bus":"application",
+        "event hub":"application","logic app":"application","backend":"application",
+        "container":"application","kubernetes":"application","aks":"application",
+        "lambda":"application","ecs":"application","eks":"application",
+        "sqs":"application","sns":"application","cloud run":"application",
+        "cloud functions":"application","pub/sub":"application","fargate":"application",
+        "openai":"ai","cognitive":"ai","search":"ai","ai search":"ai",
+        "machine learning":"ai","ml":"ai","bedrock":"ai","sagemaker":"ai",
+        "vertex":"ai","document ai":"ai","vision":"ai","speech":"ai","language":"ai",
+        "sql":"data","cosmos":"data","blob":"data","storage":"data","redis":"data",
+        "data lake":"data","synapse":"data","s3":"data","rds":"data","dynamodb":"data",
+        "bigquery":"data","cloud storage":"data","cloud sql":"data","aurora":"data",
+        "key vault":"security","active directory":"security","entra":"security",
+        "firewall":"security","defender":"security","iam":"security","waf":"security",
+        "cognito":"security","shield":"security","secrets manager":"security","kms":"security",
+        "cloud armor":"security","identity platform":"security",
+        "monitor":"operations","insights":"operations","devops":"operations",
+        "cloudwatch":"operations","cloudtrail":"operations","codepipeline":"operations",
+        "cloud logging":"operations","cloud monitoring":"operations","cloud build":"operations",
+    }
+
+    def get_tier(comp):
+        txt = (_safe_str(comp.get("name","")) + " " + _safe_str(comp.get("type",""))
+               + " " + _safe_str(comp.get("azure_service",""))).lower()
+        for kw, tier in TYPE_MAP.items():
+            if kw in txt:
+                return tier
+        return "application"
+
+    FLOW_TIERS = ["presentation", "application", "data"]
+    if has_ai:
+        FLOW_TIERS = ["presentation", "application", "ai", "data"]
+    INFRA_TIERS = ["security", "operations"]
+
+    tier_labels = {
+        "presentation": "📱 Presentation & API",
+        "application":  "⚙️ Application Services",
+        "ai":           "🤖 AI & Cognitive",
+        "data":         "💾 Data & Storage",
+        "security":     "🔑 Security & Identity",
+        "operations":   "📊 Monitoring & Operations",
+    }
+    tier_color_map = {
+        "presentation": pres_colors,
+        "application":  app_colors,
+        "ai":           ai_colors,
+        "data":         data_colors,
+        "security":     sec_colors,
+        "operations":   ops_colors,
+    }
+
+    # classify
+    tier_comps: dict = {k: [] for k in FLOW_TIERS + INFRA_TIERS}
+    for c in comps:
+        c = _safe_dict(c)
+        t = get_tier(c)
+        if t in tier_comps:
+            tier_comps[t].append(c)
+        else:
+            tier_comps["application"].append(c)
+
+    # ── layout constants ─────────────────────────────────────────────────
+    PAGE_W       = 1600
+    MARGIN       = 40
+    HEADER_H     = 60        # title banner
+    COMP_W       = 200
+    COMP_H       = 70
+    COMP_GAP     = 14
+    SWIMLANE_HDR = 38
+    SWIMLANE_PAD = 16
+    FLOW_Y       = MARGIN + HEADER_H + 20
+    n_flow       = len(FLOW_TIERS)
+    TIER_W       = (PAGE_W - 2 * MARGIN - (n_flow - 1) * 20) // n_flow
+    ARROW_GAP    = 14        # gap between swimlane right edge and arrow
+
+    # compute swimlane heights per tier
+    def swimlane_h(tier_key):
+        n = max(len(tier_comps[tier_key]), 1)
+        return SWIMLANE_HDR + SWIMLANE_PAD + n * (COMP_H + COMP_GAP) + SWIMLANE_PAD
+
+    max_flow_h  = max(swimlane_h(t) for t in FLOW_TIERS)
+    INFRA_Y     = FLOW_Y + max_flow_h + 30
+    INFRA_W     = PAGE_W - 2 * MARGIN
+    INFRA_H     = 40 + 3 * (COMP_H + COMP_GAP)
+    PAGE_H      = INFRA_Y + len(INFRA_TIERS) * (INFRA_H + 16) + MARGIN
+
+    cells = []
+    cell_id = 2
+
+    # ── title banner ─────────────────────────────────────────────────────
+    client_name  = (_safe_str(se.get("client_name","")) or
+                    _safe_str(st.session_state.get("client_name","")) or "")
+    project_type = _safe_str(se.get("project_type","")) or "Solution Architecture"
+    title_text   = _esc((client_name + "  —  " if client_name else "") + project_type)
+    cells.append(
+        f'<mxCell id="{cell_id}" value="{title_text}" '
+        f'style="text;html=1;strokeColor=none;fillColor=#1a1a2e;fontColor=#ffffff;'
+        f'align=center;verticalAlign=middle;fontSize=16;fontStyle=1;" '
+        f'vertex="1" parent="1">'
+        f'<mxGeometry x="{MARGIN}" y="{MARGIN}" width="{PAGE_W - 2*MARGIN}" height="{HEADER_H}" as="geometry"/>'
+        f'</mxCell>'
+    )
+    cell_id += 1
+
+    # ── flow tier swimlanes ───────────────────────────────────────────────
+    tier_cell_ids: dict = {}
+    comp_cell_ids: dict = {}   # comp index → cell id
+
+    for i, tier_key in enumerate(FLOW_TIERS):
+        tc = tier_color_map[tier_key]
+        sx = MARGIN + i * (TIER_W + 20)
+        sy = FLOW_Y
+        sh = max_flow_h
+        label = _esc(tier_labels[tier_key])
+        sw_id = f"sw_{tier_key}"
+        tier_cell_ids[tier_key] = sw_id
+        cells.append(
+            f'<mxCell id="{sw_id}" value="{label}" '
+            f'style="swimlane;startSize={SWIMLANE_HDR};fillColor={tc["fill"]};'
+            f'strokeColor={tc["stroke"]};fontColor={tc["stroke"]};fontStyle=1;fontSize=11;" '
+            f'vertex="1" parent="1">'
+            f'<mxGeometry x="{sx}" y="{sy}" width="{TIER_W}" height="{sh}" as="geometry"/>'
+            f'</mxCell>'
+        )
+        # components inside swimlane
+        cx = (TIER_W - COMP_W) // 2
+        cy = SWIMLANE_HDR + SWIMLANE_PAD
+        for comp in tier_comps[tier_key]:
+            comp = _safe_dict(comp)
+            raw_name = _safe_str(comp.get("name",  "Component"))[:30]
+            raw_svc  = _safe_str(comp.get("azure_service",""))[:35]
+            raw_svcs = " · ".join(_safe_str(s) for s in _safe_list(comp.get("services",[])))[:60]
+            # Build HTML label then XML-encode it for the attribute (Draw.io format)
+            _n = _esc(raw_name); _s = _esc(raw_svc); _ss = _esc(raw_svcs)
+            html_inner = f'<b>{_n}</b>'
+            if _s:
+                html_inner += f'<br/><i>{_s}</i>'
+            if _ss:
+                html_inner += f'<br/><font style="font-size:8px;">{_ss}</font>'
+            label = _html_attr(html_inner)
+            cells.append(
+                f'<mxCell id="{cell_id}" value="{label}" '
+                f'style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;'
+                f'fillColor={tc["comp_fill"]};strokeColor={tc["stroke"]};fontColor=#1a1a2e;fontSize=10;" '
+                f'vertex="1" parent="{sw_id}">'
+                f'<mxGeometry x="{cx}" y="{cy}" width="{COMP_W}" height="{COMP_H}" as="geometry"/>'
+                f'</mxCell>'
+            )
+            comp_cell_ids[cell_id] = sw_id
+            cell_id += 1
+            cy += COMP_H + COMP_GAP
+
+    # ── arrows between flow tiers ─────────────────────────────────────────
+    for i in range(len(FLOW_TIERS) - 1):
+        src = tier_cell_ids[FLOW_TIERS[i]]
+        tgt = tier_cell_ids[FLOW_TIERS[i + 1]]
+        cells.append(
+            f'<mxCell id="{cell_id}" value="" '
+            f'style="endArrow=block;endFill=1;strokeColor=#555555;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" '
+            f'edge="1" source="{src}" target="{tgt}" parent="1">'
+            f'<mxGeometry relative="1" as="geometry"/>'
+            f'</mxCell>'
+        )
+        cell_id += 1
+
+    # ── infra tier full-width bands ───────────────────────────────────────
+    for j, tier_key in enumerate(INFRA_TIERS):
+        tc  = tier_color_map[tier_key]
+        iy  = INFRA_Y + j * (INFRA_H + 16)
+        iw  = INFRA_W
+        label = _esc(tier_labels[tier_key])
+        sw_id = f"sw_{tier_key}"
+        tier_cell_ids[tier_key] = sw_id
+        cells.append(
+            f'<mxCell id="{sw_id}" value="{label}" '
+            f'style="swimlane;startSize={SWIMLANE_HDR};horizontal=1;fillColor={tc["fill"]};'
+            f'strokeColor={tc["stroke"]};fontColor={tc["stroke"]};fontStyle=1;fontSize=11;" '
+            f'vertex="1" parent="1">'
+            f'<mxGeometry x="{MARGIN}" y="{iy}" width="{iw}" height="{INFRA_H}" as="geometry"/>'
+            f'</mxCell>'
+        )
+        n_comps = len(tier_comps[tier_key])
+        if n_comps:
+            gap     = 20
+            cw      = min(COMP_W + 20, (iw - gap * 2) // max(n_comps, 1) - gap)
+            total_w = n_comps * cw + (n_comps - 1) * gap
+            start_x = (iw - total_w) // 2
+            for k, comp in enumerate(tier_comps[tier_key]):
+                comp  = _safe_dict(comp)
+                raw_name = _safe_str(comp.get("name","Component"))[:30]
+                raw_svc  = _safe_str(comp.get("azure_service",""))[:35]
+                _n = _esc(raw_name); _s = _esc(raw_svc)
+                html_inner = f'<b>{_n}</b>' + (f'<br/><i>{_s}</i>' if _s else "")
+                label = _html_attr(html_inner)
+                cx    = start_x + k * (cw + gap)
+                cells.append(
+                    f'<mxCell id="{cell_id}" value="{label}" '
+                    f'style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;'
+                    f'fillColor={tc["comp_fill"]};strokeColor={tc["stroke"]};fontColor=#1a1a2e;fontSize=10;" '
+                    f'vertex="1" parent="{sw_id}">'
+                    f'<mxGeometry x="{cx}" y="{SWIMLANE_HDR + 14}" width="{cw}" height="{COMP_H}" as="geometry"/>'
+                    f'</mxCell>'
+                )
+                cell_id += 1
+
+    # ── assemble XML (.drawio format requires <mxfile> wrapper) ──────────
+    cells_xml = "\n          ".join(cells)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<mxfile host="app.diagrams.net" agent="ECI Presales BELLA" version="21.0.0" type="device">\n'
+        '  <diagram id="eci_arch_1" name="Solution Architecture">\n'
+        f'    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" '
+        f'tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" '
+        f'pageWidth="{PAGE_W}" pageHeight="{PAGE_H}" math="0" shadow="0">\n'
+        '      <root>\n'
+        '        <mxCell id="0" />\n'
+        '        <mxCell id="1" parent="0" />\n'
+        f'        {cells_xml}\n'
+        '      </root>\n'
+        '    </mxGraphModel>\n'
+        '  </diagram>\n'
+        '</mxfile>'
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  DYNAMIC MULTI-CLOUD ARCHITECTURE SVG GENERATOR
 #  Detects provider (Azure/AWS/GCP) and AI usage from semantic analysis.
 #  No hardcoded Azure defaults — layout adapts to actual scope.
@@ -2735,30 +3034,66 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
                 st.session_state["_arch_vision_show_loader"] = True
                 st.rerun(scope="fragment")
 
-    # ── No diagram yet — show description card + generate button ─────
+    # ── No diagram yet — auto-trigger on first render, show button on retry ─
     else:
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,rgba(123,97,255,.07),'
-            'rgba(0,180,216,.07)),rgba(8,12,24,.6);border:1px solid rgba(123,97,255,.22);'
-            'border-radius:14px;padding:28px 24px;text-align:center;margin:8px 0">'
-            '<div style="font-size:3rem;margin-bottom:10px">&#127775;</div>'
-            '<div style="font-family:\'Segoe UI\',sans-serif;font-size:1.1rem;font-weight:800;'
-            'color:#e2e8f0;letter-spacing:.5px">AI Vision Architecture</div>'
-            '<div style="font-size:.83rem;color:#94a3b8;margin-top:8px;max-width:480px;'
-            'margin-left:auto;margin-right:auto">AI Agent generates a cinematic dark-theme '
-            'diagram&#8202;&#8212;&#8202;neon tier zones, animated data-flow arrows, cost '
-            'overlays, tech stack badges and hover effects.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        if st.button(
-            "🚀 Generate AI Vision Architecture",
-            key="btn_cv_gen",
-            use_container_width=True,
-            type="primary",
-        ):
+        _auto_key = f"_avis_auto_{cv_key}"
+        if not st.session_state.get(_auto_key):
+            # First time seeing this key — trigger generation automatically
+            st.session_state[_auto_key] = True
             st.session_state["_arch_vision_show_loader"] = True
             st.rerun(scope="fragment")
+        else:
+            # Generation was attempted (failed/reset) — show retry button
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,rgba(123,97,255,.07),'
+                'rgba(0,180,216,.07)),rgba(8,12,24,.6);border:1px solid rgba(123,97,255,.22);'
+                'border-radius:14px;padding:28px 24px;text-align:center;margin:8px 0">'
+                '<div style="font-size:3rem;margin-bottom:10px">&#127775;</div>'
+                '<div style="font-family:\'Segoe UI\',sans-serif;font-size:1.1rem;font-weight:800;'
+                'color:#e2e8f0;letter-spacing:.5px">AI Vision Architecture</div>'
+                '<div style="font-size:.83rem;color:#94a3b8;margin-top:8px;max-width:480px;'
+                'margin-left:auto;margin-right:auto">AI Agent generates a cinematic dark-theme '
+                'diagram&#8202;&#8212;&#8202;neon tier zones, animated data-flow arrows, cost '
+                'overlays, tech stack badges and hover effects.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "🚀 Generate AI Vision Architecture",
+                key="btn_cv_gen",
+                use_container_width=True,
+                type="primary",
+            ):
+                st.session_state["_arch_vision_show_loader"] = True
+                st.rerun(scope="fragment")
+
+
+@st.fragment
+def _arch_dl_fragment(drawio_key: str, html_key: str, lucid_url: str) -> None:
+    """Download buttons in a fragment so clicking only reruns this section, not the full page."""
+    _drawio_b = st.session_state.get(drawio_key, b"")
+    _html_s   = st.session_state.get(html_key, "")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.download_button(
+            "📥 Download (HTML)", data=_html_s,
+            file_name="ECI_Architecture.html", mime="text/html",
+            use_container_width=True, key="dl_arch_html_frag",
+        )
+    with c2:
+        if _drawio_b:
+            st.download_button(
+                "📐 Export for Lucidchart", data=_drawio_b,
+                file_name="ECI_Architecture.drawio", mime="application/xml",
+                use_container_width=True, key="dl_arch_drawio_frag",
+            )
+    with c3:
+        st.link_button("🔗 Open Lucidchart", lucid_url, use_container_width=True)
+    st.info(
+        "**To import into Lucidchart:** Download the `.drawio` file → "
+        "in Lucidchart go to **File → Import → diagrams.net** and select the file.",
+        icon="💡",
+    )
 
 
 def render_architecture_tab(ar: dict, te: dict, ce: dict,
@@ -2791,54 +3126,41 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
     # ── Architecture Diagram header ──
     st.markdown("### 🏗️ Solution Architecture Diagram")
 
-    # ── Display: AI-enhanced version if available, otherwise Python-generated ──
-    if cached_html:
-        # AI-generated version available — show it
-        st.components.v1.html(cached_html, height=920, scrolling=True)
-        dl_col1, dl_col2, dl_col3 = st.columns(3)
-        with dl_col1:
-            from datetime import datetime as _dt
-            st.download_button(
-                "📥 Download (HTML)",
-                data=cached_html.encode("utf-8"),
-                file_name="ECI_Architecture_" + _dt.now().strftime("%Y%m%d_%H%M%S") + ".html",
-                mime="text/html",
-                use_container_width=True,
-                key="dl_ai_arch_html",
-            )
-        with dl_col2:
-            if st.button("🔄 Reset to Standard", key="btn_regen_ai_arch", use_container_width=True,
-                         help="Remove AI-enhanced version and show the standard diagram"):
-                st.session_state.pop(_cache_key, None)
-                st.rerun()
-        with dl_col3:
-            gen_clicked = st.button(
-                "✨ Re-enhance with AI", key="btn_gen_ai_arch",
-                use_container_width=True, type="primary",
-                help="Re-generate using AI (Claude / Azure OpenAI)",
-            )
-    else:
-        # Default: show the pure-Python generated diagram immediately — no button required
-        _py_html = generate_arch_html_svg(ar, se)
-        st.components.v1.html(_py_html, height=920, scrolling=True)
+    # ── Display: show diagram + Download HTML + Export to Lucidchart ──
+    import hashlib as _hl, json as _jc
+    _arch_sig   = _hl.md5(_jc.dumps(ar, sort_keys=True, default=str).encode()).hexdigest()[:12]
+    _drawio_key = f"_drawio_v3_{_arch_sig}"   # v3 = mxfile wrapper + XML-escaped labels
+    _pyhtml_key = f"_py_html_{_arch_sig}"
+    _html_dl_key = f"_html_dl_{_arch_sig}"    # HTML string stored for fragment download
 
-        from datetime import datetime as _dt
-        dl_col1, dl_col2 = st.columns(2)
-        with dl_col1:
-            st.download_button(
-                "📥 Download Diagram (HTML)",
-                data=_py_html.encode("utf-8"),
-                file_name="ECI_Architecture_" + _dt.now().strftime("%Y%m%d_%H%M%S") + ".html",
-                mime="text/html",
-                use_container_width=True,
-                key="dl_py_arch_html",
-            )
-        with dl_col2:
-            gen_clicked = st.button(
-                "✨ Enhance with AI", key="btn_gen_ai_arch",
-                use_container_width=True, type="primary",
-                help="Use Claude / Azure OpenAI to generate an AI-enhanced version",
-            )
+    _LUCID_URL = (
+        "https://lucid.app/lucidchart/42269312-503c-4fd3-8e1c-243956ae2cc3/edit"
+        "?beaconFlowId=18A335721711BBAD&page=0_0"
+        "&invitationId=inv_02446fe5-a04d-4f14-a99c-26694ea0b981#"
+    )
+
+    # Generate drawio once per unique architecture (never on button-click reruns)
+    if _drawio_key not in st.session_state:
+        st.session_state[_drawio_key] = generate_drawio_xml(ar, se).encode("utf-8")
+
+    # ── Render diagram HTML outside the fragment ──────────────────────────
+    # (stays on screen unchanged when download buttons are clicked)
+    if cached_html:
+        st.components.v1.html(cached_html, height=920, scrolling=True)
+        st.session_state[_html_dl_key] = cached_html
+    else:
+        if _pyhtml_key not in st.session_state:
+            st.session_state[_pyhtml_key] = generate_arch_html_svg(ar, se)
+        _py_html = st.session_state[_pyhtml_key]
+        st.components.v1.html(_py_html, height=920, scrolling=True)
+        if _html_dl_key not in st.session_state:
+            st.session_state[_html_dl_key] = _py_html
+
+    # ── Download buttons in a fragment ────────────────────────────────────
+    # Clicking a download button only reruns this fragment, not the full page
+    _arch_dl_fragment(_drawio_key, _html_dl_key, _LUCID_URL)
+
+    gen_clicked = False  # Enhance with AI hidden
 
     # ── AI generation (triggered by button in either branch above) ──
     # Tries all live AI clients in priority order: configured → Claude → GPT → Qwen → DeepSeek

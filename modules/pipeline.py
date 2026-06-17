@@ -5,6 +5,7 @@ import io
 import os
 import json
 import time
+import threading
 import re
 import copy as _copy
 import hashlib
@@ -2134,6 +2135,26 @@ def _render_3d_view_tab(ar, ce, r):
 def tab_presale():
     # _home_stats_banner()  # hidden
     st.markdown('<div class="shdr"><span class="shdr-i">📄</span> Document Ingestion</div>', unsafe_allow_html=True)
+
+    # ── Client name — stored in session_state and used across proposal/PDF/email ──
+    _cn_col, _sp_col = st.columns([2, 3])
+    with _cn_col:
+        # Pre-fill from proposal_client_name if already set (e.g. after analysis)
+        _cn_default = (
+            st.session_state.get("client_name")
+            or st.session_state.get("proposal_client_name")
+            or ""
+        )
+        _client_name = st.text_input(
+            "Client Name",
+            value=_cn_default,
+            placeholder="e.g. Acme Corp",
+            key="_client_name_input",
+        )
+        if _client_name:
+            st.session_state["client_name"]          = _client_name
+            st.session_state["proposal_client_name"] = _client_name
+
     uc, tc = st.columns([3, 2])
     with uc:
         st.markdown('<div class="crd"><div class="crd-t">Upload Scope Documents</div><div class="crd-d">PDF, DOCX, XLSX, PPTX, TXT, CSV</div>', unsafe_allow_html=True)
@@ -2149,205 +2170,206 @@ def tab_presale():
         st.markdown("---")
         _render_completeness_checker(files)
 
-    # ── Multimodal Discovery ──
-    st.markdown("---")
-    st.markdown('<div class="shdr"><span class="shdr-i">🎙️</span> Multimodal Discovery Extraction</div>', unsafe_allow_html=True)
-    st.markdown('<div class="crd"><div class="crd-t">Upload Meeting Transcripts & Voice Notes</div><div class="crd-d">Extract requirements, pain points, stakeholders & auto-generate WBS from Zoom/Teams transcripts, voice memos, or meeting notes.</div>', unsafe_allow_html=True)
-    disc_col1, disc_col2 = st.columns([3, 2])
-    with disc_col1:
-        disc_files = st.file_uploader(
-            "Upload transcripts",
-            type=["txt", "srt", "vtt", "json", "docx", "csv"],
-            accept_multiple_files=True,
-            key="disc_fu",
-            label_visibility="collapsed",
-            help="Supported: TXT, SRT, VTT (subtitles), JSON (Teams/Zoom/Otter.ai exports), DOCX (meeting notes), CSV",
-        )
-    with disc_col2:
-        st.markdown("**Supported Formats:**")
-        st.markdown("- `.txt` `.srt` `.vtt` — Subtitle / transcript files")
-        st.markdown("- `.json` — Teams, Zoom exports")
-        st.markdown("- `.docx` — Meeting notes / minutes")
-        st.markdown("- `.csv` — Tabular transcript exports")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    if disc_files:
-        _, dbc, _ = st.columns([1, 2, 1])
-        with dbc:
-            if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", use_container_width=True, type="primary", key="disc_go"):
-                st.session_state["_az_err_shown"] = False
-                ai = _pick_ai_for("discovery")
-                dpb = st.progress(0)
-                dstatus = st.empty()
-                dstatus.markdown("**1/3** Extracting transcripts...")
-                dpb.progress(10)
-                all_text = ""
-                for df in disc_files:
-                    all_text += extract_audio_transcript(df) + "\n\n"
-                st.session_state.discovery_transcript = all_text
-                dstatus.markdown("**2/3** Analyzing content & extracting insights...")
-                dpb.progress(50)
-                disc_result = ai.analyze_transcript(all_text)
-                dstatus.markdown("**3/3** Generating Work Breakdown Structure...")
-                dpb.progress(90)
-                st.session_state.discovery_results = disc_result
-                dpb.progress(100)
-                dstatus.markdown("**Done!** Discovery analysis complete.")
-                time.sleep(0.5)
-                dstatus.empty()
-                dpb.empty()
-                st.rerun()
-
-    # ── Discovery Results ──
-    if st.session_state.discovery_results:
-        dr = st.session_state.discovery_results
+    # ── Multimodal Discovery — HIDDEN (remove `if False:` block to re-enable) ──
+    if False:  # noqa
         st.markdown("---")
-        st.markdown('<div class="shdr"><span class="shdr-i">📋</span> Discovery Insights</div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="crd">', unsafe_allow_html=True)
-        st.markdown("**Meeting Summary:** " + safe_str(dr.get("meeting_summary")))
-        st.markdown("**Sentiment:** " + safe_str(dr.get("sentiment")))
-        themes = safe_list(dr.get("key_themes"))
-        if themes:
-            tags_html = " ".join('<span class="tt">' + safe_str(t) + '</span>' for t in themes)
-            st.markdown('<div class="ttag">' + tags_html + '</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        disc_tabs = st.tabs(["🔥 Pain Points", "📝 Requirements", "👥 Stakeholders", "📊 WBS", "✅ Action Items"])
-
-        with disc_tabs[0]:
-            for pp in safe_list(dr.get("pain_points")):
-                pp = safe_dict(pp)
-                sev = safe_str(pp.get("severity"))
-                sc = "#ff6b6b" if sev == "High" else "#ffd166" if sev == "Medium" else "#06d6a0"
-                st.markdown(
-                    '<div class="rc" style="border-left:3px solid ' + sc + ';">'
-                    '<div class="rch2"><strong>' + safe_str(pp.get("issue")) + '</strong>'
-                    '<span class="rsev" style="color:' + sc + ';">' + sev + '</span></div>'
-                    '<p style="font-style:italic;color:var(--t2);">"' + safe_str(pp.get("quote")) + '"</p>'
-                    '<div class="rmit"><strong>Stakeholder:</strong> ' + safe_str(pp.get("stakeholder")) + '</div>'
-                    '</div>', unsafe_allow_html=True
-                )
-
-        with disc_tabs[1]:
-            reqs = safe_list(dr.get("requirements_extracted"))
-            fn_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "functional"]
-            nf_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "non-functional"]
-            ig_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "integration"]
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                st.markdown('<div class="rch fn">Functional (' + str(len(fn_r)) + ')</div>', unsafe_allow_html=True)
-                for q in fn_r:
-                    q = safe_dict(q)
-                    st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
-            with rc2:
-                st.markdown('<div class="rch nf">Non-Functional (' + str(len(nf_r)) + ')</div>', unsafe_allow_html=True)
-                for q in nf_r:
-                    q = safe_dict(q)
-                    st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
-            with rc3:
-                st.markdown('<div class="rch ig">Integration (' + str(len(ig_r)) + ')</div>', unsafe_allow_html=True)
-                for q in ig_r:
-                    q = safe_dict(q)
-                    st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
-
-        with disc_tabs[2]:
-            stake_cols = st.columns(2)
-            for i, sh in enumerate(safe_list(dr.get("stakeholders"))):
-                sh = safe_dict(sh)
-                with stake_cols[i % 2]:
-                    concerns = "".join("<li>" + safe_str(c) + "</li>" for c in safe_list(sh.get("concerns")))
-                    st.markdown(
-                        '<div class="crd"><div class="crd-t">👤 ' + safe_str(sh.get("name")) + '</div>'
-                        '<div class="crd-d" style="color:var(--c2);">' + safe_str(sh.get("role")) + '</div>'
-                        '<ul style="color:var(--t2);font-size:.85rem;">' + concerns + '</ul></div>',
-                        unsafe_allow_html=True
-                    )
-
-        with disc_tabs[3]:
-            st.markdown("**Work Breakdown Structure**")
-            wbs = safe_list(dr.get("wbs"))
-            for phase_idx, phase in enumerate(wbs):
-                phase = safe_dict(phase)
-                phase_name = safe_str(phase.get("phase"))
-                with st.expander("📁 " + str(phase_idx + 1) + ". " + phase_name, expanded=True):
-                    for d in safe_list(phase.get("deliverables")):
-                        d = safe_dict(d)
-                        st.markdown("**📦 " + safe_str(d.get("name")) + "**")
-                        for t in safe_list(d.get("tasks")):
-                            t = safe_dict(t)
-                            st.markdown("&nbsp;&nbsp;&nbsp;&nbsp;🔹 " + safe_str(t.get("name")) + " — _" + safe_str(t.get("effort")) + "_")
-            decisions = safe_list(dr.get("decisions"))
-            if decisions:
-                st.markdown("---")
-                st.markdown("**Key Decisions:**")
-                for dec in decisions:
-                    st.markdown("- ✅ " + safe_str(dec))
-
-        with disc_tabs[4]:
-            for ai_item in safe_list(dr.get("action_items")):
-                ai_item = safe_dict(ai_item)
-                pri = safe_str(ai_item.get("priority"))
-                pc = "#ff6b6b" if pri == "High" else "#ffd166" if pri == "Medium" else "#06d6a0"
-                st.markdown(
-                    '<div class="rc" style="border-left:3px solid ' + pc + ';">'
-                    '<div class="rch2"><strong>' + safe_str(ai_item.get("item")) + '</strong>'
-                    '<span class="rsev" style="color:' + pc + ';">' + pri + '</span></div>'
-                    '<div class="rmit"><strong>Owner:</strong> ' + safe_str(ai_item.get("owner")) + '</div>'
-                    '</div>', unsafe_allow_html=True
-                )
-
-        st.markdown("---")
-        dl_disc_cols = st.columns(2)
-        with dl_disc_cols[0]:
-            st.download_button(
-                "📥 Download Discovery Report (JSON)",
-                data=json.dumps(dr, indent=2, default=str),
-                file_name="ECI_Discovery_Report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
-                mime="application/json",
-                use_container_width=True, key="dl_disc_json",
+        st.markdown('<div class="shdr"><span class="shdr-i">🎙️</span> Multimodal Discovery Extraction</div>', unsafe_allow_html=True)
+        st.markdown('<div class="crd"><div class="crd-t">Upload Meeting Transcripts & Voice Notes</div><div class="crd-d">Extract requirements, pain points, stakeholders & auto-generate WBS from Zoom/Teams transcripts, voice memos, or meeting notes.</div>', unsafe_allow_html=True)
+        disc_col1, disc_col2 = st.columns([3, 2])
+        with disc_col1:
+            disc_files = st.file_uploader(
+                "Upload transcripts",
+                type=["txt", "srt", "vtt", "json", "docx", "csv"],
+                accept_multiple_files=True,
+                key="disc_fu",
+                label_visibility="collapsed",
+                help="Supported: TXT, SRT, VTT (subtitles), JSON (Teams/Zoom/Otter.ai exports), DOCX (meeting notes), CSV",
             )
-        with dl_disc_cols[1]:
-            if st.session_state.discovery_transcript:
-                st.download_button(
-                    "📥 Download Cleaned Transcript (TXT)",
-                    data=st.session_state.discovery_transcript,
-                    file_name="ECI_Transcript_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",
-                    mime="text/plain",
-                    use_container_width=True, key="dl_disc_txt",
-                )
+        with disc_col2:
+            st.markdown("**Supported Formats:**")
+            st.markdown("- `.txt` `.srt` `.vtt` — Subtitle / transcript files")
+            st.markdown("- `.json` — Teams, Zoom exports")
+            st.markdown("- `.docx` — Meeting notes / minutes")
+            st.markdown("- `.csv` — Tabular transcript exports")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        # ── Full 11-agent pipeline from transcript ──────────────────
-        if st.session_state.discovery_transcript:
+        if disc_files:
+            _, dbc, _ = st.columns([1, 2, 1])
+            with dbc:
+                if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", use_container_width=True, type="primary", key="disc_go"):
+                    st.session_state["_az_err_shown"] = False
+                    ai = _pick_ai_for("discovery")
+                    dpb = st.progress(0)
+                    dstatus = st.empty()
+                    dstatus.markdown("**1/3** Extracting transcripts...")
+                    dpb.progress(10)
+                    all_text = ""
+                    for df in disc_files:
+                        all_text += extract_audio_transcript(df) + "\n\n"
+                    st.session_state.discovery_transcript = all_text
+                    dstatus.markdown("**2/3** Analyzing content & extracting insights...")
+                    dpb.progress(50)
+                    disc_result = ai.analyze_transcript(all_text)
+                    dstatus.markdown("**3/3** Generating Work Breakdown Structure...")
+                    dpb.progress(90)
+                    st.session_state.discovery_results = disc_result
+                    dpb.progress(100)
+                    dstatus.markdown("**Done!** Discovery analysis complete.")
+                    time.sleep(0.5)
+                    dstatus.empty()
+                    dpb.empty()
+                    st.rerun()
+
+        # ── Discovery Results ──
+        if st.session_state.discovery_results:
+            dr = st.session_state.discovery_results
             st.markdown("---")
-            st.markdown(
-                '<div style="background:linear-gradient(135deg,#0d1627,#13072e);'
-                'border:1.5px solid #7c3aed;border-radius:14px;padding:18px 22px;margin-bottom:12px;">'
-                '<div style="font-size:1rem;font-weight:800;color:#a78bfa;margin-bottom:4px;">'
-                '🚀 Generate Full Proposal from Transcript</div>'
-                '<div style="font-size:.82rem;color:#64748b;line-height:1.6;">'
-                'Run the complete 11-agent pipeline — the same analysis you get from a scope document. '
-                'Produces time estimates, cost models, risk assessment, architecture design, '
-                'scope of work, and a full proposal document — all from the transcript above.'
-                '</div></div>',
-                unsafe_allow_html=True,
-            )
-            _, _fc, _ = st.columns([1, 2, 1])
-            with _fc:
-                if st.button(
-                    "🚀 RUN FULL 11-AGENT ANALYSIS FROM TRANSCRIPT",
-                    use_container_width=True, type="primary",
-                    key="disc_full_pipeline",
-                ):
-                    _disc_src = ", ".join(
-                        getattr(f, "name", "transcript") for f in (disc_files or [])
-                    ) or "Discovery Transcript"
-                    run_pipeline(
-                        [],
-                        pre_extracted_text=st.session_state.discovery_transcript,
-                        source_label=_disc_src,
+            st.markdown('<div class="shdr"><span class="shdr-i">📋</span> Discovery Insights</div>', unsafe_allow_html=True)
+
+            st.markdown('<div class="crd">', unsafe_allow_html=True)
+            st.markdown("**Meeting Summary:** " + safe_str(dr.get("meeting_summary")))
+            st.markdown("**Sentiment:** " + safe_str(dr.get("sentiment")))
+            themes = safe_list(dr.get("key_themes"))
+            if themes:
+                tags_html = " ".join('<span class="tt">' + safe_str(t) + '</span>' for t in themes)
+                st.markdown('<div class="ttag">' + tags_html + '</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            disc_tabs = st.tabs(["🔥 Pain Points", "📝 Requirements", "👥 Stakeholders", "📊 WBS", "✅ Action Items"])
+
+            with disc_tabs[0]:
+                for pp in safe_list(dr.get("pain_points")):
+                    pp = safe_dict(pp)
+                    sev = safe_str(pp.get("severity"))
+                    sc = "#ff6b6b" if sev == "High" else "#ffd166" if sev == "Medium" else "#06d6a0"
+                    st.markdown(
+                        '<div class="rc" style="border-left:3px solid ' + sc + ';">'
+                        '<div class="rch2"><strong>' + safe_str(pp.get("issue")) + '</strong>'
+                        '<span class="rsev" style="color:' + sc + ';">' + sev + '</span></div>'
+                        '<p style="font-style:italic;color:var(--t2);">"' + safe_str(pp.get("quote")) + '"</p>'
+                        '<div class="rmit"><strong>Stakeholder:</strong> ' + safe_str(pp.get("stakeholder")) + '</div>'
+                        '</div>', unsafe_allow_html=True
                     )
-                    return
+
+            with disc_tabs[1]:
+                reqs = safe_list(dr.get("requirements_extracted"))
+                fn_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "functional"]
+                nf_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "non-functional"]
+                ig_r = [x for x in reqs if isinstance(x, dict) and x.get("type") == "integration"]
+                rc1, rc2, rc3 = st.columns(3)
+                with rc1:
+                    st.markdown('<div class="rch fn">Functional (' + str(len(fn_r)) + ')</div>', unsafe_allow_html=True)
+                    for q in fn_r:
+                        q = safe_dict(q)
+                        st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
+                with rc2:
+                    st.markdown('<div class="rch nf">Non-Functional (' + str(len(nf_r)) + ')</div>', unsafe_allow_html=True)
+                    for q in nf_r:
+                        q = safe_dict(q)
+                        st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
+                with rc3:
+                    st.markdown('<div class="rch ig">Integration (' + str(len(ig_r)) + ')</div>', unsafe_allow_html=True)
+                    for q in ig_r:
+                        q = safe_dict(q)
+                        st.markdown('<div class="ri"><strong>' + safe_str(q.get("title")) + '</strong><p>' + safe_str(q.get("description")) + '</p><div class="ri-c">Source: ' + safe_str(q.get("source")) + '</div></div>', unsafe_allow_html=True)
+
+            with disc_tabs[2]:
+                stake_cols = st.columns(2)
+                for i, sh in enumerate(safe_list(dr.get("stakeholders"))):
+                    sh = safe_dict(sh)
+                    with stake_cols[i % 2]:
+                        concerns = "".join("<li>" + safe_str(c) + "</li>" for c in safe_list(sh.get("concerns")))
+                        st.markdown(
+                            '<div class="crd"><div class="crd-t">👤 ' + safe_str(sh.get("name")) + '</div>'
+                            '<div class="crd-d" style="color:var(--c2);">' + safe_str(sh.get("role")) + '</div>'
+                            '<ul style="color:var(--t2);font-size:.85rem;">' + concerns + '</ul></div>',
+                            unsafe_allow_html=True
+                        )
+
+            with disc_tabs[3]:
+                st.markdown("**Work Breakdown Structure**")
+                wbs = safe_list(dr.get("wbs"))
+                for phase_idx, phase in enumerate(wbs):
+                    phase = safe_dict(phase)
+                    phase_name = safe_str(phase.get("phase"))
+                    with st.expander("📁 " + str(phase_idx + 1) + ". " + phase_name, expanded=True):
+                        for d in safe_list(phase.get("deliverables")):
+                            d = safe_dict(d)
+                            st.markdown("**📦 " + safe_str(d.get("name")) + "**")
+                            for t in safe_list(d.get("tasks")):
+                                t = safe_dict(t)
+                                st.markdown("&nbsp;&nbsp;&nbsp;&nbsp;🔹 " + safe_str(t.get("name")) + " — _" + safe_str(t.get("effort")) + "_")
+                decisions = safe_list(dr.get("decisions"))
+                if decisions:
+                    st.markdown("---")
+                    st.markdown("**Key Decisions:**")
+                    for dec in decisions:
+                        st.markdown("- ✅ " + safe_str(dec))
+
+            with disc_tabs[4]:
+                for ai_item in safe_list(dr.get("action_items")):
+                    ai_item = safe_dict(ai_item)
+                    pri = safe_str(ai_item.get("priority"))
+                    pc = "#ff6b6b" if pri == "High" else "#ffd166" if pri == "Medium" else "#06d6a0"
+                    st.markdown(
+                        '<div class="rc" style="border-left:3px solid ' + pc + ';">'
+                        '<div class="rch2"><strong>' + safe_str(ai_item.get("item")) + '</strong>'
+                        '<span class="rsev" style="color:' + pc + ';">' + pri + '</span></div>'
+                        '<div class="rmit"><strong>Owner:</strong> ' + safe_str(ai_item.get("owner")) + '</div>'
+                        '</div>', unsafe_allow_html=True
+                    )
+
+            st.markdown("---")
+            dl_disc_cols = st.columns(2)
+            with dl_disc_cols[0]:
+                st.download_button(
+                    "📥 Download Discovery Report (JSON)",
+                    data=json.dumps(dr, indent=2, default=str),
+                    file_name="ECI_Discovery_Report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
+                    mime="application/json",
+                    use_container_width=True, key="dl_disc_json",
+                )
+            with dl_disc_cols[1]:
+                if st.session_state.discovery_transcript:
+                    st.download_button(
+                        "📥 Download Cleaned Transcript (TXT)",
+                        data=st.session_state.discovery_transcript,
+                        file_name="ECI_Transcript_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",
+                        mime="text/plain",
+                        use_container_width=True, key="dl_disc_txt",
+                    )
+
+            # ── Full 11-agent pipeline from transcript ──────────────────
+            if st.session_state.discovery_transcript:
+                st.markdown("---")
+                st.markdown(
+                    '<div style="background:linear-gradient(135deg,#0d1627,#13072e);'
+                    'border:1.5px solid #7c3aed;border-radius:14px;padding:18px 22px;margin-bottom:12px;">'
+                    '<div style="font-size:1rem;font-weight:800;color:#a78bfa;margin-bottom:4px;">'
+                    '🚀 Generate Full Proposal from Transcript</div>'
+                    '<div style="font-size:.82rem;color:#64748b;line-height:1.6;">'
+                    'Run the complete 11-agent pipeline — the same analysis you get from a scope document. '
+                    'Produces time estimates, cost models, risk assessment, architecture design, '
+                    'scope of work, and a full proposal document — all from the transcript above.'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+                _, _fc, _ = st.columns([1, 2, 1])
+                with _fc:
+                    if st.button(
+                        "🚀 RUN FULL 11-AGENT ANALYSIS FROM TRANSCRIPT",
+                        use_container_width=True, type="primary",
+                        key="disc_full_pipeline",
+                    ):
+                        _disc_src = ", ".join(
+                            getattr(f, "name", "transcript") for f in (disc_files or [])
+                        ) or "Discovery Transcript"
+                        run_pipeline(
+                            [],
+                            pre_extracted_text=st.session_state.discovery_transcript,
+                            source_label=_disc_src,
+                        )
+                        return
 
     if st.session_state.processing_results:
         show_results()
@@ -2493,7 +2515,7 @@ def run_pipeline(files, pre_extracted_text: str = "", source_label: str = ""):
     _PIPE_STEPS = [
         "Ingest", "Intelligence", "Semantic", "RAG",
         "Time", "Cost", "Risk", "Architecture",
-        "Scope", "Proposal", "Diagrams", "Done",
+        "Scope", "Proposal", "Diagrams", "Discovery", "Finalize",
     ]
     pb      = st.progress(0)
     stepper = st.empty()
@@ -2824,10 +2846,49 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     rich_arch_html = None
     _render_live_log(); time.sleep(0.2)
 
-    _upd(11, "Generating discovery questions…", 96)
+    _upd(11, "Generating discovery questions…", 93)
     discovery_questions = ai_disc.generate_discovery_questions(semantic, scope, risk)
     total_q = discovery_questions.get("total_questions", 0)
     log_agent("Discovery", f"{total_q} prioritised discovery questions generated")
+    _render_live_log(); time.sleep(0.2)
+
+    # ── Step 12: Finalize — pre-compute heavy deliverables while user waits ──
+    _upd(12, "Finalizing deliverables & pre-computing visuals…", 97)
+    import hashlib as _hl2, json as _jc2
+    try:
+        # Pre-compute AI Vision Architecture (most expensive render-time call)
+        _cv_key = "claude_vision_arch_" + _hl2.md5(
+            _jc2.dumps(arch, sort_keys=True, default=str).encode()
+        ).hexdigest()[:10]
+        if not st.session_state.get(_cv_key):
+            _ant2 = AnthropicAI.from_session()
+            _vis_html = None
+            if _ant2.is_live and not st.session_state.get("_claude_blocked"):
+                _vis_html = _ant2.generate_claude_premium_diagram(arch, semantic, cost_est)
+            if not _vis_html:
+                _az2 = AzureAI.from_session()
+                if _az2.is_live:
+                    _vis_html = _az2.generate_ai_arch_svg(arch, semantic)
+            if _vis_html:
+                st.session_state[_cv_key] = _vis_html
+                log_agent("AI Vision", "Pre-computed during pipeline — renders instantly")
+
+        # Pre-generate architecture drawio XML (cached by arch signature)
+        from .diagrams import generate_drawio_xml as _gen_drawio
+        _arch_sig = _hl2.md5(_jc2.dumps(arch, sort_keys=True, default=str).encode()).hexdigest()[:12]
+        _drawio_key = f"_drawio_v3_{_arch_sig}"
+        if _drawio_key not in st.session_state:
+            st.session_state[_drawio_key] = _gen_drawio(arch, semantic).encode("utf-8")
+
+        # Pre-fetch live Azure pricing (saves a network round-trip on Cost tab render)
+        if not st.session_state.get("live_pricing_cache"):
+            _live_p = _fetch_live_azure_pricing()
+            if _live_p:
+                st.session_state["live_pricing_cache"] = _live_p
+
+    except Exception as _fin_ex:
+        log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
+
     _render_live_log(); time.sleep(0.2)
 
     pb.progress(100)
@@ -2835,7 +2896,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     status.empty()
     log_area.empty()
     _banner_slot.empty()
-    show_toast("🚀 Proposal ready — all 11 agents completed!", "success")
+    show_toast("🚀 Proposal ready — all 12 agents completed!", "success")
     st.session_state.processing_results = {
         "semantic_analysis": semantic, "rag": rag, "time_estimate": time_est,
         "cost_estimate": cost_est, "risk_assessment": risk, "architecture": arch,
@@ -2844,6 +2905,12 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         "rich_arch_html": rich_arch_html,
     }
     st.session_state.model_metrics["proposals_processed"] += 1
+
+    # Auto-populate client name from semantic analysis if not already set by user
+    _sem_client = safe_str(semantic.get("client_name", ""))
+    if _sem_client and not st.session_state.get("client_name"):
+        st.session_state["client_name"]          = _sem_client
+        st.session_state["proposal_client_name"] = _sem_client
 
     # ── Save to persistent SQLite DB + in-memory versions ──
     snapshot = {
@@ -3553,7 +3620,9 @@ def _html_tbl(headers, rows, col_widths=None) -> str:
 def _proposal_live_preview_html(sections: list, r: dict = None):
     """Full HTML document matching the PDF: narrative sections + Requirements + Time + Cost + Risk + Architecture + Scope."""
     edits = st.session_state.get("proposal_edits", {})
-    client_name = st.session_state.get("proposal_client_name", "") or "Client"
+    client_name = (st.session_state.get("proposal_client_name", "")
+                   or st.session_state.get("client_name", "")
+                   or "Client")
     contact_name = st.session_state.get("proposal_contact_name", "") or ""
     date_str = st.session_state.get("proposal_proposal_date", "") or datetime.now().strftime("%B %d, %Y")
 
@@ -3753,7 +3822,9 @@ def _ppt_slides_html(r: dict) -> str:
     proposal = safe_dict(r.get("proposal",          {}))
     edits    = st.session_state.get("proposal_edits", {})
 
-    client_name  = (st.session_state.get("proposal_client_name","") or "Client").strip()
+    client_name  = (st.session_state.get("proposal_client_name", "")
+                    or st.session_state.get("client_name", "")
+                    or "Client").strip()
     date_str     = st.session_state.get("proposal_proposal_date","") or datetime.now().strftime("%b %d, %Y")
     project_type = safe_str(se.get("project_type","Enterprise AI Solution"))
     sections_raw = safe_list(proposal.get("sections",[]))
@@ -4849,7 +4920,8 @@ def _render_proposal_tab(r: dict, ai_client):
     quality_checks = safe_dict(proposal.get("quality_checks"))
 
     if not sections:
-        st.info("Proposal will appear here after running the pipeline.")
+        _tab_placeholder("📄", "Proposal not generated yet",
+                         "Run the full pipeline to generate the client proposal document.")
         return
 
     st.markdown(
@@ -5421,7 +5493,9 @@ def _generate_scope_risk_html(ant, se: dict, te: dict, ar: dict, ri: dict, r: di
     """Call Claude to generate a SOW-quality Scope & Risk Register HTML document."""
     from datetime import datetime as _dt
 
-    client  = safe_str(se.get("client_name", "Client"))
+    client  = (safe_str(se.get("client_name", ""))
+               or safe_str(st.session_state.get("client_name", ""))
+               or "Client")
     project = safe_str(se.get("project_type", "Solution"))
     weeks   = safe_str(te.get("duration_weeks", "16"))
     hours   = safe_int(te.get("total_hours", 1000))
@@ -5611,7 +5685,9 @@ def _generate_scope_risk_html(ant, se: dict, te: dict, ar: dict, ri: dict, r: di
 
 def _scope_native_render(sc: dict, ri: dict, se: dict) -> None:
     """Native Streamlit default view — formatted scope + risk before Claude enhancement."""
-    client  = safe_str(se.get("client_name", "Client"))
+    client  = (safe_str(se.get("client_name", ""))
+               or safe_str(st.session_state.get("client_name", ""))
+               or "Client")
     project = safe_str(se.get("project_type", "Solution"))
 
     inner = st.tabs(["✅ Scope Definition", "⚠️ Risk Register"])
@@ -5707,14 +5783,7 @@ def _scope_native_render(sc: dict, ri: dict, se: dict) -> None:
                 "rgba(255,209,102,.07)", "rgba(255,209,102,.35)", "#ffd166", "prerequisites",
             ), unsafe_allow_html=True)
 
-        st.markdown(
-            '<div style="background:rgba(20,160,185,.06);border:1px solid rgba(20,160,185,.2);'
-            'border-radius:10px;padding:14px 18px;margin-top:4px;font-size:.78rem;color:#64748b;line-height:1.6">'
-            '⚡ <b style="color:#14A0B9">Click "Generate SOW-Quality Analysis"</b> above to transform these raw items into '
-            'legally precise, numbered scope statements with acceptance criteria, formal risk IDs, '
-            'and a complete change control framework — ready for SOW sign-off.</div>',
-            unsafe_allow_html=True,
-        )
+        # SOW-quality hint hidden (feature temporarily disabled)
 
     with inner[1]:
         risks = safe_list(ri.get("risks", []))
@@ -5818,7 +5887,9 @@ def _render_scope_risk_tab(se: dict, te: dict, ar: dict, ri: dict, r: dict) -> N
         ).encode()
     ).hexdigest()[:10]
     cached = st.session_state.get(_key)
-    client  = safe_str(se.get("client_name", "Client"))
+    client  = (safe_str(se.get("client_name", ""))
+               or safe_str(st.session_state.get("client_name", ""))
+               or "Client")
     sc      = safe_dict(r.get("scope", {}))
     risks   = safe_list(ri.get("risks", []))
     ov_sc   = safe_int(ri.get("overall_score", 0))
@@ -5882,12 +5953,9 @@ def _render_scope_risk_tab(se: dict, te: dict, ar: dict, ri: dict, r: dict) -> N
         if not gen_clicked:
             st.components.v1.html(cached, height=1250, scrolling=True)
     else:
-        gen_clicked = st.button(
-            "✨ Generate SOW-Quality Scope & Risk Register with AI Agent",
-            key="sr_gen", type="primary", use_container_width=True,
-        )
-        if not gen_clicked:
-            _scope_native_render(sc, ri, se)
+        # SOW-quality generation button hidden (feature temporarily disabled)
+        gen_clicked = False
+        _scope_native_render(sc, ri, se)
 
     if gen_clicked:
         try:
@@ -6212,7 +6280,9 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
     """Single-canvas animated project explainer — all data visible at once, industry-quality UI."""
     import streamlit.components.v1 as _cv1
 
-    client     = safe_str(se.get("client_name", "")) or "Your Client"
+    client     = (safe_str(se.get("client_name", ""))
+                  or safe_str(st.session_state.get("client_name", ""))
+                  or "Your Client")
     proj_type  = safe_str(se.get("project_type", "")) or "Digital Transformation"
     cplx       = safe_int(se.get("complexity_score", 5))
     domains    = safe_list(se.get("project_domains", []))
@@ -6677,6 +6747,121 @@ document.querySelectorAll('.tp').forEach((el,i) => {{
     _cv1.html(html, height=772, scrolling=False)
 
 
+def _auto_correct_estimate(te: dict, se: dict) -> None:
+    """Run once per estimate: Claude reviews and auto-applies all high-severity,
+    non-manual findings. Skips if already run for this estimate or Claude not live."""
+    _total = safe_int(te.get("total_hours", 0))
+    _cache_key = f"_autocorr_done_{_total}"
+    if st.session_state.get(_cache_key):
+        return
+
+    _ai = AnthropicAI.from_session()
+    if not (_ai and _ai.is_live):
+        st.session_state[_cache_key] = True
+        return
+
+    try:
+        _prompt = _build_review_prompt(te, se)
+        _raw = (_ai.call_raw_text(
+            "You are a senior delivery estimator auditing a project estimate. "
+            "Return ONLY valid JSON, no markdown fences.",
+            _prompt, max_tokens=4000,
+        ) or "").strip()
+        if _raw.startswith("```"):
+            _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
+        _parsed = json.loads(_raw)
+    except Exception:
+        st.session_state[_cache_key] = True
+        return
+
+    _findings = safe_list(_parsed.get("findings", []))
+    # Only auto-apply high-severity, actionable (non-manual) findings
+    _to_apply = [
+        f for f in _findings
+        if safe_dict(f).get("severity") == "high"
+        and safe_dict(f).get("fix_type") not in ("manual", "", None)
+        and safe_dict(f).get("fix_data")
+    ]
+
+    if _to_apply:
+        # Snapshot for undo before touching anything
+        st.session_state["_autocorr_snapshot"] = json.dumps(
+            st.session_state.processing_results.get("time_estimate", {})
+        )
+        _corrections = []
+        for _fd in _to_apply:
+            _fd = safe_dict(_fd)
+            try:
+                _apply_estimate_fix(
+                    safe_str(_fd.get("fix_type", "")),
+                    safe_dict(_fd.get("fix_data", {})),
+                )
+                _corrections.append({
+                    "title":      safe_str(_fd.get("title", "")),
+                    "detail":     safe_str(_fd.get("detail", "")),
+                    "fix_type":   safe_str(_fd.get("fix_type", "")),
+                    "suggestion": safe_str(_fd.get("suggestion", "")),
+                })
+            except Exception:
+                pass
+        st.session_state["_auto_corrections"] = _corrections
+
+    st.session_state[_cache_key] = True
+
+
+def _render_auto_corrections_badge() -> None:
+    """Collapsible badge showing what Claude auto-corrected, with an Undo All button."""
+    _corrections = safe_list(st.session_state.get("_auto_corrections", []))
+    if not _corrections:
+        return
+
+    _n = len(_corrections)
+    _FT_L = {
+        "remove_stream": "Removed stream",
+        "add_tasks":     "Added missing tasks",
+        "adjust_hours":  "Adjusted hours",
+    }
+
+    # Undo handler — must run before any rendering
+    if st.session_state.pop("_autocorr_undo_clicked", False):
+        _snap = st.session_state.get("_autocorr_snapshot")
+        if _snap:
+            try:
+                _restored = json.loads(_snap)
+                st.session_state.processing_results["time_estimate"] = _restored
+                _total_r = safe_int(_restored.get("total_hours", 0))
+                st.session_state[f"_autocorr_done_{_total_r}"] = False
+            except Exception:
+                pass
+        st.session_state.pop("_auto_corrections", None)
+        st.session_state.pop("_autocorr_snapshot", None)
+        show_toast("↩️ Auto-corrections undone — estimate restored.", "info")
+        st.rerun()
+
+    with st.expander(
+        f"⚡ Agent auto-corrected {_n} issue{'s' if _n > 1 else ''} — click to review",
+        expanded=False,
+    ):
+        for _c in _corrections:
+            _label = _FT_L.get(_c.get("fix_type", ""), "Fixed")
+            st.markdown(
+                f'<div style="border-left:3px solid #22c55e;padding:8px 14px;margin-bottom:6px;'
+                f'background:rgba(34,197,94,.05);border-radius:0 8px 8px 0">'
+                f'<div style="font-size:.78rem;font-weight:700;color:#e2e8f0">{_c.get("title","")}</div>'
+                f'<div style="font-size:.7rem;color:#64748b;margin-top:2px">'
+                f'<span style="color:#22c55e;font-weight:600">{_label}</span>'
+                f' — {_c.get("suggestion","")[:130]}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        _ba, _bb = st.columns([5, 1])
+        with _bb:
+            if st.button("↩️ Undo All", key="_autocorr_undo", use_container_width=True):
+                st.session_state["_autocorr_undo_clicked"] = True
+                st.rerun()
+
+
 def _build_review_prompt(te: dict, se: dict) -> str:
     """Build the agent review prompt from current session-state estimate data."""
     # Always read the LIVE estimate from session state so post-fix reviews use updated data
@@ -6744,13 +6929,15 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     """On-demand Agent review of the estimate with actionable fix buttons.
 
     State machine:
-      idle      — waiting for user action
-      reviewing — running AI review call  (shows animated loader)
-      fixing    — applying a fix          (shows fix loader → full rerun)
-      ask_agent — running Ask Agent call  (shows spinner)
+      idle          — waiting for user action
+      reviewing     — running AI review call  (shows animated loader)
+      fixing        — applying a single fix   (shows fix loader → full rerun)
+      fix_selected  — applying N selected fixes sequentially
+      ask_agent     — running Ask Agent call  (shows spinner)
     """
     _RK = "est_review"
     _state = st.session_state.get(f"{_RK}_state", "idle")
+    _busy  = _state in ("reviewing", "fixing", "fix_selected", "ask_agent")
 
     # ── Header row (always visible) ───────────────────────────────────
     _h1, _h2 = st.columns([5, 2])
@@ -6773,61 +6960,147 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             key=f"{_RK}_run",
             type="primary",
             use_container_width=True,
-            disabled=(_state in ("reviewing", "fixing", "ask_agent")),
+            disabled=_busy,
         )
 
-    # Trigger transitions
-    if _run_clicked and _state not in ("reviewing", "fixing", "ask_agent"):
+    # Trigger transitions — update _state locally so the reviewing block
+    # below runs in THIS SAME rerun (button-click rerun), rendering the
+    # loader immediately without an extra round-trip to the browser.
+    if _run_clicked and not _busy:
+        _state = "reviewing"
         st.session_state[f"{_RK}_state"] = "reviewing"
-        st.session_state.pop(f"{_RK}_result", None)
-        st.session_state.pop(f"{_RK}_error",  None)
-        st.session_state.pop(f"{_RK}_ask_active", None)
-        st.rerun(scope="fragment")
+        st.session_state.pop(f"{_RK}_result",        None)
+        st.session_state.pop(f"{_RK}_error",         None)
+        st.session_state.pop(f"{_RK}_ask_active",    None)
+        st.session_state.pop(f"{_RK}_thread_active", None)
+        st.session_state.pop(f"{_RK}_result_holder", None)
 
-    # ── STATE: reviewing ─────────────────────────────────────────────
+    # ── STATE: reviewing — loader + background thread ──
+    _REVIEW_LOADER = (
+        '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
+        'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
+        '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
+        '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
+        'Agent Reviewing Estimate…</div>'
+        '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
+        'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
+        '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
+        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+        'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
+        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+        'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
+        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+        'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
+        '</div>'
+        '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
+        '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
+        '30%{transform:translateY(-10px);opacity:1}}</style>'
+        '</div>'
+    )
+
+    # ── STATE: reviewing — "Review Now" button path (always fragment context) ──
+    # Uses background thread + 300ms polls so the loader appears instantly
+    # without blocking the fragment render or the asyncio event loop.
     if _state == "reviewing":
-        st.markdown(
-            '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
-            'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
-            '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
-            '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
-            'Agent Reviewing Estimate…</div>'
-            '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
-            'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
-            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
-            '</div>'
-            '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
-            '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
-            '30%{transform:translateY(-10px);opacity:1}}</style>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        try:
-            _ai = _pick_ai_for("default")
-            if _ai is None:
-                raise ValueError("No AI provider configured.")
-            _raw = _ai.call_raw_text(
-                "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
-                _build_review_prompt(te, se),
-                max_tokens=3000,
-            )
-            if not _raw:
-                raise ValueError("Agent returned empty response.")
-            _raw = _raw.strip()
-            if _raw.startswith("```"):
-                _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
-            _parsed = json.loads(_raw)
-            st.session_state[f"{_RK}_result"] = _parsed
-            st.session_state[f"{_RK}_state"]  = "done"
-        except Exception as _ex:
-            st.session_state[f"{_RK}_error"] = str(_ex)
-            st.session_state[f"{_RK}_state"] = "idle"
+        st.markdown(_REVIEW_LOADER, unsafe_allow_html=True)
+
+        # Start thread once (idempotent — guarded by _thread_active flag)
+        if not st.session_state.get(f"{_RK}_thread_active"):
+            _ai_key   = st.session_state.get("anthropic_api_key", "")
+            _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
+            _ai_ep    = st.session_state.get("claude_endpoint", "")
+            _ai_live  = bool(_ai_key) and not st.session_state.get("_claude_blocked")
+            _prompt   = _build_review_prompt(te, se)
+            _holder   = [None, None]   # [status, payload] — written by thread
+            st.session_state[f"{_RK}_result_holder"] = _holder
+            st.session_state[f"{_RK}_thread_active"] = True
+
+            from modules.ai_clients import AnthropicAI as _Ant
+
+            def _repair_json(s: str):
+                """Best-effort repair of a truncated JSON string from the API."""
+                s = s.strip()
+                # Strip markdown fences if present
+                if s.startswith("```"):
+                    s = "\n".join(s.split("\n")[1:]).rsplit("```", 1)[0].strip()
+                # Try clean parse first
+                try:
+                    return json.loads(s)
+                except json.JSONDecodeError:
+                    pass
+                # Truncated — close any open structures then re-try
+                # Count unmatched braces/brackets and open strings
+                depth_brace = 0
+                depth_bracket = 0
+                in_str = False
+                escape = False
+                last_good = 0
+                for i, ch in enumerate(s):
+                    if escape:
+                        escape = False
+                        continue
+                    if ch == "\\" and in_str:
+                        escape = True
+                        continue
+                    if ch == '"' and not escape:
+                        in_str = not in_str
+                    if not in_str:
+                        if ch == "{":
+                            depth_brace += 1
+                        elif ch == "}":
+                            depth_brace -= 1
+                        elif ch == "[":
+                            depth_bracket += 1
+                        elif ch == "]":
+                            depth_bracket -= 1
+                        if depth_brace > 0 or depth_bracket > 0:
+                            last_good = i + 1
+                # If we're mid-string, close it
+                repaired = s[:last_good] if last_good else s
+                if in_str:
+                    repaired += '"'
+                # Close open arrays/objects in reverse order
+                repaired += "]" * max(depth_bracket, 0)
+                repaired += "}" * max(depth_brace, 0)
+                return json.loads(repaired)
+
+            def _review_task():
+                try:
+                    if not _ai_live:
+                        raise ValueError("Claude not configured — add your Anthropic API key in settings.")
+                    _client = _Ant(_ai_key, _ai_model, _ai_ep)
+                    _raw = _client.call_raw_text(
+                        "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
+                        _prompt,
+                        max_tokens=6000,
+                    )
+                    if not _raw:
+                        raise ValueError("Agent returned empty response.")
+                    _holder[0] = "ok"
+                    _holder[1] = _repair_json(_raw)
+                except Exception as _tex:
+                    _holder[0] = "err"
+                    _holder[1] = str(_tex)
+
+            threading.Thread(target=_review_task, daemon=True).start()
+
+        # Check whether the thread has finished
+        _holder = st.session_state.get(f"{_RK}_result_holder")
+        if _holder and _holder[0] is not None:
+            if _holder[0] == "ok":
+                st.session_state[f"{_RK}_result"] = _holder[1]
+                st.session_state[f"{_RK}_state"]  = "done"
+            else:
+                st.session_state[f"{_RK}_error"] = _holder[1]
+                st.session_state[f"{_RK}_state"] = "idle"
+            st.session_state[f"{_RK}_thread_active"] = False
+            st.session_state.pop(f"{_RK}_result_holder", None)
+            st.rerun(scope="fragment")
+            return
+
+        # Thread still running — sleep(0.3) releases GIL so the asyncio
+        # event loop can flush the loader delta to the browser before waking
+        time.sleep(0.3)
         st.rerun(scope="fragment")
         return
 
@@ -6852,13 +7125,80 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             unsafe_allow_html=True,
         )
         _apply_estimate_fix(_pf.get("type", "manual"), _pf.get("data", {}))
-        # Clear old review so user must re-review on updated data
+        # Prevent auto-correct from re-firing on the updated total
+        _fx_new_total = safe_int(
+            st.session_state.processing_results.get("time_estimate", {}).get("total_hours", 0)
+        )
+        st.session_state[f"_autocorr_done_{_fx_new_total}"] = True
+        # Clear old review — user clicks Review Now to re-audit
         st.session_state.pop(f"{_RK}_result",      None)
         st.session_state.pop(f"{_RK}_error",       None)
         st.session_state.pop(f"{_RK}_pending_fix", None)
         st.session_state[f"{_RK}_state"] = "idle"
         show_toast("✅ Fix applied — all charts updated. Click Review Now to re-audit.", "success")
         st.rerun()   # full app rerun — refreshes every chart/KPI above
+        return
+
+    # ── STATE: fix_selected ───────────────────────────────────────────
+    # Two-phase per fix: "show" renders loader → rerun → "apply" runs the fix → rerun
+    if _state == "fix_selected":
+        _pending = safe_list(st.session_state.get(f"{_RK}_pending_selected", []))
+        _idx     = safe_int(st.session_state.get(f"{_RK}_fix_sel_idx", 0))
+        _phase   = st.session_state.get(f"{_RK}_fix_sel_phase", "show")
+        _total_n = len(_pending)
+
+        if _idx < _total_n:
+            _pct   = int((_idx / max(_total_n, 1)) * 100)
+            _label = safe_str(safe_dict(_pending[_idx]).get("label", ""))[:80]
+            st.markdown(
+                f'<div style="background:rgba(0,180,216,.07);border:1px solid rgba(0,180,216,.22);'
+                f'border-radius:0 0 12px 12px;padding:28px 24px;text-align:center;margin-bottom:16px">'
+                f'<div style="font-size:1.6rem;margin-bottom:8px">⚡</div>'
+                f'<div style="font-size:.88rem;font-weight:800;color:#00b4d8;margin-bottom:5px">'
+                f'Applying fix {_idx + 1} of {_total_n}…</div>'
+                f'<div style="font-size:.72rem;color:#64748b;margin-bottom:18px">{_label}</div>'
+                f'<div style="background:rgba(0,180,216,.15);border-radius:6px;height:6px;overflow:hidden">'
+                f'<div style="height:100%;border-radius:6px;background:#00b4d8;width:{_pct}%;'
+                f'transition:width .3s ease"></div></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if _phase == "show":
+                # Phase 1: loader is now flushed to browser — next rerun will apply the fix
+                st.session_state[f"{_RK}_fix_sel_phase"] = "apply"
+                st.rerun(scope="fragment")
+            else:
+                # Phase 2: apply this fix, advance index, go back to show phase
+                _fix = safe_dict(_pending[_idx])
+                _apply_estimate_fix(_fix.get("type", "manual"), safe_dict(_fix.get("data", {})))
+                st.session_state[f"{_RK}_fix_sel_idx"]   = _idx + 1
+                st.session_state[f"{_RK}_fix_sel_phase"] = "show"
+                st.rerun(scope="fragment")
+        else:
+            # All fixes applied — clean up state
+            st.session_state.pop(f"{_RK}_pending_selected",  None)
+            st.session_state.pop(f"{_RK}_fix_sel_idx",       None)
+            st.session_state.pop(f"{_RK}_fix_sel_phase",     None)
+            for _k in list(st.session_state.keys()):
+                if _k.startswith(f"{_RK}_chk_"):
+                    del st.session_state[_k]
+
+            # Prevent _auto_correct_estimate from re-firing on the new (post-fix) total
+            _new_te    = st.session_state.processing_results.get("time_estimate", {})
+            _new_total = safe_int(_new_te.get("total_hours", 0))
+            st.session_state[f"_autocorr_done_{_new_total}"] = True
+
+            # Reset to idle — full rerun updates all charts/KPI/Gantt,
+            # then the user clicks Review Now for a fresh audit.
+            st.session_state[f"{_RK}_state"] = "idle"
+            st.session_state.pop(f"{_RK}_result",        None)
+            st.session_state.pop(f"{_RK}_error",         None)
+            st.session_state.pop(f"{_RK}_thread_active", None)
+            st.session_state.pop(f"{_RK}_result_holder", None)
+
+            show_toast(f"✅ {_total_n} fix{'es' if _total_n > 1 else ''} applied — click Review Now to re-audit.", "success")
+            # Full rerun — refreshes every chart, KPI, Gantt, totals
+            st.rerun()
         return
 
     # ── STATE: ask_agent ──────────────────────────────────────────────
@@ -7001,6 +7341,55 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             "adjust_hours":  "⚡ Adjust Hours",
         }
 
+        # Count how many fixable findings are currently checked
+        _fixable_ids = [
+            safe_str(safe_dict(f).get("id", "f0"))
+            for f in _findings
+            if safe_dict(f).get("fix_type") not in ("manual", "", None)
+        ]
+        _checked_ids = [
+            fid for fid in _fixable_ids
+            if st.session_state.get(f"{_RK}_chk_{fid}", False)
+        ]
+        _n_checked = len(_checked_ids)
+
+        # ── Fix Selected sticky bar (visible when ≥1 checkbox ticked) ──
+        if _n_checked > 0:
+            _fs_col1, _fs_col2 = st.columns([3, 1])
+            with _fs_col1:
+                st.markdown(
+                    f'<div style="background:rgba(0,180,216,.08);border:1px solid rgba(0,180,216,.25);'
+                    f'border-radius:10px;padding:10px 16px;font-size:.78rem;color:#e2e8f0;">'
+                    f'<strong style="color:#00b4d8">{_n_checked} finding{"s" if _n_checked > 1 else ""} selected</strong>'
+                    f' — click Fix Selected to apply all at once.</div>',
+                    unsafe_allow_html=True,
+                )
+            with _fs_col2:
+                if st.button(
+                    f"⚡ Fix Selected ({_n_checked})",
+                    key=f"{_RK}_fix_selected_btn",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    # Build ordered list of fixes from checked findings
+                    _sel_fixes = []
+                    for _f in _findings:
+                        _f = safe_dict(_f)
+                        _fid2 = safe_str(_f.get("id", ""))
+                        if _fid2 in _checked_ids:
+                            _sel_fixes.append({
+                                "type":  safe_str(_f.get("fix_type", "")),
+                                "data":  safe_dict(_f.get("fix_data", {})),
+                                "label": safe_str(_f.get("title", "")),
+                            })
+                    st.session_state[f"{_RK}_pending_selected"] = _sel_fixes
+                    st.session_state[f"{_RK}_fix_sel_idx"]      = 0
+                    st.session_state[f"{_RK}_state"]            = "fix_selected"
+                    st.rerun(scope="fragment")
+
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+        # ── Findings cards ────────────────────────────────────────────
         for _fd in _findings:
             _fd    = safe_dict(_fd)
             _sev   = safe_str(_fd.get("severity", "low"))
@@ -7009,25 +7398,37 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             _ft    = safe_str(_fd.get("fix_type", "manual"))
             _fdata = safe_dict(_fd.get("fix_data", {}))
             _sc    = _SEV_C.get(_sev, "#94a3b8")
+            _is_fixable = _ft in _FIX_L
 
-            st.markdown(
-                f'<div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);'
-                f'border-left:3px solid {_sc};border-radius:8px;padding:12px 16px;margin-bottom:8px">'
-                f'<div style="font-size:.62rem;color:{_sc};font-weight:800;text-transform:uppercase;'
-                f'letter-spacing:.8px;margin-bottom:3px">'
-                f'{_SEV_I.get(_sev,"⚪")} {_CAT_L.get(_cat, _cat.replace("_"," ").title())}</div>'
-                f'<div style="font-size:.82rem;font-weight:700;color:#e2e8f0;margin-bottom:4px">'
-                f'{safe_str(_fd.get("title",""))}</div>'
-                f'<div style="font-size:.74rem;color:#94a3b8;margin-bottom:5px">'
-                f'{safe_str(_fd.get("detail",""))}</div>'
-                f'<div style="font-size:.7rem;color:#64748b">💡 {safe_str(_fd.get("suggestion",""))}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            # Card + checkbox in same row
+            _card_col, _chk_col = st.columns([11, 1])
+            with _card_col:
+                st.markdown(
+                    f'<div style="background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);'
+                    f'border-left:3px solid {_sc};border-radius:8px;padding:12px 16px;margin-bottom:4px">'
+                    f'<div style="font-size:.62rem;color:{_sc};font-weight:800;text-transform:uppercase;'
+                    f'letter-spacing:.8px;margin-bottom:3px">'
+                    f'{_SEV_I.get(_sev,"⚪")} {_CAT_L.get(_cat, _cat.replace("_"," ").title())}</div>'
+                    f'<div style="font-size:.82rem;font-weight:700;color:#e2e8f0;margin-bottom:4px">'
+                    f'{safe_str(_fd.get("title",""))}</div>'
+                    f'<div style="font-size:.74rem;color:#94a3b8;margin-bottom:5px">'
+                    f'{safe_str(_fd.get("detail",""))}</div>'
+                    f'<div style="font-size:.7rem;color:#64748b">💡 {safe_str(_fd.get("suggestion",""))}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _chk_col:
+                if _is_fixable:
+                    st.markdown("<div style='margin-top:14px'></div>", unsafe_allow_html=True)
+                    st.checkbox(
+                        "",
+                        key=f"{_RK}_chk_{_fid}",
+                        help="Select to include in Fix Selected",
+                    )
 
             _ac1, _ac2, _ac3 = st.columns([2, 2, 5])
             with _ac1:
-                if _ft in _FIX_L:
+                if _is_fixable:
                     if st.button(_FIX_L[_ft], key=f"{_RK}_fix_{_fid}", type="primary", use_container_width=True):
                         st.session_state[f"{_RK}_pending_fix"] = {"type": _ft, "data": _fdata}
                         st.session_state[f"{_RK}_state"]       = "fixing"
@@ -7066,11 +7467,30 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     with _rr2:
         if st.button("🔄 Re-review", key=f"{_RK}_rerun", use_container_width=True):
             st.session_state[f"{_RK}_state"] = "reviewing"
-            st.session_state.pop(f"{_RK}_result", None)
-            st.session_state.pop(f"{_RK}_error",  None)
+            st.session_state.pop(f"{_RK}_result",        None)
+            st.session_state.pop(f"{_RK}_error",         None)
+            st.session_state.pop(f"{_RK}_thread_active", None)
+            st.session_state.pop(f"{_RK}_result_holder", None)
             st.rerun(scope="fragment")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _tab_placeholder(icon: str, heading: str, detail: str = "") -> None:
+    """Render a centred 'not yet available' card in a blank tab."""
+    _detail_html = (
+        f'<div style="font-size:.82rem;color:#475569;max-width:400px;line-height:1.65;margin-top:6px">'
+        f'{detail}</div>'
+    ) if detail else ""
+    st.markdown(
+        f'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+        f'padding:72px 24px 90px;text-align:center;">'
+        f'<div style="font-size:2.8rem;margin-bottom:18px;opacity:.45;filter:grayscale(40%)">{icon}</div>'
+        f'<div style="font-size:1rem;font-weight:700;color:#64748b;letter-spacing:-.2px">{heading}</div>'
+        f'{_detail_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def show_results():
@@ -7082,8 +7502,38 @@ def show_results():
         for entry in st.session_state.agent_logs:
             st.markdown('<div class="alog"><span class="abadge">' + entry["agent"] + '</span><span class="aok">Done</span><span class="adet">' + entry["detail"] + '</span></div>', unsafe_allow_html=True)
 
+    # ── Quick-Estimate mode notice ───────────────────────────────────────
+    if st.session_state.get("time_test_mode"):
+        st.info(
+            "⚡ **Quick Estimate mode** — only the Time & Requirements tabs have data. "
+            "Run the **full pipeline** to populate all other tabs.",
+            icon="ℹ️",
+        )
+
     # ── Show slim banner when a recalibration is awaiting review ────────
     render_pending_review_banner()
+
+    # ── CSS: shimmer skeleton animation used by tab loading cards ────────
+    st.markdown("""
+<style>
+@keyframes _eci_shimmer {
+  0%   { background-position: -600px 0 }
+  100% { background-position:  600px 0 }
+}
+.eci-tab-hdr {
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  border-radius:10px;margin-bottom:14px;
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+}
+.eci-tab-hdr-icon { font-size:1.4rem }
+.eci-tab-hdr-title { font-size:.92rem;font-weight:700;color:#94a3b8;letter-spacing:-.2px }
+.eci-skel {
+  border-radius:8px;height:13px;margin:7px 0;
+  background:linear-gradient(90deg,rgba(255,255,255,.05) 25%,rgba(255,255,255,.10) 50%,rgba(255,255,255,.05) 75%);
+  background-size:600px 100%;
+  animation:_eci_shimmer 1.4s infinite linear;
+}
+</style>""", unsafe_allow_html=True)
 
     se = safe_dict(r.get("semantic_analysis"))
     te = safe_dict(r.get("time_estimate"))
@@ -7135,8 +7585,48 @@ def show_results():
 
     tab_list = st.tabs(["📋 Requirements", "⏱️ Time", "💰 Infra Cost", "📋 Scope & Risk", "🏗️ Architecture", "📐 Diagrams", "📄 Proposal", "👥 Team & Roles", "🎯 Discovery Prep", "🔀 Scenarios", "🎮 3D View", "💬 Chat", "📚 History", "🎯 Live Demo", "📦 Delivery", "🔄 Review"])
 
+    # ── INSTANT PRE-RENDER ────────────────────────────────────────────────────
+    # Write a placeholder into every tab RIGHT NOW before any heavy computation.
+    # This means clicking any tab will always show something instead of blank.
+    # Each tab's actual block calls _pre[i].empty() to clear it before rendering.
+    _pre = {}
+    _pre_info = [
+        (bool(se),                            "📋 Requirements"),
+        (bool(te),                            "⏱️ Time Estimation"),
+        (bool(ce),                            "💰 Infrastructure Cost"),
+        (bool(ri or ar),                      "📋 Scope & Risk"),
+        (bool(ar),                            "🏗️ Architecture"),
+        (bool(r.get("mermaid_diagrams")),     "📐 Diagrams"),
+        (bool(r.get("proposal")),             "📄 Proposal"),
+        (True,                                "👥 Team & Roles"),
+        (bool(r.get("discovery_questions")), "🎯 Discovery Prep"),
+        (True,                                "🔀 Scenarios"),
+        (bool(ar),                            "🎮 3D View"),
+        (True,                                "💬 Chat"),
+        (True,                                "📚 History"),
+        (bool(se),                            "🎯 Live Demo"),
+        (True,                                "📦 Delivery"),
+        (True,                                "🔄 Review"),
+    ]
+    for _pi, (_has, _lbl) in enumerate(_pre_info):
+        with tab_list[_pi]:
+            _pre[_pi] = st.empty()
+            if _has:
+                _pre[_pi].markdown(
+                    f'<div style="padding:18px 4px 0;color:#475569;font-size:.8rem;'
+                    f'font-style:italic">⏳ {_lbl} — loading…</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                _pre[_pi].warning(
+                    f"**{_lbl}** — not available. Run the full pipeline to generate this section.",
+                    icon="ℹ️",
+                )
+    # ─────────────────────────────────────────────────────────────────────────
+
     # ── Requirements ──
     with tab_list[0]:
+        _pre[0].empty()
         reqs = safe_list(se.get("requirements"))
         fn_list = [x for x in reqs if isinstance(x, dict) and x.get("type") == "functional"]
         nf_list = [x for x in reqs if isinstance(x, dict) and x.get("type") == "non-functional"]
@@ -7218,6 +7708,7 @@ def show_results():
 
     # ── Time ──
     with tab_list[1]:
+        _pre[1].empty()
         phases    = safe_list(te.get("phases"))
         three_pt  = safe_dict(te.get("three_point"))
         milestones = safe_list(te.get("milestones"))
@@ -7507,7 +7998,11 @@ def show_results():
                 unsafe_allow_html=True,
             )
 
-        _quick_feedback("time", 'e.g. "hours are too low, add 20% for integration testing"')
+        # _quick_feedback("time", 'e.g. "hours are too low, add 20% for integration testing"')
+
+        # ── Auto-correct pass (Claude, runs once per estimate) ────────
+        _auto_correct_estimate(te, se)
+        _render_auto_corrections_badge()
 
         # ── Agent review ──────────────────────────────────────────────
         _render_estimate_review(te, se)
@@ -7518,7 +8013,52 @@ def show_results():
 
     # ── Cost (Infrastructure) ──
     with tab_list[2]:
+        _pre[2].empty()
         import pandas as pd
+
+        # Show instant header immediately so the tab never looks blank
+        st.markdown(
+            '<div class="eci-tab-hdr">'
+            '<span class="eci-tab-hdr-icon">💰</span>'
+            '<span class="eci-tab-hdr-title">Infrastructure Cost Analysis</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Guard: if cost data isn't ready yet, show an appropriate state
+        _ce_ready = bool(
+            ce and isinstance(ce, dict) and any(
+                ce.get(k) for k in ("azure_costs", "aws_costs", "gcp_costs",
+                                    "infrastructure_costs", "monthly_total",
+                                    "services", "third_party_costs")
+            )
+        )
+        if not _ce_ready:
+            if st.session_state.get("time_test_mode"):
+                _tab_placeholder(
+                    "💰", "Cost analysis not available in Quick Estimate mode",
+                    "Run the full pipeline to generate detailed infrastructure cost estimates.",
+                )
+            else:
+                st.markdown(
+                    '<div style="border:1px solid rgba(255,209,102,.25);border-radius:14px;'
+                    'padding:32px 28px;margin-top:8px;background:rgba(255,209,102,.04);">'
+                    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">'
+                    '<div style="font-size:2rem">⏳</div>'
+                    '<div>'
+                    '<div style="font-size:1rem;font-weight:700;color:#ffd166">'
+                    'Cost analysis is being computed…</div>'
+                    '<div style="font-size:.82rem;color:#94a3b8;margin-top:4px">'
+                    'The AI agent is calculating infrastructure costs. '
+                    'Switch back in a moment — this tab will populate automatically.</div>'
+                    '</div></div>'
+                    '<div class="eci-skel" style="width:100%;height:11px"></div>'
+                    '<div class="eci-skel" style="width:75%;height:11px"></div>'
+                    '<div class="eci-skel" style="width:88%;height:11px;margin-top:14px"></div>'
+                    '<div class="eci-skel" style="width:60%;height:11px"></div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
 
         # ── Detect cloud provider & gather all cost entries ────────────
         _provider      = _detect_cloud_provider(ce, se)          # pass semantic for keyword scan
@@ -7550,7 +8090,9 @@ def show_results():
         _prov_icon  = _prov_icons.get(_provider, "☁️")
 
         # ── Auto-fetch live pricing (Azure only; others use static catalog) ─
-        if _provider in ("azure", "multi-cloud"):
+        if not _ce_ready:
+            pass  # skip all rendering — loading card is already shown above
+        elif _provider in ("azure", "multi-cloud"):
             if not st.session_state.get("live_pricing_cache"):
                 with st.spinner("⚡ Fetching live Azure prices from prices.azure.com…"):
                     _live = _fetch_live_azure_pricing()
@@ -7602,25 +8144,26 @@ def show_results():
             f'font-size:.7rem;font-weight:700;margin-left:6px;vertical-align:middle;">'
             f'{_price_icon} {_price_src}</span>'
         )
-        st.markdown(
-            f'<div style="background:linear-gradient(135deg,#0f172a,#1e293b);'
-            f'border:1px solid #334155;border-left:4px solid {_prov_color};'
-            f'border-radius:14px;padding:20px 24px;margin-bottom:18px;">'
-            f'<div style="font-size:.8rem;color:#64748b;margin-bottom:6px;">'
-            f'Infrastructure Cost Estimate{_prov_badge}</div>'
-            f'<div style="display:flex;gap:40px;align-items:flex-end;">'
-            f'<div><div style="font-size:2.4rem;font-weight:800;color:{_prov_color};line-height:1;">'
-            f'${_total_monthly:,}</div>'
-            f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">per month</div></div>'
-            f'<div><div style="font-size:1.5rem;font-weight:700;color:#94a3b8;">'
-            f'${_total_annual:,}</div>'
-            f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">per year</div></div>'
-            f'<div><div style="font-size:1.4rem;font-weight:700;color:#7b61ff;">'
-            f'{len(_patched_costs) + len(third_party)}</div>'
-            f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">services</div></div>'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
+        if _ce_ready:
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#0f172a,#1e293b);'
+                f'border:1px solid #334155;border-left:4px solid {_prov_color};'
+                f'border-radius:14px;padding:20px 24px;margin-bottom:18px;">'
+                f'<div style="font-size:.8rem;color:#64748b;margin-bottom:6px;">'
+                f'Infrastructure Cost Estimate{_prov_badge}</div>'
+                f'<div style="display:flex;gap:40px;align-items:flex-end;">'
+                f'<div><div style="font-size:2.4rem;font-weight:800;color:{_prov_color};line-height:1;">'
+                f'${_total_monthly:,}</div>'
+                f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">per month</div></div>'
+                f'<div><div style="font-size:1.5rem;font-weight:700;color:#94a3b8;">'
+                f'${_total_annual:,}</div>'
+                f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">per year</div></div>'
+                f'<div><div style="font-size:1.4rem;font-weight:700;color:#7b61ff;">'
+                f'{len(_patched_costs) + len(third_party)}</div>'
+                f'<div style="font-size:.72rem;color:#64748b;margin-top:3px;">services</div></div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
 
         # ── Mismatch notice: semantic says AWS/GCP but cost estimate was Azure ──
         if _mismatch_note:
@@ -7682,19 +8225,23 @@ def show_results():
         if _default_region_lbl not in _region_labels:
             _default_region_lbl = _region_labels[0]
 
-        _rc1, _rc2 = st.columns([3, 1])
-        with _rc1:
-            _sel_region_label = st.selectbox(
-                f"🌍 {_prov_name} Region",
-                _region_labels,
-                index=_region_labels.index(_default_region_lbl),
-                key="infra_region_select",
-                help=f"Prices vary by region. Select your target {_prov_name} deployment region.",
-            )
-        with _rc2:
-            st.markdown('<div style="margin-top:28px"></div>', unsafe_allow_html=True)
-            _do_refresh = st.button("🔄 Refresh Prices", key="btn_live_prices",
-                                    type="secondary", use_container_width=True)
+        if _ce_ready:
+            _rc1, _rc2 = st.columns([3, 1])
+            with _rc1:
+                _sel_region_label = st.selectbox(
+                    f"🌍 {_prov_name} Region",
+                    _region_labels,
+                    index=_region_labels.index(_default_region_lbl),
+                    key="infra_region_select",
+                    help=f"Prices vary by region. Select your target {_prov_name} deployment region.",
+                )
+            with _rc2:
+                st.markdown('<div style="margin-top:28px"></div>', unsafe_allow_html=True)
+                _do_refresh = st.button("🔄 Refresh Prices", key="btn_live_prices",
+                                        type="secondary", use_container_width=True)
+        else:
+            _sel_region_label = _default_region_lbl
+            _do_refresh = False
 
         if _do_refresh:
             _sel_region_id = _region_map[_sel_region_label]
@@ -7718,13 +8265,14 @@ def show_results():
                 )
                 st.rerun()
 
-        _active_region = st.session_state.get(_region_key, _default_region)
-        if _provider == "aws":
-            st.caption(f"📍 {_prov_name} catalog prices for: **{_active_region}** (on-demand, Apr-2026)")
-        elif _provider == "gcp":
-            st.caption(f"📍 {_prov_name} catalog prices for: **{_active_region}** (on-demand, Apr-2026)")
-        else:
-            st.caption(f"📍 Prices shown for: **{_active_region}**")
+        if _ce_ready:
+            _active_region = st.session_state.get(_region_key, _default_region)
+            if _provider == "aws":
+                st.caption(f"📍 {_prov_name} catalog prices for: **{_active_region}** (on-demand, Apr-2026)")
+            elif _provider == "gcp":
+                st.caption(f"📍 {_prov_name} catalog prices for: **{_active_region}** (on-demand, Apr-2026)")
+            else:
+                st.caption(f"📍 Prices shown for: **{_active_region}**")
 
         # ── Cost breakdown by category (donut + table) ───────────────
         if _patched_costs or third_party:
@@ -7999,23 +8547,40 @@ def show_results():
                     unsafe_allow_html=True,
                 )
 
-        notes = safe_str(ce.get("notes"))
-        if notes:
-            st.info(notes)
-
-        _quick_feedback("cost", 'e.g. "switch SQL to Premium tier, add Redis Cache"')
+        if _ce_ready:
+            notes = safe_str(ce.get("notes"))
+            if notes:
+                st.info(notes)
+            _quick_feedback("cost", 'e.g. "switch SQL to Premium tier, add Redis Cache"')
 
     # ── Scope & Risk ──
     with tab_list[3]:
-        _render_scope_risk_tab(se, te, ar, ri, r)
+        _pre[3].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">📋</span>'
+                    '<span class="eci-tab-hdr-title">Scope & Risk Analysis</span></div>', unsafe_allow_html=True)
+        if ri or ar:
+            _render_scope_risk_tab(se, te, ar, ri, r)
+        else:
+            _tab_placeholder("📋", "Scope & Risk not generated",
+                             "Run the full pipeline to analyse risks and define scope.")
 
     # ── Architecture ──
     with tab_list[4]:
-        render_architecture_tab(ar, te, ce, mermaid_diagrams=safe_dict(r.get("mermaid_diagrams")), semantic=se, ai_client=_pick_ai_for("architecture"))
-        _quick_feedback("architecture", 'e.g. "add Redis Cache and Azure Service Bus, update data flow"')
+        _pre[4].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🏗️</span>'
+                    '<span class="eci-tab-hdr-title">Solution Architecture</span></div>', unsafe_allow_html=True)
+        if ar and ar.get("components"):
+            render_architecture_tab(ar, te, ce, mermaid_diagrams=safe_dict(r.get("mermaid_diagrams")), semantic=se, ai_client=_pick_ai_for("architecture"))
+            _quick_feedback("architecture", 'e.g. "add Redis Cache and Azure Service Bus, update data flow"')
+        else:
+            _tab_placeholder("🏗️", "Architecture not designed",
+                             "Run the full pipeline to generate the solution architecture diagram.")
 
     # ── Diagrams (Mermaid.js) ──
     with tab_list[5]:
+        _pre[5].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">📐</span>'
+                    '<span class="eci-tab-hdr-title">Architecture Diagrams</span></div>', unsafe_allow_html=True)
         mermaid_data = safe_dict(r.get("mermaid_diagrams"))
         if mermaid_data:
             diagram_map = [
@@ -8027,43 +8592,92 @@ def show_results():
             ]
             render_mermaid_tabs(diagram_map)
         else:
-            st.info("Architecture diagrams will be generated after processing documents.")
+            _tab_placeholder("📐", "Diagrams not generated",
+                             "Run the full pipeline to generate Mermaid architecture diagrams.")
 
     # ── Proposal ──
     with tab_list[6]:
+        _pre[6].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">📄</span>'
+                    '<span class="eci-tab-hdr-title">Client Proposal</span></div>', unsafe_allow_html=True)
         _render_proposal_tab(r, _pick_ai_for("proposal"))
 
-
-    # ── Team & Roles — Deal Cost Calculator ──
+    # ── Team & Roles — Deal Cost Calculator (restricted to authorised users) ──
     with tab_list[7]:
-        render_team_roles_tab(r, se, te, _pick_ai_for("proposal"))
+        _pre[7].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">👥</span>'
+                    '<span class="eci-tab-hdr-title">Team & Roles</span></div>', unsafe_allow_html=True)
+        from .config_loader import can_view_team_roles as _can_view_tr
+        if _can_view_tr():
+            render_team_roles_tab(r, se, te, _pick_ai_for("proposal"))
+        else:
+            st.info(
+                "🔒 **Access Restricted** — This section contains cost and pricing information "
+                "and is only visible to authorised users.\n\n"
+                "Contact your administrator to request access.",
+                icon="🔐",
+            )
 
     # ── Discovery Prep Deck ──
     with tab_list[8]:
-        _render_discovery_tab(r)
+        _pre[8].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🎯</span>'
+                    '<span class="eci-tab-hdr-title">Discovery Prep</span></div>', unsafe_allow_html=True)
+        _has_discovery = bool(r.get("discovery_questions") and r.get("discovery_questions") != {})
+        if _has_discovery:
+            _render_discovery_tab(r)
+        else:
+            _tab_placeholder("🎯", "Discovery questions not generated",
+                             "Run the full pipeline to generate a discovery preparation deck.")
 
     # ── Scenario Modelling ──
     with tab_list[9]:
+        _pre[9].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🔮</span>'
+                    '<span class="eci-tab-hdr-title">Scenario Modelling</span></div>', unsafe_allow_html=True)
         render_scenario_tab()
 
     # ── 3D Architecture Fly-Through ──
     with tab_list[10]:
-        _render_3d_view_tab(ar, ce, r)
+        _pre[10].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🎮</span>'
+                    '<span class="eci-tab-hdr-title">3D Architecture View</span></div>', unsafe_allow_html=True)
+        if ar and ar.get("components"):
+            _render_3d_view_tab(ar, ce, r)
+        else:
+            _tab_placeholder("🎮", "3D view not available",
+                             "Architecture must be generated first. Run the full pipeline.")
 
     # ── Chat ──
     with tab_list[11]:
+        _pre[11].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">💬</span>'
+                    '<span class="eci-tab-hdr-title">BELLA Chat</span></div>', unsafe_allow_html=True)
         _render_proposal_chat(r, se, te, ce, ri)
 
     # ── History ──
     with tab_list[12]:
+        _pre[12].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">📜</span>'
+                    '<span class="eci-tab-hdr-title">Version History</span></div>', unsafe_allow_html=True)
         render_version_history_tab(r)
 
     # ── Live Demo ──
     with tab_list[13]:
-        render_live_demo_tab(se, te, ce, r)
+        _pre[13].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🎯</span>'
+                    '<span class="eci-tab-hdr-title">Live Demo Generator</span></div>', unsafe_allow_html=True)
+        if se and se.get("project_type"):
+            render_live_demo_tab(se, te, ce, r)
+        else:
+            _tab_placeholder("🎯", "Live demo not available",
+                             "Run the full pipeline to enable the live demo generator.")
 
     # ── Delivery ──
     with tab_list[14]:
+        _pre[14].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">📦</span>'
+                    '<span class="eci-tab-hdr-title">Delivery Package</span></div>', unsafe_allow_html=True)
         # ── Version selector ───────────────────────────────────────────
         _del_r, _del_se, _del_te, _del_ce, _del_ri, _del_ar, _del_ver = \
             get_delivery_version_data(r, se, te, ce, ri, ar)
@@ -8304,6 +8918,9 @@ def show_results():
 
     # ── Review & Feedback ──
     with tab_list[15]:
+        _pre[15].empty()
+        st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">⭐</span>'
+                    '<span class="eci-tab-hdr-title">Review & Feedback</span></div>', unsafe_allow_html=True)
         render_review_feedback_tab(r, se, te, ce, ri, ar, _pick_ai())
 
 

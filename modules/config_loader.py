@@ -227,6 +227,22 @@ def apply_config_to_session() -> None:
     _set("milvus_embedding_api_version",milvus.get("embedding_api_version", "2025-01-01-preview"))
 
 
+def can_view_team_roles() -> bool:
+    """Return True if the current user may see the Team & Roles (cost) tab.
+
+    Controlled by access_control.team_roles_emails in config.yaml —
+    a comma-separated list of allowed email addresses.
+    If the list is empty or the key is absent, everyone can see the tab.
+    """
+    cfg = load_config()
+    raw = cfg.get("access_control", {}).get("team_roles_emails", "")
+    if not raw or not raw.strip():
+        return True  # no restriction configured → allow all
+    allowed = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    user_email = st.session_state.get("auth_email", "").strip().lower()
+    return user_email in allowed
+
+
 def get_model_for_feature(feature: str) -> str:
     """Return the provider key for a named feature (e.g. 'chat', 'cost').
 

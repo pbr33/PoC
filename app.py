@@ -1221,8 +1221,29 @@ def _analyze_text_dynamic(text):
                        "backup", "disaster", "recovery", "uptime"]
     req_keywords_int = ["integrat", "connect", "sync", "api", "sso", "webhook", "sharepoint",
                         "teams", "graph api", "rest api", "copilot", "power bi"]
-    complex_indicators = ["multi-model", "orchestrat", "failover", "hybrid", "vector",
-                          "embedding", "rag", "pipeline", "authentication", "authorization"]
+
+    # Signals that strongly indicate High complexity (any 1 hit → High)
+    _HIGH_SIGNALS = [
+        "multi-model", "multi-agent", "orchestrat", "vector", "embedding", "rag",
+        "llm", "machine learning", "deep learning", "fine-tun", "semantic search",
+        "generative ai", "ai agent",
+        "real-time", "streaming", "event-driven", "websocket", "pub/sub",
+        "multi-tenant", "end-to-end", "bi-directional", "cross-system",
+        "rbac", "mfa", "zero trust", "soc2", "gdpr", "hipaa", "pci",
+        "data migration", "etl", "deduplication", "data cleansing",
+        "failover", "disaster recovery", "high availability", "auto-scal",
+        "kubernetes", "service mesh", "microservice",
+    ]
+    # Signals that indicate Medium complexity (3+ hits OR integration type → High; 1+ → Medium)
+    _MEDIUM_SIGNALS = [
+        "integrat", "api", "oauth", "sso", "webhook", "sync", "connect",
+        "workflow", "approval", "conditional", "business rule", "calculat",
+        "validat", "multi-step", "state machine",
+        "migration", "import", "export", "transform", "batch",
+        "authentication", "authorization", "encrypt", "permission", "role",
+        "report", "dashboard", "analytics", "notification", "alert",
+        "pipeline", "hybrid", "cach", "search index", "queue",
+    ]
 
     requirements = []
     seen_titles = set()
@@ -1255,10 +1276,24 @@ def _analyze_text_dynamic(text):
             continue
         seen_titles.add(title_key)
 
-        # Complexity
-        complex_count = sum(1 for kw in complex_indicators if kw in sent_lower)
-        complexity = "High" if complex_count >= 2 or len(sent) > 200 else "Medium" if complex_count >= 1 else "Low"
-        priority = "P1" if complexity == "High" or any(w in sent_lower for w in ["critical", "must", "essential", "required"]) else "P2"
+        # Complexity — signal-category scoring, not raw keyword count
+        high_hits = sum(1 for kw in _HIGH_SIGNALS if kw in sent_lower)
+        med_hits  = sum(1 for kw in _MEDIUM_SIGNALS if kw in sent_lower)
+        if high_hits >= 1 or med_hits >= 3 or (req_type == "integration" and med_hits >= 1):
+            complexity = "High"
+        elif med_hits >= 1 or req_type == "integration":
+            complexity = "Medium"
+        else:
+            complexity = "Low"
+
+        # Priority: P1 = High or urgency word, P2 = Medium, P3 = Low
+        urgency = any(w in sent_lower for w in ["critical", "must", "essential", "required", "urgent", "blocking", "mandatory"])
+        if complexity == "High" or urgency:
+            priority = "P1"
+        elif complexity == "Medium":
+            priority = "P2"
+        else:
+            priority = "P3"
 
         requirements.append({
             "title": title,
@@ -1295,13 +1330,16 @@ def _analyze_text_dynamic(text):
     else:
         project_type = "Enterprise Application"
 
-    # ── Complexity score ──
+    # ── Project complexity score (1-10) ──
+    high_req_count = sum(1 for r in requirements if r.get("complexity") == "High")
+    nf_count       = sum(1 for r in requirements if r.get("type") == "non-functional")
     score = 3
-    score += min(3, len(detected_tech) * 0.4)
-    score += min(2, len(requirements) * 0.15)
-    if ai_count >= 1:
-        score += 1.5
-    score += min(1.5, int_count * 0.3)
+    score += min(2.5, len(detected_tech) * 0.3)        # tech breadth
+    score += min(1.5, len(requirements) * 0.1)          # scope volume
+    score += min(2.0, ai_count * 0.75)                  # AI/ML presence
+    score += min(1.5, int_count * 0.35)                 # integration complexity
+    score += min(2.0, high_req_count * 0.4)             # high-complexity req density
+    score += min(1.0, nf_count * 0.25)                  # non-functional burden
     score = min(10, max(1, int(round(score))))
 
     # ── Business objectives ──
@@ -5646,8 +5684,29 @@ def _analyze_text_dynamic(text):
                        "backup", "disaster", "recovery", "uptime"]
     req_keywords_int = ["integrat", "connect", "sync", "api", "sso", "webhook", "sharepoint",
                         "teams", "graph api", "rest api", "copilot", "power bi"]
-    complex_indicators = ["multi-model", "orchestrat", "failover", "hybrid", "vector",
-                          "embedding", "rag", "pipeline", "authentication", "authorization"]
+
+    # Signals that strongly indicate High complexity (any 1 hit → High)
+    _HIGH_SIGNALS = [
+        "multi-model", "multi-agent", "orchestrat", "vector", "embedding", "rag",
+        "llm", "machine learning", "deep learning", "fine-tun", "semantic search",
+        "generative ai", "ai agent",
+        "real-time", "streaming", "event-driven", "websocket", "pub/sub",
+        "multi-tenant", "end-to-end", "bi-directional", "cross-system",
+        "rbac", "mfa", "zero trust", "soc2", "gdpr", "hipaa", "pci",
+        "data migration", "etl", "deduplication", "data cleansing",
+        "failover", "disaster recovery", "high availability", "auto-scal",
+        "kubernetes", "service mesh", "microservice",
+    ]
+    # Signals that indicate Medium complexity (3+ hits OR integration type → High; 1+ → Medium)
+    _MEDIUM_SIGNALS = [
+        "integrat", "api", "oauth", "sso", "webhook", "sync", "connect",
+        "workflow", "approval", "conditional", "business rule", "calculat",
+        "validat", "multi-step", "state machine",
+        "migration", "import", "export", "transform", "batch",
+        "authentication", "authorization", "encrypt", "permission", "role",
+        "report", "dashboard", "analytics", "notification", "alert",
+        "pipeline", "hybrid", "cach", "search index", "queue",
+    ]
 
     requirements = []
     seen_titles = set()
@@ -5680,10 +5739,24 @@ def _analyze_text_dynamic(text):
             continue
         seen_titles.add(title_key)
 
-        # Complexity
-        complex_count = sum(1 for kw in complex_indicators if kw in sent_lower)
-        complexity = "High" if complex_count >= 2 or len(sent) > 200 else "Medium" if complex_count >= 1 else "Low"
-        priority = "P1" if complexity == "High" or any(w in sent_lower for w in ["critical", "must", "essential", "required"]) else "P2"
+        # Complexity — signal-category scoring, not raw keyword count
+        high_hits = sum(1 for kw in _HIGH_SIGNALS if kw in sent_lower)
+        med_hits  = sum(1 for kw in _MEDIUM_SIGNALS if kw in sent_lower)
+        if high_hits >= 1 or med_hits >= 3 or (req_type == "integration" and med_hits >= 1):
+            complexity = "High"
+        elif med_hits >= 1 or req_type == "integration":
+            complexity = "Medium"
+        else:
+            complexity = "Low"
+
+        # Priority: P1 = High or urgency word, P2 = Medium, P3 = Low
+        urgency = any(w in sent_lower for w in ["critical", "must", "essential", "required", "urgent", "blocking", "mandatory"])
+        if complexity == "High" or urgency:
+            priority = "P1"
+        elif complexity == "Medium":
+            priority = "P2"
+        else:
+            priority = "P3"
 
         requirements.append({
             "title": title,
@@ -5720,13 +5793,16 @@ def _analyze_text_dynamic(text):
     else:
         project_type = "Enterprise Application"
 
-    # ── Complexity score ──
+    # ── Project complexity score (1-10) ──
+    high_req_count = sum(1 for r in requirements if r.get("complexity") == "High")
+    nf_count       = sum(1 for r in requirements if r.get("type") == "non-functional")
     score = 3
-    score += min(3, len(detected_tech) * 0.4)
-    score += min(2, len(requirements) * 0.15)
-    if ai_count >= 1:
-        score += 1.5
-    score += min(1.5, int_count * 0.3)
+    score += min(2.5, len(detected_tech) * 0.3)        # tech breadth
+    score += min(1.5, len(requirements) * 0.1)          # scope volume
+    score += min(2.0, ai_count * 0.75)                  # AI/ML presence
+    score += min(1.5, int_count * 0.35)                 # integration complexity
+    score += min(2.0, high_req_count * 0.4)             # high-complexity req density
+    score += min(1.0, nf_count * 0.25)                  # non-functional burden
     score = min(10, max(1, int(round(score))))
 
     # ── Business objectives ──
@@ -9793,8 +9869,13 @@ def tab_admin():
 #  MAIN
 # ═══════════════════════════════════════════════════════════════════════
 
-main_t1, main_t2 = st.tabs(["⚡Business Estimation", "⚙️ Admin & Training"])
-with main_t1:
+_is_admin = st.session_state.get("auth_method") == "Admin"
+
+if _is_admin:
+    main_t1, main_t2 = st.tabs(["⚡Business Estimation", "⚙️ Admin & Training"])
+    with main_t1:
+        tab_presale()
+    with main_t2:
+        tab_admin()
+else:
     tab_presale()
-with main_t2:
-    tab_admin()

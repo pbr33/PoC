@@ -80,6 +80,8 @@ def _show_login():
     _client_sec = _sso["AAD_CLIENT_SECRET"]
     _base_url   = _sso["APP_BASE_URL"]
     _redirect   = _base_url.rstrip("/") + "/"
+    # Store redirect URI in session so users can see it when debugging
+    st.session_state["_sso_redirect_uri"] = _redirect
     msal_app    = _msal_app(_client_id, _tenant_id, _client_sec)
 
     # Handle OAuth callback immediately (before any HTML renders)
@@ -346,7 +348,7 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
     <div class="stat-card">
       <div class="stat-icon ic-p">🧠</div>
       <div><div class="stat-val">Multi-model AI engine</div>
-           <div class="stat-desc">Azure · Claude · DeepSeek · Grok — best model per task</div></div>
+           <div class="stat-desc">Best model per task</div></div>
     </div>
     <div class="stat-card">
       <div class="stat-icon ic-t">📊</div>
@@ -359,28 +361,165 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
 
     # ── RIGHT: login card — CSS makes stVerticalBlock the card ───────
     with right:
-        # OAuth callback handling (spinner renders inside the card)
+        # OAuth callback handling — full-screen animated splash
         if _doing_callback:
-            with st.spinner("Completing Microsoft sign-in…"):
-                try:
-                    result = msal_app.acquire_token_by_authorization_code(
-                        st.query_params["code"], scopes=["User.Read"], redirect_uri=_redirect,
-                    )
-                    if "access_token" in result:
-                        headers = {"Authorization": "Bearer " + result["access_token"]}
-                        profile = _requests.get(
-                            "https://graph.microsoft.com/v1.0/me", headers=headers
-                        ).json()
-                        st.session_state["auth_user"]   = profile.get("displayName", "User")
-                        st.session_state["auth_email"]  = profile.get("mail") or profile.get("userPrincipalName", "")
-                        st.session_state["auth_method"] = "Microsoft SSO"
-                        st.session_state["auth_ok"]     = True
-                        st.query_params.clear()
-                        st.rerun()
+            st.markdown(f"""
+<style>
+.sso-splash{{
+    position:fixed;inset:0;z-index:9999;
+    background:linear-gradient(135deg,#07091c 0%,#0a0f2e 60%,#0d0820 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:0;
+}}
+/* ring loader */
+.sso-ring{{
+    position:relative;width:90px;height:90px;margin-bottom:32px;
+}}
+.sso-ring svg{{
+    position:absolute;inset:0;animation:ringRotate 1.6s linear infinite;
+}}
+.sso-ring-track{{stroke:rgba(255,255,255,.06);stroke-width:3;fill:none}}
+.sso-ring-arc{{
+    stroke:url(#ssoGrad);stroke-width:3;fill:none;
+    stroke-linecap:round;
+    stroke-dasharray:180 283;
+    animation:ringDash 1.6s cubic-bezier(.4,0,.2,1) infinite;
+}}
+@keyframes ringRotate{{to{{transform:rotate(360deg)}}}}
+@keyframes ringDash{{
+    0%{{stroke-dashoffset:0;opacity:1}}
+    50%{{stroke-dashoffset:-80;opacity:.85}}
+    100%{{stroke-dashoffset:-180;opacity:1}}
+}}
+/* ms logo in centre */
+.sso-ms{{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+}}
+.sso-ms-grid{{
+    display:grid;grid-template-columns:1fr 1fr;gap:3px;width:26px;height:26px;
+    animation:msBreath 2s ease-in-out infinite;
+}}
+.sso-ms-grid span{{border-radius:2px}}
+@keyframes msBreath{{
+    0%,100%{{transform:scale(1);opacity:.9}}
+    50%{{transform:scale(1.12);opacity:1}}
+}}
+/* text block */
+.sso-splash-title{{
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:1.35rem;font-weight:800;letter-spacing:-.4px;
+    background:linear-gradient(120deg,#fff 0%,#a8cfff 50%,#c4b5fd 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    margin-bottom:10px;text-align:center;
+}}
+.sso-splash-sub{{
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:.82rem;color:rgba(255,255,255,.35);letter-spacing:.3px;
+    text-align:center;margin-bottom:40px;
+}}
+/* step dots */
+.sso-steps{{display:flex;flex-direction:column;gap:14px;width:260px}}
+.sso-step{{
+    display:flex;align-items:center;gap:14px;
+    animation:stepFadeIn .5s ease both;
+}}
+.sso-step:nth-child(1){{animation-delay:.1s}}
+.sso-step:nth-child(2){{animation-delay:.55s}}
+.sso-step:nth-child(3){{animation-delay:1.0s}}
+@keyframes stepFadeIn{{from{{opacity:0;transform:translateX(-12px)}}to{{opacity:1;transform:translateX(0)}}}}
+.sso-step-dot{{
+    width:8px;height:8px;border-radius:50%;flex-shrink:0;
+    animation:dotPulse 1.8s ease-in-out infinite;
+}}
+.sso-step:nth-child(1) .sso-step-dot{{background:#00b4d8;animation-delay:0s}}
+.sso-step:nth-child(2) .sso-step-dot{{background:#7b2fff;animation-delay:.55s}}
+.sso-step:nth-child(3) .sso-step-dot{{background:#00c896;animation-delay:1.0s}}
+@keyframes dotPulse{{
+    0%,100%{{box-shadow:0 0 0 0 rgba(255,255,255,.3)}}
+    50%{{box-shadow:0 0 0 5px rgba(255,255,255,0)}}
+}}
+.sso-step-lbl{{
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:.78rem;color:rgba(255,255,255,.45);letter-spacing:.2px;
+}}
+/* orbs (reuse login page ones but re-declare for safety) */
+.sso-orb{{position:fixed;border-radius:50%;filter:blur(110px);pointer-events:none;z-index:9998}}
+.sso-orb-1{{width:500px;height:500px;background:rgba(0,80,255,.14);top:-160px;left:-160px}}
+.sso-orb-2{{width:450px;height:450px;background:rgba(120,30,255,.11);bottom:-150px;right:-100px}}
+</style>
+
+<div class="sso-orb sso-orb-1"></div>
+<div class="sso-orb sso-orb-2"></div>
+<div class="sso-splash">
+  <div class="sso-ring">
+    <svg viewBox="0 0 90 90" width="90" height="90">
+      <defs>
+        <linearGradient id="ssoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%"   stop-color="#0050ff"/>
+          <stop offset="50%"  stop-color="#7b2fff"/>
+          <stop offset="100%" stop-color="#00c8ff"/>
+        </linearGradient>
+      </defs>
+      <circle class="sso-ring-track" cx="45" cy="45" r="42"/>
+      <circle class="sso-ring-arc"   cx="45" cy="45" r="42"/>
+    </svg>
+    <div class="sso-ms">
+      <div class="sso-ms-grid">
+        <span style="background:#f25022"></span>
+        <span style="background:#7fba00"></span>
+        <span style="background:#00a4ef"></span>
+        <span style="background:#ffb900"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sso-splash-title">Signing you in&hellip;</div>
+  <div class="sso-splash-sub">Verifying your Microsoft identity</div>
+
+  <div class="sso-steps">
+    <div class="sso-step">
+      <div class="sso-step-dot"></div>
+      <div class="sso-step-lbl">Exchanging authorisation token</div>
+    </div>
+    <div class="sso-step">
+      <div class="sso-step-dot"></div>
+      <div class="sso-step-lbl">Fetching your Microsoft profile</div>
+    </div>
+    <div class="sso-step">
+      <div class="sso-step-dot"></div>
+      <div class="sso-step-lbl">Setting up your workspace</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+            try:
+                result = msal_app.acquire_token_by_authorization_code(
+                    st.query_params["code"], scopes=["User.Read"], redirect_uri=_redirect,
+                )
+                if "access_token" in result:
+                    headers = {"Authorization": "Bearer " + result["access_token"]}
+                    profile = _requests.get(
+                        "https://graph.microsoft.com/v1.0/me", headers=headers
+                    ).json()
+                    st.session_state["auth_user"]   = profile.get("displayName", "User")
+                    st.session_state["auth_email"]  = profile.get("mail") or profile.get("userPrincipalName", "")
+                    st.session_state["auth_method"] = "Microsoft SSO"
+                    st.session_state["auth_ok"]     = True
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    err_msg = result.get('error_description', result.get('error', 'Unknown'))
+                    if "AADSTS500113" in err_msg or "reply address" in err_msg.lower():
+                        st.error(
+                            f"Azure AD redirect URI mismatch. "
+                            f"Add exactly `{_redirect}` as a Redirect URI in your Azure AD app registration "
+                            f"(App ID: {_client_id}) under Authentication → Web platform."
+                        )
                     else:
-                        st.error(f"SSO error: {result.get('error_description', result.get('error', 'Unknown'))}")
-                except Exception as ex:
-                    st.error(f"SSO callback failed: {ex}")
+                        st.error(f"SSO error: {err_msg}")
+            except Exception as ex:
+                st.error(f"SSO callback failed: {ex}")
 
         # Card header + SSO button — ALL in one st.markdown block so the
         # button renders immediately below the header with no gap.

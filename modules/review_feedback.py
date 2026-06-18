@@ -613,23 +613,22 @@ def _render_accept_reject_panel():
     with ac1:
         if st.button("✅  Accept & Keep New Version", type="primary",
                      use_container_width=True, key="rfb_accept_inline"):
-            with st.spinner("Locking in new version…"):
-                st.session_state["results_before_regen"] = None
-                st.session_state["regen_sections"]       = []
+            st.session_state["results_before_regen"] = None
+            st.session_state["regen_sections"]       = []
             st.toast(f"✅ Changes accepted — proposal is now at v{_current_version()}!", icon="✅")
-            st.rerun(scope="fragment")
+            st.rerun()  # full rerun so ALL tabs re-render with the updated results
     with ac2:
         if st.button("↩️  Discard — Restore Previous", use_container_width=True,
                      key="rfb_discard_inline"):
-            with st.spinner("Restoring previous version…"):
-                st.session_state["processing_results"]   = before
-                st.session_state["results_before_regen"] = None
-                st.session_state["regen_sections"]       = []
-                if st.session_state.get("_proposal_version_num", 1) > 1:
-                    st.session_state["_proposal_version_num"] -= 1
-                    vm = st.session_state.get("_version_meta", [])
-                    if vm: vm.pop()
+            st.session_state["processing_results"]   = before
+            st.session_state["results_before_regen"] = None
+            st.session_state["regen_sections"]       = []
+            if st.session_state.get("_proposal_version_num", 1) > 1:
+                st.session_state["_proposal_version_num"] -= 1
+                vm = st.session_state.get("_version_meta", [])
+                if vm: vm.pop()
             st.toast("↩️ Discarded — proposal restored to previous version.", icon="↩️")
+            st.rerun()  # full rerun so ALL tabs restore to previous results
             st.rerun(scope="fragment")
     st.markdown("---")
 

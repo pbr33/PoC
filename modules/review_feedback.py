@@ -1112,6 +1112,7 @@ def _render_rfb_inner(r, se, te, ce, ri, ar, ai_client=None):
 
 def render_version_history_tab(r: dict):
     """Rich per-session version history — replaces the basic History tab content."""
+    _apply_pending_post_rerun()  # flush any version bump from the Review tab
     _ensure_rfb_state()
     import json as _json
     from datetime import datetime as _dt

@@ -8665,7 +8665,14 @@ def show_results():
         _pre[13].empty()
         st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">🎯</span>'
                     '<span class="eci-tab-hdr-title">Live Demo Generator</span></div>', unsafe_allow_html=True)
-        if se and se.get("project_type"):
+        from .config_loader import can_view_live_demo as _can_view_ld
+        if not _can_view_ld():
+            st.info(
+                "🔒 **Access Restricted** — Live Demo is available to authorised users only.\n\n"
+                "Contact your administrator to request access.",
+                icon="🔐",
+            )
+        elif se and se.get("project_type"):
             render_live_demo_tab(se, te, ce, r)
         else:
             _tab_placeholder("🎯", "Live demo not available",

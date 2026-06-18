@@ -230,6 +230,24 @@ def apply_config_to_session() -> None:
     _apply_env_overrides()
 
 
+def can_view_live_demo() -> bool:
+    """Return True if the current user may see the Live Demo tab.
+
+    Controlled by access_control.live_demo_emails in config.yaml.
+    Empty list = locked for everyone except admin.
+    Admin (auth_email == 'admin@eci.com') always has access.
+    """
+    user_email = st.session_state.get("auth_email", "").strip().lower()
+    if user_email == "admin@eci.com":
+        return True
+    cfg = load_config()
+    raw = cfg.get("access_control", {}).get("live_demo_emails", "")
+    if not raw or not raw.strip():
+        return False  # empty list → locked by default
+    allowed = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    return user_email in allowed
+
+
 def can_view_team_roles() -> bool:
     """Return True if the current user may see the Team & Roles (cost) tab.
 

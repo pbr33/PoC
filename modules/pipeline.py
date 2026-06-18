@@ -8569,7 +8569,7 @@ def show_results():
                     '<span class="eci-tab-hdr-title">Solution Architecture</span></div>', unsafe_allow_html=True)
         if ar and ar.get("components"):
             render_architecture_tab(ar, te, ce, mermaid_diagrams=safe_dict(r.get("mermaid_diagrams")), semantic=se, ai_client=_pick_ai_for("architecture"))
-            _quick_feedback("architecture", 'e.g. "add Redis Cache and Azure Service Bus, update data flow"')
+            # _quick_feedback("architecture", ...)  # hidden temporarily
         else:
             _tab_placeholder("🏗️", "Architecture not designed",
                              "Run the full pipeline to generate the solution architecture diagram.")

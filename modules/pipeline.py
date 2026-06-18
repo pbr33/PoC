@@ -8007,9 +8007,7 @@ def show_results():
         # ── Agent review ──────────────────────────────────────────────
         _render_estimate_review(te, se)
 
-        # ── Inline estimate chat ──────────────────────────────────────
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        _render_estimate_chat(te, se)
+        # _render_estimate_chat(te, se)  # hidden temporarily
 
     # ── Cost (Infrastructure) ──
     with tab_list[2]:

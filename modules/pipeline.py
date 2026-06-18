@@ -5978,7 +5978,7 @@ def _render_scope_risk_tab(se: dict, te: dict, ar: dict, ri: dict, r: dict) -> N
         else:
             st.error("AI Agent could not generate the Scope & Risk Register. Please try again.")
 
-    _quick_feedback("scope_risk", 'e.g. "add data migration to in-scope, remove mobile app, mark third-party risk as High"')
+    # _quick_feedback("scope_risk", ...)  # hidden temporarily
 
 
 @st.fragment

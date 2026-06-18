@@ -4160,13 +4160,28 @@ setTimeout(function(){{
         "🚀 Transformation Journey",
         "🔒 Security Layers",
     ])
+    # Pre-render instant placeholders so clicking any sub-tab never shows blank
+    _itp = {}
+    for _ii, _ilbl in enumerate(["🏗️ Solution Architecture", "💰 ROI & Business Case",
+                                  "🚀 Transformation Journey", "🔒 Security Layers"]):
+        with _itabs[_ii]:
+            _itp[_ii] = st.empty()
+            _itp[_ii].markdown(
+                f'<div style="padding:18px 4px 0;color:#475569;font-size:.8rem;font-style:italic">'
+                f'⏳ {_ilbl} — loading…</div>',
+                unsafe_allow_html=True,
+            )
     with _itabs[0]:
+        _itp[0].empty()
         _plotly_arch_diagram(ar, se)
     with _itabs[1]:
+        _itp[1].empty()
         _render_roi_builder(se, te, ce)
     with _itabs[2]:
+        _itp[2].empty()
         _render_transformation_journey(se, te, ar)
     with _itabs[3]:
+        _itp[3].empty()
         _plotly_security(ar)
 
     # ── Component cards ──────────────────────────────────────────────────

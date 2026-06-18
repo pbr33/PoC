@@ -1352,6 +1352,7 @@ def get_delivery_version_data(r, se, te, ce, ri, ar) -> tuple:
     """Returns (del_r, del_se, del_te, del_ce, del_ri, del_ar, version_num).
     If a historical version is selected, overrides the main data.
     """
+    _apply_pending_post_rerun()  # ensure version bump from Review tab is flushed
     _ensure_rfb_state()
     ver_meta    = st.session_state.get("_version_meta", [])
     snapshots   = st.session_state.get("_version_snapshots", {})

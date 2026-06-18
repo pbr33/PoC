@@ -7580,8 +7580,8 @@ def show_results():
     for i, (ic, t, v, s) in enumerate(kpis):
         with cols[i]:
             st.markdown(_kpi_card(ic, t, v, s, animated=True), unsafe_allow_html=True)
-    # ── Human Review & Feedback Panel ─────────────────────────────────
-    _render_feedback_panel(r)
+    # ── Human Review & Feedback Panel hidden (duplicate of inline feedback) ──
+    # _render_feedback_panel(r)
 
     tab_list = st.tabs(["📋 Requirements", "⏱️ Time", "💰 Infra Cost", "📋 Scope & Risk", "🏗️ Architecture", "📐 Diagrams", "📄 Proposal", "👥 Team & Roles", "🎯 Discovery Prep", "🔀 Scenarios", "🎮 3D View", "💬 Chat", "📚 History", "🎯 Live Demo", "📦 Delivery", "🔄 Review"])
 

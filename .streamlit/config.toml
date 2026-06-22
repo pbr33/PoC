@@ -9,3 +9,4 @@ font                   = "sans serif"
 [client]
 toolbarMode            = "minimal"
 showBrandingPlaceholder = false
+showErrorDetails       = false

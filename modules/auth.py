@@ -547,6 +547,15 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
                     st.session_state["auth_email"]  = profile.get("mail") or profile.get("userPrincipalName", "")
                     st.session_state["auth_method"] = "Microsoft SSO"
                     st.session_state["auth_ok"]     = True
+                    try:
+                        from .database import db_log_activity
+                        db_log_activity(
+                            st.session_state["auth_email"],
+                            st.session_state["auth_user"],
+                            "login", "Signed in via Microsoft SSO", "Auth",
+                        )
+                    except Exception:
+                        pass
                     st.query_params.clear()
                     st.rerun()
                 else:
@@ -592,6 +601,14 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
                     st.session_state["auth_user"]   = "Prabhakar Gupta"
                     st.session_state["auth_email"]  = "admin@eci.com"
                     st.session_state["auth_method"] = "Admin"
+                    try:
+                        from .database import db_log_activity
+                        db_log_activity(
+                            "admin@eci.com", "Prabhakar Gupta",
+                            "login", "Signed in via Admin credentials", "Auth",
+                        )
+                    except Exception:
+                        pass
                     st.rerun()
                 else:
                     st.error("Incorrect username or password.")

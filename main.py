@@ -29,7 +29,7 @@ from modules.styles import inject_css, ECI_LOGO_BLUE_B64
 from modules.command_palette import inject_command_palette
 from modules.ai_clients import AnthropicAI, AzureAI, GeminiAI, QwenAI, VertexAnthropicAI
 from modules.external_services import SP
-from modules.pipeline import tab_presale, tab_run_library, tab_admin
+from modules.pipeline import tab_presale, tab_run_library, tab_admin, tab_dashboard
 from modules.notifications import render_notification_bell
 from modules.config_loader import apply_config_to_session, is_any_ai_configured
 
@@ -206,11 +206,14 @@ if not is_any_ai_configured():
 _is_admin = st.session_state.get("auth_method") == "Admin"
 
 if _is_admin:
-    main_t1, main_t2, main_t3 = st.tabs([
+    main_t0, main_t1, main_t2, main_t3 = st.tabs([
+        "🏠 Dashboard",
         "⚡ Business Estimation",
         "🗂️ Run Library",
         "⚙️ Admin & Training",
     ])
+    with main_t0:
+        tab_dashboard()
     with main_t1:
         tab_presale()
     with main_t2:

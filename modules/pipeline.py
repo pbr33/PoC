@@ -28,6 +28,9 @@ from .utils import safe_int, safe_str, safe_list, safe_dict, sc_text
 from .database import (save_run, load_runs, delete_run,
                        db_save_run, db_load_runs, db_load_results,
                        db_delete_run, db_mark_reviewed, db_category_counts,
+                       db_set_review_status, db_archive_run, db_unarchive_run,
+                       db_log_activity, db_get_activity_log,
+                       db_update_outcome, db_check_duplicate, db_get_lineage,
                        _db_save_run, _db_load_runs, _db_load_results,
                        _db_delete_run, _db_mark_reviewed, _db_category_counts,
                        _DB_PATH)
@@ -171,16 +174,81 @@ def _detect_cloud_provider(ce: dict, se: dict | None = None) -> str:
 
 
 def _get_all_cloud_costs(ce: dict) -> list:
-    """
-    Return ALL cloud-infrastructure service entries from a cost_estimate,
-    regardless of which provider key they live under.
-    """
+    """Return ALL cloud service entries regardless of which key they live under."""
     out = []
-    for key in ("azure_costs", "aws_costs", "gcp_costs", "cloud_costs"):
+    for key in ("azure_costs", "aws_costs", "gcp_costs", "cloud_costs",
+                "services", "infrastructure_costs", "cost_breakdown",
+                "monthly_breakdown", "cloud_services"):
         for item in (ce.get(key) or []):
             if isinstance(item, dict) and item:
                 out.append(item)
-    return out
+    # De-duplicate by service name (keep first occurrence)
+    seen, deduped = set(), []
+    for item in out:
+        nm = str(item.get("service", "") or item.get("name", "")).strip().lower()
+        if nm and nm not in seen:
+            seen.add(nm)
+            deduped.append(item)
+    return deduped
+
+
+# Broad keyword catalog for fuzzy fallback when the AI omits per-service costs.
+# Keys are lowercase substrings; first match wins (most specific first).
+_AZURE_BROAD_CATALOG: dict[str, int] = {
+    "app service plan":      73,   "app service":           73,
+    "azure functions":       20,   "function app":          20,   "functions":         15,
+    "azure sql":            185,   "sql database":         185,   "sql managed":       250,
+    "cosmos db":             25,   "cosmos":                25,
+    "postgresql":            55,   "mysql":                 45,   "mariadb":           40,
+    "blob storage":          20,   "azure storage":         20,   "storage account":   20,
+    "data lake":             35,   "adls":                  35,
+    "azure key vault":        5,   "key vault":              5,
+    "azure ai search":       75,   "cognitive search":      75,   "ai search":         60,
+    "azure monitor":         30,   "log analytics":         30,   "application insights": 20,
+    "azure redis cache":     55,   "redis cache":           55,   "redis":             40,
+    "azure service bus":     10,   "service bus":           10,
+    "api management":        48,   "apim":                  48,
+    "container apps":        40,   "container instances":   30,
+    "azure kubernetes":     150,   "aks":                  150,   "kubernetes":        120,
+    "azure devops":          30,   "devops":                25,
+    "signalr":               50,
+    "event grid":             5,   "event hub":             20,
+    "microsoft 365":         50,   "office 365":            50,   "microsoft365":      50,
+    "teams":                 15,   "sharepoint":            20,   "power bi":          15,
+    "azure active directory": 12,  "active directory":      12,   "entra":             12,
+    "azure ad":              12,
+    "virtual machine":       70,   " vm ":                  60,   "vmss":              80,
+    "azure vpn":             25,   "vpn gateway":           25,
+    "azure firewall":        80,   "firewall":              60,
+    "front door":            40,   "cdn":                   20,   "content delivery":  20,
+    "load balancer":         20,   "application gateway":   60,
+    "azure backup":          15,   "site recovery":         25,   "backup":            15,
+    "azure databricks":     200,   "databricks":           180,
+    "azure synapse":        100,   "synapse":               80,
+    "data factory":          50,   "azure data factory":    50,
+    "logic apps":            15,   "logic app":             15,
+    "azure openai":         120,   "openai":               100,
+    "cognitive services":    30,   "azure ai":              40,
+    "machine learning":      60,   "azure ml":              60,
+    "bot service":           10,   "bot":                   10,
+    "communication services": 10,  "azure communication":   10,
+    "notification hubs":      5,   "notification":           5,
+    "azure stream analytics": 25,  "stream analytics":      25,
+    "power automate":        15,   "power apps":            20,
+    "azure purview":         60,   "purview":               60,
+    "azure sentinel":        50,   "sentinel":              50,   "defender":          40,
+    "azure dns":              5,   "dns":                    5,
+    "traffic manager":       10,
+}
+
+
+def _broad_catalog_cost(service_name: str) -> int:
+    """Fuzzy-match service_name against _AZURE_BROAD_CATALOG; return monthly cost or 0."""
+    nl = " " + service_name.lower() + " "
+    for kw, cost in _AZURE_BROAD_CATALOG.items():
+        if kw in nl:
+            return cost
+    return 0
 
 
 # Provider UI config: (display_name, accent_color, region_label, default_region)
@@ -1042,6 +1110,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
     if _user_input:
         _now = _dt.now().strftime("%H:%M")
         msgs.append({"role": "user", "content": _user_input, "ts": _now})
+        _log_act("bella_chat", f"BELLA: {_user_input[:120]}", "Chat")
         _api_msgs = [{"role": m["role"], "content": m["content"]} for m in msgs]
         _answer = ""
 
@@ -2210,6 +2279,7 @@ def tab_presale():
                     dstatus.markdown("**2/3** Analyzing content & extracting insights...")
                     dpb.progress(50)
                     disc_result = ai.analyze_transcript(all_text)
+                    _log_act("discovery_run", "Ran transcript discovery analysis", "Pipeline")
                     dstatus.markdown("**3/3** Generating Work Breakdown Structure...")
                     dpb.progress(90)
                     st.session_state.discovery_results = disc_result
@@ -2740,20 +2810,67 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     # Merge manually-added projects with past DB runs so RAG always has data
     _hist = list(st.session_state.historical_projects)
     if not _hist:
-        _db_past = _db_load_runs("All")
+        _db_past = _db_load_runs("All")   # full collection — no cap
+        # Score every run for similarity to the current scope
+        _sem_type   = (semantic.get("project_type") or "").lower()
+        _sem_tech   = set(t.lower() for t in safe_list(semantic.get("technology_stack", [])))
+        def _run_score(r):
+            s = 0.0
+            rtype = (r.get("project_type") or "").lower()
+            if rtype and _sem_type:
+                rw, sw = set(rtype.split()), set(_sem_type.split())
+                if rtype == _sem_type:
+                    s += 0.50
+                elif rw & sw:
+                    s += 0.25
+            rtech = set(t.lower() for t in (r.get("tech_stack") or []))
+            if rtech and _sem_tech:
+                s += len(rtech & _sem_tech) / max(len(rtech | _sem_tech), 1) * 0.45
+            if r.get("total_hours", 0) > 0:
+                s += 0.05      # slight preference for runs that have usable hours
+            return s
+        # Sort all runs by similarity; deduplicate by name, keep best match per unique project
+        _ranked = sorted(_db_past, key=_run_score, reverse=True)
+        _seen_names: set = set()
+        _top: list = []
+        for _r in _ranked:
+            _key = (
+                (_r.get("client_name") or _r.get("project_title") or _r.get("project_type") or "")
+                .strip().lower()
+            )
+            if not _key or _key in _seen_names:
+                continue
+            _seen_names.add(_key)
+            if _r.get("total_hours", 0) > 0:
+                _top.append(_r)
+            if len(_top) >= 15:
+                break
+        # If not enough with hours, backfill from unique runs without hours
+        if len(_top) < 5:
+            for _r in _ranked:
+                _key = (
+                    (_r.get("client_name") or _r.get("project_title") or _r.get("project_type") or "")
+                    .strip().lower()
+                )
+                if _key and _key not in _seen_names:
+                    _seen_names.add(_key)
+                    _top.append(_r)
+                if len(_top) >= 15:
+                    break
         _hist = [
             {
-                "name":            r.get("project_title") or r.get("project_type") or "Past Project",
+                "name":            r.get("client_name") or r.get("project_title") or r.get("project_type") or "Past Project",
                 "type":            r.get("project_type", ""),
                 "estimated_hours": r.get("total_hours", 0),
-                "actual_hours":    r.get("total_hours", 0),
+                "actual_hours":    r.get("actual_hours") or r.get("total_hours", 0),
                 "estimated_cost":  r.get("monthly_cost", 0),
-                "actual_cost":     r.get("monthly_cost", 0),
-                "outcome":         r.get("risk_level", "Completed"),
+                "actual_cost":     r.get("actual_cost")  or r.get("monthly_cost", 0),
+                "outcome":         r.get("project_outcome") or r.get("risk_level", "Completed"),
                 "tech_stack":      r.get("tech_stack", []),
                 "ts":              r.get("ts", ""),
+                "similarity":      round(_run_score(r), 3),
             }
-            for r in _db_past[:20]
+            for r in _top
         ]
     rag = ai_rag.search_historical(text, _hist)
     # ── Milvus vector RAG — enrich with past scope documents ──────────────
@@ -2914,31 +3031,66 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 
     # ── Save to persistent SQLite DB + in-memory versions ──
     snapshot = {
-        "ts":             datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "project_type":   safe_str(semantic.get("project_type", "")),
-        "client_name":    safe_str(semantic.get("client_name", "")),
-        "project_title":  safe_str(semantic.get("project_title", "")),
-        "total_hours":    safe_int(time_est.get("total_hours", 0)),
-        "duration_weeks": safe_str(time_est.get("duration_weeks", "")),
-        "monthly_cost":   safe_int(cost_est.get("total_monthly_cost", 0)),
-        "annual_cost":    safe_int(cost_est.get("total_annual_cost", 0)),
-        "risk_level":     safe_str(risk.get("overall_level", "")),
-        "risk_score":     safe_int(risk.get("overall_score", 0)),
-        "req_count":      len(safe_list(semantic.get("requirements", []))),
-        "tech_stack":     safe_list(semantic.get("technology_stack", []))[:10],
-        "model_used":     model_name,
-        "three_point":    time_est.get("three_point", {}),
+        "ts":               datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "project_type":     safe_str(semantic.get("project_type", "")),
+        "client_name":      safe_str(semantic.get("client_name", "")),
+        "project_title":    safe_str(semantic.get("project_title", "")),
+        "total_hours":      safe_int(time_est.get("total_hours", 0)),
+        "duration_weeks":   safe_str(time_est.get("duration_weeks", "")),
+        "monthly_cost":     safe_int(cost_est.get("total_monthly_cost", 0)),
+        "annual_cost":      safe_int(cost_est.get("total_annual_cost", 0)),
+        "risk_level":       safe_str(risk.get("overall_level", "")),
+        "risk_score":       safe_int(risk.get("overall_score", 0)),
+        "req_count":        len(safe_list(semantic.get("requirements", []))),
+        "tech_stack":       safe_list(semantic.get("technology_stack", []))[:10],
+        "model_used":       model_name,
+        "three_point":      time_est.get("three_point", {}),
+        "created_by":       st.session_state.get("auth_user", ""),
+        "created_by_email": st.session_state.get("auth_email", ""),
+        "parent_run_id":    st.session_state.get("_parent_run_id"),
     }
     # Persist to disk
     try:
         run_id = _db_save_run(snapshot, st.session_state.processing_results)
         st.session_state["_last_run_id"] = run_id
+        st.session_state.pop("_parent_run_id", None)   # consumed — clear after save
+        try:
+            db_log_activity(
+                snapshot.get("created_by_email", ""),
+                snapshot.get("created_by", ""),
+                "pipeline_run",
+                f"Estimation: {snapshot.get('client_name','Client')} — {snapshot.get('project_type','')} "
+                f"({snapshot.get('total_hours',0):,}h · ${snapshot.get('monthly_cost',0):,}/mo · "
+                f"{snapshot.get('risk_level','?')} risk) · Run #{run_id}",
+                "Pipeline",
+            )
+        except Exception:
+            pass
         notify(
             "run_saved",
             f"Estimate saved: {snapshot.get('project_type', 'Project')}",
             f"{snapshot.get('total_hours', 0):,}h · {snapshot.get('risk_level', '')} risk · Run #{run_id}",
             {"run_id": run_id},
         )
+        # Duplicate detection — warn if same client+project ran recently
+        try:
+            _cn = snapshot.get("client_name", "").strip()
+            _pt = snapshot.get("project_type", "").strip()
+            if _cn and _pt:
+                _dups = [d for d in db_check_duplicate(_cn, _pt, days=7)
+                         if d["id"] != run_id]
+                if _dups:
+                    st.session_state["_dup_warning"] = {
+                        "run_id":  run_id,
+                        "dup_ids": [d["id"] for d in _dups],
+                        "label":   f"{_cn} / {_pt}",
+                    }
+                    notify("run_duplicate",
+                           f"⚠️ Possible duplicate — {_cn}",
+                           f"Similar run(s) already exist: #{', #'.join(str(d['id']) for d in _dups)}",
+                           {"dup_ids": [d["id"] for d in _dups]})
+        except Exception:
+            pass
     except Exception as _db_err:
         st.warning(f"DB save warning: {_db_err}")
     # Keep last 20 in-memory for History tab comparison
@@ -8000,6 +8152,83 @@ def show_results():
 
         # _quick_feedback("time", 'e.g. "hours are too low, add 20% for integration testing"')
 
+        # ── RAG Historical Context ─────────────────────────────────────
+        _rag_data  = safe_dict(r.get("rag", {}))
+        # Deduplicate by name before displaying
+        _seen_sp: set = set()
+        _sim_projs = []
+        for _sp in safe_list(_rag_data.get("similar_projects", [])):
+            _sp_key = safe_str(safe_dict(_sp).get("name", "")).strip().lower()
+            if _sp_key and _sp_key not in _seen_sp:
+                _seen_sp.add(_sp_key)
+                _sim_projs.append(_sp)
+        _calib     = safe_dict(te.get("rag_calibration") or {})
+        if _sim_projs or _calib:
+            st.markdown(
+                '<div style="font-size:.8rem;font-weight:700;color:#94a3b8;'
+                'border-left:3px solid #00d4aa;padding-left:10px;margin:22px 0 10px">'
+                '🔍 Historical Context Used for This Estimate</div>',
+                unsafe_allow_html=True,
+            )
+            # Calibration banner — only shown when historical data actually shifted the number
+            if _calib:
+                _f_h  = safe_int(_calib.get("formula_hours", 0))
+                _hi_h = safe_int(_calib.get("historical_hours", 0))
+                _sc   = safe_int(_calib.get("similar_count", 0))
+                _asim = float(_calib.get("avg_similarity", 0))
+                _hw   = safe_str(_calib.get("hist_weight", ""))
+                _ch   = safe_int(_calib.get("calibrated_hours", 0))
+                st.markdown(
+                    f'<div style="background:rgba(0,212,170,.07);border:1px solid rgba(0,212,170,.22);'
+                    f'border-radius:10px;padding:14px 18px;margin-bottom:12px;'
+                    f'display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Formula</div>'
+                    f'<div style="font-size:1.1rem;font-weight:700;color:#e2e8f0">{_f_h}h</div></div>'
+                    f'<div style="color:#475569;font-size:1.2rem">⊕</div>'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px">{_sc} similar · {_hw} weight</div>'
+                    f'<div style="font-size:1.1rem;font-weight:700;color:#00d4aa">{_hi_h}h historical</div></div>'
+                    f'<div style="color:#475569;font-size:1.2rem">→</div>'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Calibrated Total</div>'
+                    f'<div style="font-size:1.1rem;font-weight:700;color:#7b61ff">{_ch}h</div></div>'
+                    f'<div style="margin-left:auto;font-size:.68rem;color:#64748b">'
+                    f'Avg similarity {round(_asim*100)}%</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            # Matched project list
+            if _sim_projs:
+                _proj_rows = ""
+                for _p in _sim_projs[:10]:
+                    _p = safe_dict(_p)
+                    _pn   = safe_str(_p.get("name") or "Unknown")
+                    _psim = float(_p.get("similarity") or 0)
+                    _phr  = safe_int(_p.get("hours", 0))
+                    _bw   = int(_psim * 100)
+                    _sc2  = "#06d6a0" if _psim >= 0.65 else "#ffd166" if _psim >= 0.40 else "#94a3b8"
+                    _proj_rows += (
+                        f'<div style="display:flex;align-items:center;gap:12px;padding:7px 0;'
+                        f'border-bottom:1px solid rgba(255,255,255,.05)">'
+                        f'<div style="flex:1;min-width:0">'
+                        f'<div style="font-size:.8rem;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_pn}</div>'
+                        f'<div style="background:rgba(255,255,255,.06);border-radius:3px;height:3px;margin-top:4px;overflow:hidden">'
+                        f'<div style="height:100%;width:{_bw}%;background:{_sc2};border-radius:3px"></div></div></div>'
+                        f'<div style="font-size:.72rem;color:{_sc2};font-weight:600;min-width:52px;text-align:right">{_bw}% match</div>'
+                        + (f'<div style="font-size:.72rem;color:#94a3b8;min-width:44px;text-align:right">{_phr}h</div>' if _phr else '<div style="min-width:44px"></div>')
+                        + f'</div>'
+                    )
+                st.markdown(
+                    f'<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);'
+                    f'border-radius:10px;padding:12px 16px">'
+                    f'<div style="font-size:.68rem;color:#64748b;text-transform:uppercase;'
+                    f'letter-spacing:.5px;margin-bottom:10px">Matched Projects · {len(_sim_projs)} found</div>'
+                    f'{_proj_rows}</div>',
+                    unsafe_allow_html=True,
+                )
+        # ──────────────────────────────────────────────────────────────
+
         # ── Auto-correct pass (Claude, runs once per estimate) ────────
         _auto_correct_estimate(te, se)
         _render_auto_corrections_badge()
@@ -8110,20 +8339,40 @@ def show_results():
 
         live_cache = st.session_state.get("live_pricing_cache", {})
 
-        # ── Patch service costs with live/catalog prices ───────────────
+        # ── Patch service costs: live cache → broad catalog → AI value ───
         _patched_costs = []
         for _svc in _all_svc_costs:
             _s    = dict(safe_dict(_svc))
+            # Normalise: some AI responses use "name" instead of "service"
+            if not _s.get("service") and _s.get("name"):
+                _s["service"] = _s["name"]
             _name = safe_str(_s.get("service", ""))
             if _name in live_cache:
                 _s["monthly_cost"] = live_cache[_name]
                 _s["_live"] = True
             else:
                 _s["_live"] = False
+                # If AI left the cost at 0 or missing, try broad catalog fallback
+                if not safe_int(_s.get("monthly_cost", 0)):
+                    _cat_val = _broad_catalog_cost(_name)
+                    if _cat_val:
+                        _s["monthly_cost"] = _cat_val
             _patched_costs.append(_s)
 
         _total_monthly  = sum(safe_int(_s.get("monthly_cost", 0)) for _s in _patched_costs)
         _total_monthly += sum(safe_int(safe_dict(t).get("monthly_cost", 0)) for t in third_party)
+
+        # Last-resort fallback: AI has a total but per-service rows are still $0
+        # Distribute the AI-computed total equally across services.
+        if _total_monthly == 0 and _patched_costs:
+            _ai_total = safe_int(ce.get("total_monthly_cost", 0))
+            if _ai_total > 0:
+                _per = max(1, _ai_total // len(_patched_costs))
+                _remainder = _ai_total - _per * len(_patched_costs)
+                for _idx, _s in enumerate(_patched_costs):
+                    _s["monthly_cost"] = _per + (_remainder if _idx == 0 else 0)
+                _total_monthly = _ai_total
+
         _total_annual   = _total_monthly * 12
         _live_count     = sum(1 for _s in _patched_costs if _s.get("_live"))
         st.session_state["_live_infra_total"] = _total_monthly
@@ -8390,19 +8639,22 @@ def show_results():
                         )
 
         # ── Horizontal cost bar chart ──────────────────────────────────
-        if _patched_costs:
-            _bar_names  = [safe_str(_s.get("service", "")) for _s in _patched_costs]
+        if _patched_costs and any(safe_int(_s.get("monthly_cost", 0)) for _s in _patched_costs):
+            _bar_names  = [safe_str(_s.get("service", "Unknown")) or "Unknown" for _s in _patched_costs]
             _bar_vals   = [safe_int(_s.get("monthly_cost", 0)) for _s in _patched_costs]
             _bar_colors = [
-                _prov_color if (_s.get("_live") or _provider != "azure") else "#475569"
+                _prov_color if (_s.get("_live") or _provider != "azure") else "#7b61ff"
                 for _s in _patched_costs
             ]
             _bar_text   = [
                 f"${v:,}/mo {'⚡' if (_s.get('_live') and _provider == 'azure') else '📋'}"
                 for v, _s in zip(_bar_vals, _patched_costs)
             ]
-            # Sort descending for readability
-            _sorted = sorted(zip(_bar_vals, _bar_names, _bar_colors, _bar_text), reverse=True)
+            # Sort descending for readability; filter out zero-cost rows
+            _combined = [(v, n, c, t) for v, n, c, t in zip(_bar_vals, _bar_names, _bar_colors, _bar_text) if v > 0]
+            if not _combined:
+                _combined = list(zip(_bar_vals, _bar_names, _bar_colors, _bar_text))
+            _sorted = sorted(_combined, reverse=True)
             _bar_vals, _bar_names, _bar_colors, _bar_text = zip(*_sorted) if _sorted else ([], [], [], [])
 
             import plotly.graph_objects as _go
@@ -8784,18 +9036,20 @@ def show_results():
         prop_cols = st.columns(3)
         with prop_cols[0]:
             if _pdf_data:
-                st.download_button("📄 Proposal (PDF)", data=_pdf_data,
+                if st.download_button("📄 Proposal (PDF)", data=_pdf_data,
                     file_name="ECI_Proposal" + _ver_suffix + "_" + ts + ".pdf",
                     mime="application/pdf",
-                    use_container_width=True, type="primary", key="del_pdf")
+                    use_container_width=True, type="primary", key="del_pdf"):
+                    _log_act("export_pdf", f"Downloaded Proposal PDF — {st.session_state.get('proposal_client_name','')}", "Export")
             else:
                 st.button("📄 Proposal PDF", disabled=True, use_container_width=True, key="del_pdf_dis")
         with prop_cols[1]:
             if _pptx_dl:
-                st.download_button("📑 Proposal (PowerPoint)", data=_pptx_dl,
+                if st.download_button("📑 Proposal (PowerPoint)", data=_pptx_dl,
                     file_name="ECI_Proposal" + _ver_suffix + "_" + ts + ".pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True, type="primary", key="del_pptx")
+                    use_container_width=True, type="primary", key="del_pptx"):
+                    _log_act("export_pptx", f"Downloaded Proposal PPTX — {st.session_state.get('proposal_client_name','')}", "Export")
             else:
                 st.button("📑 Proposal PPTX", disabled=True, use_container_width=True, key="del_pptx_dis")
         with prop_cols[2]:
@@ -9280,19 +9534,60 @@ def _risk_badge(level: str) -> str:
     )
 
 
+@st.cache_data(ttl=300, max_entries=100, show_spinner=False)
+def _cached_run_json(run_id: int) -> str:
+    """Cache the full results blob as a JSON string (5-min TTL, avoids DB hit on every rerun)."""
+    return json.dumps(_db_load_results(run_id), indent=2, default=str)
+
+@st.cache_data(ttl=15, show_spinner=False)
+def _cached_category_counts() -> dict:
+    return _db_category_counts()
+
+@st.cache_data(ttl=15, show_spinner=False)
+def _cached_load_runs(category: str, include_archived: bool) -> list:
+    return _db_load_runs(category, include_archived=include_archived)
+
+@st.cache_data(ttl=10, show_spinner=False)
+def _cached_activity_log(limit: int) -> list:
+    return db_get_activity_log(limit=limit)
+
+
+def _log_act(action: str, details: str = "", module: str = ""):
+    """Convenience: log a user event from any tab (silent on error)."""
+    try:
+        db_log_activity(
+            st.session_state.get("auth_email", ""),
+            st.session_state.get("auth_user", "Unknown"),
+            action, details, module,
+        )
+        _cached_activity_log.clear()   # keep log tab live
+    except Exception:
+        pass
+
+
+def _track_tab(tab_name: str):
+    """Log a tab/feature visit once per unique run × tab combination."""
+    _run_id = st.session_state.get("_last_run_id", "new")
+    _key    = f"_tv_{tab_name.lower()[:20].replace(' ','_')}_{_run_id}"
+    if not st.session_state.get(_key):
+        st.session_state[_key] = True
+        _log_act("tab_view", f"Opened: {tab_name}", "Navigation")
+
+
+@st.fragment
 def tab_run_library():
     import pandas as pd
+    from datetime import date as _date, timedelta as _td
 
     st.markdown('<div class="shdr"><span class="shdr-i">🗂️</span> Run Library — All Proposals</div>', unsafe_allow_html=True)
     st.markdown(
         "Every pipeline run is **automatically saved here** and survives page refreshes, "
-        "browser closes, and Streamlit restarts. Filter by category, restore any run, "
-        "or drill into the full proposal data."
+        "browser closes, and app restarts. Filter, compare, restore, or export any run."
     )
     st.markdown("---")
 
-    # ── Category filter pills ──────────────────────────────────────────
-    counts = _db_category_counts()
+    # ── Category pill badges ───────────────────────────────────────────
+    counts = _cached_category_counts()
     cats   = ["All", "AI", "Data", "Cloud", "General"]
     pill_html = ""
     for cat in cats:
@@ -9308,42 +9603,103 @@ def tab_run_library():
     st.markdown(pill_html, unsafe_allow_html=True)
     st.markdown("")
 
-    filter_cols = st.columns([2, 2, 1, 3])
-    with filter_cols[0]:
+    # ── Filters row 1 ─────────────────────────────────────────────────
+    f1, f2, f3, f4 = st.columns([2, 2, 2, 4])
+    with f1:
         selected_cat = st.selectbox(
             "Category", cats,
             format_func=lambda c: f"{_CAT_ICONS.get(c,'📁')} {c} ({counts.get(c,0)})",
-            key="lib_cat_filter"
+            key="lib_cat_filter",
         )
-    with filter_cols[1]:
-        sort_by = st.selectbox("Sort by", ["Newest", "Oldest", "Highest Cost", "Most Hours", "Highest Risk"], key="lib_sort")
-    with filter_cols[2]:
-        review_filter = st.selectbox("Review status", ["All", "✅ Reviewed", "⏳ Pending"], key="lib_rev_filter")
-    with filter_cols[3]:
-        search_q = st.text_input("Search client / project / tech stack", placeholder="e.g. Contoso, migration, GPT, retail…", key="lib_search")
+    with f2:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Newest", "Oldest", "Highest Cost", "Most Hours", "Highest Risk"],
+            key="lib_sort",
+        )
+    with f3:
+        review_filter = st.selectbox(
+            "Review status",
+            ["All", "✅ Approved", "🔄 Needs Changes", "⏳ Pending"],
+            key="lib_rev_filter",
+        )
+    with f4:
+        search_q = st.text_input(
+            "Search",
+            placeholder="client, project, tech stack, or author…",
+            key="lib_search",
+        )
 
-    # ── Load + filter ──────────────────────────────────────────────────
-    runs = _db_load_runs(selected_cat)
+    # ── Filters row 2: date range + archived toggle ────────────────────
+    dr1, dr2, dr3, dr4 = st.columns([2, 2, 2, 2])
+    with dr1:
+        date_preset = st.selectbox(
+            "Date range",
+            ["All Time", "Today", "This Week", "This Month", "Custom"],
+            key="lib_date_preset",
+        )
+    today = _date.today()
+    if date_preset == "Today":
+        from_date, to_date = today, today
+    elif date_preset == "This Week":
+        from_date = today - _td(days=today.weekday())
+        to_date   = today
+    elif date_preset == "This Month":
+        from_date = today.replace(day=1)
+        to_date   = today
+    elif date_preset == "Custom":
+        with dr2:
+            from_date = st.date_input("From", value=today - _td(days=30), key="lib_from_date")
+        with dr3:
+            to_date   = st.date_input("To",   value=today,                key="lib_to_date")
+    else:
+        from_date = to_date = None
+    with dr4:
+        show_archived = st.checkbox("Show archived runs", value=False, key="lib_show_archived")
+
+    # ── Load ──────────────────────────────────────────────────────────
+    runs = _cached_load_runs(selected_cat, include_archived=show_archived)
+
+    # Date filter
+    if from_date and to_date:
+        from_str = from_date.strftime("%Y-%m-%d")
+        to_str   = to_date.strftime("%Y-%m-%d")
+        runs = [r for r in runs if from_str <= (r.get("ts") or "")[:10] <= to_str]
+
+    # Text search (includes author)
     if search_q.strip():
         q = search_q.strip().lower()
         runs = [
             r for r in runs
-            if q in (r.get("project_type") or "").lower()
-            or q in (r.get("client_name") or "").lower()
-            or q in (r.get("project_title") or "").lower()
+            if q in (r.get("project_type")    or "").lower()
+            or q in (r.get("client_name")      or "").lower()
+            or q in (r.get("project_title")    or "").lower()
             or any(q in t.lower() for t in (r.get("tech_stack") or []))
+            or q in (r.get("created_by")       or "").lower()
+            or q in (r.get("created_by_email") or "").lower()
         ]
-    if review_filter == "✅ Reviewed":
-        runs = [r for r in runs if r.get("architect_reviewed", 0)]
-    elif review_filter == "⏳ Pending":
-        runs = [r for r in runs if not r.get("architect_reviewed", 0)]
+
+    # Review status filter
+    def _rs(r):
+        s = r.get("review_status") or ""
+        if not s or s == "pending":
+            return "approved" if r.get("architect_reviewed", 0) else "pending"
+        return s
+
+    _REV_MAP = {
+        "✅ Approved":      lambda r: _rs(r) == "approved",
+        "🔄 Needs Changes": lambda r: _rs(r) == "needs_changes",
+        "⏳ Pending":       lambda r: _rs(r) == "pending",
+    }
+    if review_filter in _REV_MAP:
+        runs = [r for r in runs if _REV_MAP[review_filter](r)]
 
     sort_key_map = {
         "Newest":       lambda r: -r["id"],
         "Oldest":       lambda r:  r["id"],
         "Highest Cost": lambda r: -(r.get("monthly_cost") or 0),
-        "Most Hours":   lambda r: -(r.get("total_hours") or 0),
-        "Highest Risk": lambda r: -(r.get("risk_score") or 0),
+        "Most Hours":   lambda r: -(r.get("total_hours")  or 0),
+        "Highest Risk": lambda r: -(r.get("risk_score")   or 0),
     }
     runs.sort(key=sort_key_map.get(sort_by, lambda r: -r["id"]))
 
@@ -9351,41 +9707,198 @@ def tab_run_library():
         _empty_library()
         return
 
-    n_reviewed = sum(1 for r in runs if r.get("architect_reviewed", 0))
+    # ── Summary stats ──────────────────────────────────────────────────
+    n_approved      = sum(1 for r in runs if _rs(r) == "approved")
+    n_needs_changes = sum(1 for r in runs if _rs(r) == "needs_changes")
+    n_pending       = len(runs) - n_approved - n_needs_changes
     st.markdown(
         f"**{len(runs)} proposal{'s' if len(runs)!=1 else ''}** found — "
-        f'<span style="color:#06d6a0;font-weight:700">✅ {n_reviewed} architect-reviewed</span> · '
-        f'<span style="color:#ffd166;font-weight:700">⏳ {len(runs)-n_reviewed} pending review</span>',
+        f'<span style="color:#06d6a0;font-weight:700">✅ {n_approved} approved</span> · '
+        f'<span style="color:#ffd166;font-weight:700">⏳ {n_pending} pending</span> · '
+        f'<span style="color:#ff9f43;font-weight:700">🔄 {n_needs_changes} needs changes</span>',
         unsafe_allow_html=True,
     )
     st.markdown("---")
 
-    # ── Summary table ──────────────────────────────────────────────────
+    # ── Restore confirmation banner (two-click safety) ─────────────────
+    pending_restore_id = st.session_state.get("lib_pending_restore_id")
+    if pending_restore_id:
+        _pr = next((r for r in runs if r["id"] == pending_restore_id), None)
+        if not _pr:
+            _all = _db_load_runs("All", include_archived=True)
+            _pr  = next((r for r in _all if r["id"] == pending_restore_id), None)
+        _label = (
+            f"Run #{pending_restore_id} — "
+            + ((_pr.get("client_name") or _pr.get("project_type", "")) if _pr else "")
+        )
+        st.warning(f"⚠️ **Restore {_label}?** This will overwrite your current proposal in the session.")
+        _rc1, _rc2, _ = st.columns([1, 1, 6])
+        with _rc1:
+            if st.button("✅ Yes, Restore", key="lib_confirm_restore_yes",
+                         type="primary", use_container_width=True):
+                with st.spinner("Restoring run…"):
+                    full = json.loads(_cached_run_json(pending_restore_id))
+                if full:
+                    st.session_state.processing_results  = full
+                    st.session_state["_last_run_id"]     = pending_restore_id
+                    st.session_state["_parent_run_id"]   = pending_restore_id  # lineage: next run links back here
+                    st.session_state.chat_messages       = []
+                    st.session_state.feedback_log        = []
+                    st.session_state.pop("lib_pending_restore_id", None)
+                    st.success(f"Run #{pending_restore_id} restored — switch to ⚡ Business Estimation to view.")
+                    st.rerun(scope="app")
+                else:
+                    st.error("Could not load results for this run.")
+        with _rc2:
+            if st.button("❌ Cancel", key="lib_confirm_restore_no", use_container_width=True):
+                st.session_state.pop("lib_pending_restore_id", None)
+                st.rerun()
+        st.markdown("---")
+
+    # ── Duplicate run warning ──────────────────────────────────────────
+    _dw = st.session_state.get("_dup_warning")
+    if _dw:
+        _dup_ids_str = ", #".join(str(i) for i in _dw.get("dup_ids", []))
+        st.warning(
+            f"⚠️ **Possible duplicate detected** for **{_dw.get('label','')}** — "
+            f"similar run(s) already saved: **#{_dup_ids_str}**. "
+            f"Check below before re-running."
+        )
+        if st.button("Dismiss", key="lib_dup_dismiss"):
+            st.session_state.pop("_dup_warning", None)
+            st.rerun()
+        st.markdown("---")
+
+    # ── Run comparison initialise ──────────────────────────────────────
+    if "lib_compare_ids" not in st.session_state:
+        st.session_state["lib_compare_ids"] = []
+
+    # ── Table view ─────────────────────────────────────────────────────
     with st.expander("📋 Table View", expanded=False):
         tbl_rows = []
         for r in runs:
+            rs_val = _rs(r)
+            rev_icon = {"approved": "✅", "needs_changes": "🔄", "pending": "⏳"}.get(rs_val, "⏳")
             tbl_rows.append({
-                "ID":       r["id"],
-                "Reviewed": "✅ Yes" if r.get("architect_reviewed", 0) else "⏳ No",
-                "Time":     r.get("ts", ""),
-                "Category": _CAT_ICONS.get(r.get("category",""), "📁") + " " + r.get("category",""),
-                "Client":   r.get("client_name", "") or "",
-                "Project":  r.get("project_title", "") or r.get("project_type", ""),
-                "Hours":    r.get("total_hours", 0),
-                "Weeks":    r.get("duration_weeks", ""),
-                "$/mo":     f"${r.get('monthly_cost',0):,}",
-                "Risk":     r.get("risk_level", ""),
-                "Reqs":     r.get("req_count", 0),
-                "Review by": r.get("review_ts", "") or "",
+                "ID":          r["id"],
+                "Status":      rev_icon + " " + rs_val.replace("_", " ").title(),
+                "Time":        r.get("ts", ""),
+                "Category":    _CAT_ICONS.get(r.get("category",""), "📁") + " " + r.get("category",""),
+                "Client":      r.get("client_name", "") or "",
+                "Project":     r.get("project_title", "") or r.get("project_type", ""),
+                "Hours":       r.get("total_hours", 0),
+                "Weeks":       r.get("duration_weeks", ""),
+                "$/mo":        f"${r.get('monthly_cost',0):,}",
+                "Risk":        r.get("risk_level", ""),
+                "Reqs":        r.get("req_count", 0),
+                "Created By":  r.get("created_by", "") or "—",
+                "Reviewed By": r.get("reviewed_by", "") or "—",
+                "Outcome":     {"won":"🏆 Won","lost":"❌ Lost","no_bid":"🚫 No Bid","pending":"⏳ Open"}.get(r.get("project_outcome","pending"),"⏳ Open"),
+                "Act. Hours":  r.get("actual_hours") or "",
+                "Parent Run":  f"#{r['parent_run_id']}" if r.get("parent_run_id") else "",
+                "Archived":    "🗄️" if r.get("is_archived", 0) else "",
             })
         st.dataframe(pd.DataFrame(tbl_rows), use_container_width=True, hide_index=True)
 
     st.markdown("")
 
+    # ── Pagination ─────────────────────────────────────────────────────
+    PAGE_SIZE   = 20
+    total_pages = max(1, (len(runs) + PAGE_SIZE - 1) // PAGE_SIZE)
+    if "lib_page" not in st.session_state:
+        st.session_state["lib_page"] = 0
+    st.session_state["lib_page"] = min(st.session_state["lib_page"], total_pages - 1)
+    cur_page  = st.session_state["lib_page"]
+    page_runs = runs[cur_page * PAGE_SIZE : (cur_page + 1) * PAGE_SIZE]
+
+    if total_pages > 1:
+        pg1, pg2, pg3 = st.columns([1, 4, 1])
+        with pg1:
+            if st.button("◀ Prev", key="lib_prev", disabled=cur_page == 0, use_container_width=True):
+                st.session_state["lib_page"] -= 1
+                st.rerun()
+        with pg2:
+            st.markdown(
+                f'<div style="text-align:center;color:#94a3b8;font-size:.85rem;padding-top:8px">'
+                f'Page {cur_page+1} of {total_pages} &nbsp;·&nbsp; {len(runs)} total proposals</div>',
+                unsafe_allow_html=True,
+            )
+        with pg3:
+            if st.button("Next ▶", key="lib_next", disabled=cur_page >= total_pages-1, use_container_width=True):
+                st.session_state["lib_page"] += 1
+                st.rerun()
+        st.markdown("")
+
+    # ── Run comparison panel ───────────────────────────────────────────
+    cmp_ids = st.session_state.get("lib_compare_ids", [])
+    # Prune IDs that are no longer in the loaded run set
+    all_ids = {r["id"] for r in runs}
+    cmp_ids = [i for i in cmp_ids if i in all_ids]
+    st.session_state["lib_compare_ids"] = cmp_ids
+
+    if len(cmp_ids) == 2:
+        _ra = next(r for r in runs if r["id"] == cmp_ids[0])
+        _rb = next(r for r in runs if r["id"] == cmp_ids[1])
+        st.markdown(
+            f'<div style="background:#111827;border:1px solid #7b61ff55;border-radius:12px;'
+            f'padding:18px 20px;margin-bottom:16px;border-left:3px solid #7b61ff">'
+            f'<div style="font-size:1rem;font-weight:700;color:#7b61ff;margin-bottom:12px">'
+            f'📊 Comparing Run #{_ra["id"]} vs Run #{_rb["id"]}</div></div>',
+            unsafe_allow_html=True,
+        )
+        _METRICS = [
+            ("Estimated Hours",  "total_hours",   lambda v: f"{v:,} h",      "#00d4aa"),
+            ("Infra Cost/mo",    "monthly_cost",  lambda v: f"${v:,}",        "#00b4d8"),
+            ("Risk Score",       "risk_score",    lambda v: str(v),           "#ff6b6b"),
+            ("Duration",         "duration_weeks",lambda v: str(v) + " wks",  "#ffd166"),
+            ("Requirements",     "req_count",     lambda v: str(v),           "#94a3b8"),
+        ]
+        _hdr, _va, _diff, _vb = st.columns([2, 2, 1, 2])
+        _hdr.markdown("**Metric**")
+        _va.markdown(f"**Run #{_ra['id']}** — {(_ra.get('client_name') or _ra.get('project_type',''))[:20]}")
+        _diff.markdown("**Δ**")
+        _vb.markdown(f"**Run #{_rb['id']}** — {(_rb.get('client_name') or _rb.get('project_type',''))[:20]}")
+        for _label, _field, _fmt, _color in _METRICS:
+            _va_val = _ra.get(_field) or 0
+            _vb_val = _rb.get(_field) or 0
+            try:
+                _delta = int(_vb_val) - int(_va_val)
+                _delta_str = (f"+{_delta}" if _delta > 0 else str(_delta))
+                _delta_col = "#06d6a0" if _delta <= 0 else "#ff6b6b"
+            except Exception:
+                _delta_str, _delta_col = "—", "#64748b"
+            _hdr2, _vva, _vdiff, _vvb = st.columns([2, 2, 1, 2])
+            _hdr2.markdown(f'<span style="color:#94a3b8;font-size:.85rem">{_label}</span>', unsafe_allow_html=True)
+            _vva.markdown(f'<span style="color:{_color};font-weight:600">{_fmt(_va_val)}</span>', unsafe_allow_html=True)
+            _vdiff.markdown(f'<span style="color:{_delta_col};font-size:.8rem">{_delta_str}</span>', unsafe_allow_html=True)
+            _vvb.markdown(f'<span style="color:{_color};font-weight:600">{_fmt(_vb_val)}</span>', unsafe_allow_html=True)
+        # Tech-stack diff
+        _ts_a = set(_ra.get("tech_stack") or [])
+        _ts_b = set(_rb.get("tech_stack") or [])
+        _only_a = _ts_a - _ts_b
+        _only_b = _ts_b - _ts_a
+        if _only_a or _only_b:
+            st.markdown(
+                f'<div style="font-size:.78rem;color:#94a3b8;margin-top:8px">'
+                f'Only in #{_ra["id"]}: {", ".join(_only_a) or "—"} &nbsp;|&nbsp; '
+                f'Only in #{_rb["id"]}: {", ".join(_only_b) or "—"}</div>',
+                unsafe_allow_html=True,
+            )
+        if st.button("✖ Clear comparison", key="lib_cmp_clear"):
+            st.session_state["lib_compare_ids"] = []
+            st.rerun()
+        st.markdown("---")
+    elif len(cmp_ids) == 1:
+        st.info(f"Run #{cmp_ids[0]} selected — pick one more card to compare.")
+    elif len(cmp_ids) > 2:
+        st.session_state["lib_compare_ids"] = cmp_ids[:2]
+
     # ── Card grid ──────────────────────────────────────────────────────
-    COLS = 2
+    COLS      = 2
     grid_cols = st.columns(COLS)
-    for idx, run in enumerate(runs):
+    cur_user  = st.session_state.get("auth_user", "")
+
+    for idx, run in enumerate(page_runs):
         col   = grid_cols[idx % COLS]
         cat   = run.get("category", "General")
         c_col = _CAT_COLORS.get(cat, "#94a3b8")
@@ -9394,65 +9907,94 @@ def tab_run_library():
         risk  = run.get("risk_level", "")
         three = run.get("three_point", {}) or {}
         tech  = (run.get("tech_stack") or [])[:5]
-        # Build card heading: prefer client_name + project_title, fall back to project_type
-        _client = (run.get("client_name") or "").strip()
+
+        rs          = _rs(run)
+        review_ts   = run.get("review_ts")    or ""
+        rev_notes   = run.get("review_notes") or ""
+        reviewed_by = run.get("reviewed_by")  or ""
+        created_by  = run.get("created_by")   or ""
+        parent_id   = run.get("parent_run_id")
+        outcome     = run.get("project_outcome") or "pending"
+
+        # Card heading
+        _client = (run.get("client_name")  or "").strip()
         _ptitle = (run.get("project_title") or "").strip()
-        _ptype  = (run.get("project_type") or "Untitled Proposal").strip()
-        if _client and _ptitle:
-            _card_heading     = _ptitle
-            _card_subheading  = _client
-        elif _client:
-            _card_heading     = _client
-            _card_subheading  = _ptype
+        _ptype  = (run.get("project_type")  or "Untitled Proposal").strip()
+        if _client:
+            _card_heading, _card_sub = _client, _ptitle or _ptype
         else:
-            _card_heading     = _ptype
-            _card_subheading  = ""
-        reviewed   = bool(run.get("architect_reviewed", 0))
-        review_ts  = run.get("review_ts") or ""
-        rev_notes  = run.get("review_notes") or ""
+            _card_heading, _card_sub = _ptitle or _ptype, ""
+
+        # Review status badge
+        _BADGES = {
+            "approved":      ('<span style="background:#06d6a022;color:#06d6a0;border:1px solid #06d6a055;'
+                              'border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700">✅ Approved</span>'),
+            "needs_changes": ('<span style="background:#ff9f4322;color:#ff9f43;border:1px solid #ff9f4355;'
+                              'border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700">🔄 Needs Changes</span>'),
+            "pending":       ('<span style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16655;'
+                              'border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700">⏳ Pending Review</span>'),
+        }
+        rev_badge = _BADGES.get(rs, _BADGES["pending"])
+
+        rev_line = ""
+        if rs != "pending" and review_ts:
+            _by = f" by <strong>{reviewed_by}</strong>" if reviewed_by else ""
+            rev_line = (
+                f'<div style="font-size:.65rem;color:#94a3b8;margin-top:4px">'
+                f'{review_ts}{_by}'
+                + (f' — {rev_notes[:60]}{"…" if len(rev_notes)>60 else ""}' if rev_notes else "")
+                + '</div>'
+            )
+
+        author_line = (
+            f'<div style="font-size:.65rem;color:#64748b;margin-top:2px">👤 {created_by}</div>'
+            if created_by else ""
+        )
+        sub_html = (
+            f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:2px">{_card_sub}</div>'
+            if _card_sub else ""
+        )
+        arch_banner = (
+            '<div style="font-size:.65rem;color:#ff6b6b;background:#ff6b6b11;border-radius:4px;'
+            'padding:2px 6px;display:inline-block;margin-bottom:4px">🗄️ Archived</div>'
+            if run.get("is_archived", 0) else ""
+        )
         tech_pills = " ".join(
             f'<span style="background:#1e293b;border:1px solid #334155;border-radius:4px;'
             f'padding:1px 6px;font-size:.68rem;color:#94a3b8">{t}</span>'
             for t in tech
         )
-        # Architect-reviewed badge HTML
-        if reviewed:
-            rev_badge = (
-                '<span style="background:#06d6a022;color:#06d6a0;border:1px solid #06d6a055;'
-                'border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700">'
-                '✅ Architect Reviewed</span>'
-            )
-            rev_line = (
-                f'<div style="font-size:.65rem;color:#06d6a0;margin-top:4px">'
-                f'Reviewed {review_ts}'
-                + (f' — {rev_notes[:60]}{"…" if len(rev_notes)>60 else ""}' if rev_notes else "")
-                + '</div>'
-            )
-        else:
-            rev_badge = (
-                '<span style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16655;'
-                'border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700">'
-                '⏳ Pending Review</span>'
-            )
-            rev_line = ""
-
-        _subheading_html = (
-            f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:6px">{_card_subheading}</div>'
-            if _card_subheading else '<div style="margin-bottom:6px"></div>'
+        lineage_html = (
+            f'<span style="background:#7b61ff22;color:#7b61ff;border:1px solid #7b61ff55;'
+            f'border-radius:20px;padding:2px 8px;font-size:.65rem;font-weight:700">↳ Rev of #{parent_id}</span>'
+            if parent_id else ""
         )
+        _OUTCOME_STYLE = {
+            "won":     ("🏆 Won",    "#06d6a0", "#06d6a022"),
+            "lost":    ("❌ Lost",   "#ff6b6b", "#ff6b6b22"),
+            "no_bid":  ("🚫 No Bid","#94a3b8", "#94a3b822"),
+            "pending": ("⏳ Open",  "#ffd166", "#ffd16622"),
+        }
+        _oc_label, _oc_color, _oc_bg = _OUTCOME_STYLE.get(outcome, _OUTCOME_STYLE["pending"])
+        outcome_badge = (
+            f'<span style="background:{_oc_bg};color:{_oc_color};border:1px solid {_oc_color}55;'
+            f'border-radius:20px;padding:2px 8px;font-size:.65rem;font-weight:700">{_oc_label}</span>'
+        )
+        _is_in_compare = run["id"] in st.session_state.get("lib_compare_ids", [])
+
         with col:
             st.markdown(
                 f'<div style="background:#111827;border:1px solid {c_col}44;border-radius:12px;'
                 f'padding:18px 20px;margin-bottom:6px;border-left:3px solid {c_col}">'
+                f'{arch_banner}'
                 f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
-                f'  <div style="display:flex;gap:6px;flex-wrap:wrap">{_cat_badge(cat)} {rev_badge}</div>'
+                f'  <div style="display:flex;gap:6px;flex-wrap:wrap">{_cat_badge(cat)} {rev_badge} {outcome_badge} {lineage_html}</div>'
                 f'  <div style="font-size:.7rem;color:#64748b">#{run["id"]} · {run.get("ts","")}</div>'
                 f'</div>'
-                f'<div style="font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:2px">'
-                f'  {_card_heading}'
-                f'</div>'
-                f'{_subheading_html}'
-                f'<div style="display:flex;gap:20px;margin-bottom:10px">'
+                f'<div style="font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:2px">{_card_heading}</div>'
+                f'{sub_html}'
+                f'{author_line}'
+                f'<div style="display:flex;gap:20px;margin:10px 0">'
                 f'  <div style="text-align:center">'
                 f'    <div style="font-size:1.1rem;font-weight:700;color:#00d4aa">{hours:,}h</div>'
                 f'    <div style="font-size:.65rem;color:#64748b">HOURS</div>'
@@ -9472,74 +10014,1404 @@ def tab_run_library():
                 f'  </div>'
                 f'</div>'
                 f'<div style="margin-bottom:8px">{tech_pills}</div>'
-                f'<div style="font-size:.68rem;color:#475569">AI: Intelligence Engine</div>'
                 f'{rev_line}'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-            act_cols = st.columns(4)
-            with act_cols[0]:
+
+            # Action buttons
+            a1, a2, a3, a4 = st.columns(4)
+            with a1:
                 if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
-                    with st.spinner("Loading run from database…"):
-                        full = _db_load_results(run["id"])
-                    if full:
-                        st.session_state.processing_results = full
-                        st.session_state["_last_run_id"]    = run["id"]
-                        st.session_state.chat_messages      = []
-                        st.session_state.feedback_log       = []
-                        st.success(f"Run #{run['id']} restored — switch to ⚡ Business Estimation to view.")
-                        st.rerun()
-                    else:
-                        st.error("Could not load results for this run.")
-            with act_cols[1]:
-                dl_data = _db_load_results(run["id"])
+                    st.session_state["lib_pending_restore_id"] = run["id"]
+                    _log_act("restore", f"Restored Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
+                    st.rerun()
+            with a2:
                 st.download_button(
                     "📥 JSON",
-                    data=json.dumps(dl_data, indent=2, default=str),
+                    data=_cached_run_json(run["id"]),
                     file_name=f"ECI_Run_{run['id']}_{run.get('ts','').replace(':','-').replace(' ','_')}.json",
                     mime="application/json",
                     use_container_width=True,
                     key=f"lib_dl_{run['id']}",
                 )
-            with act_cols[2]:
-                if reviewed:
-                    if st.button("↩️ Unmark", key=f"lib_unrev_{run['id']}", use_container_width=True):
-                        _db_mark_reviewed(run["id"], unmark=True)
-                        notify("run_unreviewed", f"Run #{run['id']} review unmarked",
-                               run.get("project_type", ""), {"run_id": run["id"]})
+            with a3:
+                if run.get("is_archived", 0):
+                    if st.button("📤 Unarchive", key=f"lib_unarch_{run['id']}", use_container_width=True):
+                        db_unarchive_run(run["id"])
+                        _cached_load_runs.clear(); _cached_category_counts.clear()
                         st.rerun()
                 else:
-                    if st.button("✅ Approve", key=f"lib_rev_{run['id']}", use_container_width=True, type="primary"):
-                        _db_mark_reviewed(run["id"], notes="Approved via Run Library")
-                        notify("run_reviewed", f"Run #{run['id']} approved",
+                    if st.button("🗄️ Archive", key=f"lib_arch_{run['id']}", use_container_width=True):
+                        db_archive_run(run["id"])
+                        try:
+                            db_log_activity(
+                                st.session_state.get("auth_email", ""),
+                                st.session_state.get("auth_user", ""),
+                                "archive",
+                                f"Archived Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})",
+                                "Library",
+                            )
+                        except Exception:
+                            pass
+                        notify("run_archived", f"Run #{run['id']} archived",
                                run.get("project_type", ""), {"run_id": run["id"]})
+                        _cached_load_runs.clear(); _cached_category_counts.clear()
                         st.rerun()
-            with act_cols[3]:
+            with a4:
                 if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", use_container_width=True):
                     notify("run_deleted", f"Run #{run['id']} deleted",
                            run.get("project_type", ""), {"run_id": run["id"]})
                     _db_delete_run(run["id"])
+                    _cached_load_runs.clear(); _cached_category_counts.clear()
                     st.rerun()
 
+            # Review status selector
+            _rs_opts  = ["pending", "approved", "needs_changes"]
+            _rs_labels = {"pending": "⏳ Pending", "approved": "✅ Approved", "needs_changes": "🔄 Needs Changes"}
+            _rs_idx   = _rs_opts.index(rs) if rs in _rs_opts else 0
+            rs_c1, rs_c2 = st.columns([3, 1])
+            with rs_c1:
+                new_status = st.selectbox(
+                    "Review",
+                    _rs_opts,
+                    index=_rs_idx,
+                    format_func=lambda s: _rs_labels.get(s, s),
+                    key=f"lib_rs_{run['id']}",
+                    label_visibility="collapsed",
+                )
+            with rs_c2:
+                if new_status != rs:
+                    if st.button("Apply", key=f"lib_rs_apply_{run['id']}",
+                                 use_container_width=True, type="primary"):
+                        db_set_review_status(
+                            run["id"], new_status,
+                            notes=f"Set to {new_status} via Run Library",
+                            reviewed_by=cur_user,
+                        )
+                        try:
+                            db_log_activity(
+                                st.session_state.get("auth_email", ""),
+                                cur_user,
+                                f"review_{new_status}",
+                                f"Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')}) → {new_status}",
+                                "Library",
+                            )
+                        except Exception:
+                            pass
+                        notify("run_reviewed",
+                               f"Run #{run['id']} → {new_status}",
+                               run.get("project_type", ""), {"run_id": run["id"]})
+                        _cached_load_runs.clear()
+                        st.rerun()
+
+            # Compare toggle
+            _cmp_ids = st.session_state.get("lib_compare_ids", [])
+            _cmp_label = "☑ In Comparison" if _is_in_compare else "📊 Compare"
+            if st.button(_cmp_label, key=f"lib_cmp_{run['id']}", use_container_width=True):
+                if _is_in_compare:
+                    st.session_state["lib_compare_ids"] = [i for i in _cmp_ids if i != run["id"]]
+                elif len(_cmp_ids) < 2:
+                    st.session_state["lib_compare_ids"] = _cmp_ids + [run["id"]]
+                    _log_act("compare", f"Added Run #{run['id']} ({run.get('client_name','')}) to comparison", "Library")
+                st.rerun()
+
+            # Outcome expander
+            with st.expander("📈 Outcome", expanded=(outcome != "pending")):
+                _oc_opts   = ["pending", "won", "lost", "no_bid"]
+                _oc_labels = {"pending": "⏳ Open / Pending", "won": "🏆 Won", "lost": "❌ Lost", "no_bid": "🚫 No Bid"}
+                oc_c1, oc_c2 = st.columns(2)
+                with oc_c1:
+                    new_outcome = st.selectbox(
+                        "Deal status",
+                        _oc_opts,
+                        index=_oc_opts.index(outcome) if outcome in _oc_opts else 0,
+                        format_func=lambda s: _oc_labels.get(s, s),
+                        key=f"lib_oc_sel_{run['id']}",
+                    )
+                with oc_c2:
+                    actual_h = st.number_input(
+                        "Actual hours", min_value=0,
+                        value=int(run.get("actual_hours") or 0),
+                        step=10, key=f"lib_oc_h_{run['id']}",
+                    )
+                oc_c3, oc_c4 = st.columns(2)
+                with oc_c3:
+                    actual_c = st.number_input(
+                        "Actual cost/mo ($)", min_value=0,
+                        value=int(run.get("actual_cost") or 0),
+                        step=100, key=f"lib_oc_c_{run['id']}",
+                    )
+                with oc_c4:
+                    oc_notes = st.text_input(
+                        "Notes", value=run.get("outcome_notes") or "",
+                        key=f"lib_oc_n_{run['id']}",
+                    )
+                if st.button("💾 Save Outcome", key=f"lib_oc_save_{run['id']}",
+                             use_container_width=True, type="primary"):
+                    db_update_outcome(
+                        run["id"], new_outcome,
+                        actual_hours=actual_h or None,
+                        actual_cost=actual_c or None,
+                        notes=oc_notes,
+                    )
+                    _log_act("outcome_update",
+                             f"Run #{run['id']} ({run.get('client_name','')}) → {new_outcome}"
+                             + (f" · actual {actual_h}h" if actual_h else ""),
+                             "Library")
+                    _cached_load_runs.clear()
+                    st.rerun()
+                # Accuracy hint when outcome is won
+                if outcome == "won" and run.get("actual_hours"):
+                    _est = run.get("total_hours") or 0
+                    _act = run.get("actual_hours") or 0
+                    _err = round((_act - _est) / _est * 100, 1) if _est else 0
+                    _err_col = "#06d6a0" if abs(_err) <= 10 else "#ffd166" if abs(_err) <= 25 else "#ff6b6b"
+                    st.markdown(
+                        f'<div style="font-size:.72rem;color:{_err_col};margin-top:4px">'
+                        f'Estimation accuracy: {_err:+.1f}% vs actual '
+                        f'({_est:,}h estimated → {_act:,}h actual)</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            st.markdown("")
+
+    # Bottom pagination
+    if total_pages > 1:
+        pg1b, pg2b, pg3b = st.columns([1, 4, 1])
+        with pg1b:
+            if st.button("◀ Prev", key="lib_prev_b", disabled=cur_page == 0, use_container_width=True):
+                st.session_state["lib_page"] -= 1
+                st.rerun()
+        with pg2b:
+            st.markdown(
+                f'<div style="text-align:center;color:#94a3b8;font-size:.85rem;padding-top:8px">'
+                f'Page {cur_page+1} of {total_pages}</div>',
+                unsafe_allow_html=True,
+            )
+        with pg3b:
+            if st.button("Next ▶", key="lib_next_b", disabled=cur_page >= total_pages-1, use_container_width=True):
+                st.session_state["lib_page"] += 1
+                st.rerun()
+
     st.markdown("---")
-    # ── Bulk actions ──────────────────────────────────────────────────
-    bulk_cols = st.columns([2, 2, 4])
+
+    # ── Bulk actions ───────────────────────────────────────────────────
+    bulk_cols = st.columns([2, 2, 2, 2])
     with bulk_cols[0]:
         if st.button("🗑️ Delete All Runs", use_container_width=True, type="secondary"):
             con = sqlite3.connect(_DB_PATH)
             con.execute("DELETE FROM proposals")
             con.commit()
             con.close()
+            _cached_load_runs.clear(); _cached_category_counts.clear()
             st.success("All runs deleted.")
             st.rerun()
     with bulk_cols[1]:
-        all_runs_full = _db_load_runs("All")
-        if all_runs_full:
+        if runs:
             st.download_button(
-                "📦 Export All (JSON)",
-                data=json.dumps(all_runs_full, indent=2, default=str),
+                "📦 Export Filtered",
+                data=json.dumps(runs, indent=2, default=str),
+                file_name=f"ECI_Filtered_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True,
+                key="lib_export_filtered",
+            )
+    with bulk_cols[2]:
+        all_runs_export = _db_load_runs("All")
+        if all_runs_export:
+            st.download_button(
+                "📦 Export All",
+                data=json.dumps(all_runs_export, indent=2, default=str),
                 file_name=f"ECI_All_Runs_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
                 use_container_width=True,
                 key="lib_export_all",
             )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  ADMIN INTELLIGENCE DASHBOARD  (v2 — with Activity Log)
+# ════════════════════════════════════════════════════════════════════════════
+
+@st.fragment
+def tab_dashboard():
+    """Admin-only home dashboard — real-time presales intelligence + user activity log."""
+    import collections, csv, io as _io
+
+    _NOW       = datetime.now()
+    _TODAY     = _NOW.strftime("%Y-%m-%d")
+    _WEEK_AGO  = (_NOW - timedelta(days=7)).strftime("%Y-%m-%d")
+    _MONTH_AGO = (_NOW - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    # ── Styles ────────────────────────────────────────────────────────────
+    st.markdown("""
+<style>
+@keyframes fadeUp    { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+@keyframes numPop    { 0%{ opacity:0; transform:scale(.7); } 60%{ transform:scale(1.06); } 100%{ opacity:1; transform:scale(1); } }
+@keyframes alertPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.6; } }
+@keyframes gradShift { 0%,100%{ background-position:0% 50%; } 50%{ background-position:100% 50%; } }
+@keyframes orbFloat  { 0%,100%{ transform:translateY(0);   } 50%{ transform:translateY(-6px); } }
+@keyframes scanLine  { 0%{ top:-2px; } 100%{ top:100%; } }
+@keyframes dotBlink  { 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
+@keyframes logSlide  { from{ opacity:0; transform:translateX(-8px); } to{ opacity:1; transform:translateX(0); } }
+
+/* ── Dashboard header banner ─────────────────────────────────────── */
+.dash-banner {
+  position:relative; overflow:hidden;
+  background:linear-gradient(135deg,#080d1a 0%,#0a1428 50%,#090c1f 100%);
+  border:1px solid #1a2540; border-radius:18px;
+  padding:22px 28px 18px; margin-bottom:20px;
+}
+.dash-banner::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg,rgba(0,212,170,.04),rgba(123,97,255,.04),rgba(0,180,216,.04));
+  background-size:300% 100%; animation:gradShift 8s ease infinite;
+}
+.dash-banner::after {
+  content:''; position:absolute; top:-2px; left:0; right:0;
+  height:2px; background:linear-gradient(90deg,#00d4aa,#7b61ff,#00b4d8);
+  border-radius:18px 18px 0 0;
+}
+.dash-title {
+  font-size:1.6rem; font-weight:900; letter-spacing:-.03em;
+  background:linear-gradient(135deg,#e2e8f0 0%,#94a3b8 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  line-height:1.15;
+}
+.dash-sub   { font-size:.76rem; color:#475569; margin-top:4px; }
+.live-dot   { display:inline-block; width:7px; height:7px; border-radius:50%;
+              background:#00d4aa; margin-right:5px; animation:dotBlink 2s ease-in-out infinite; }
+
+/* ── KPI card grid (gradient-border trick) ───────────────────────── */
+.kpi-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:20px; }
+.kpi-card {
+  background:linear-gradient(#0b1424,#0b1424) padding-box,
+             linear-gradient(145deg,var(--kc) 0%,rgba(10,20,40,0) 55%) border-box;
+  border:1px solid transparent; border-radius:16px;
+  padding:20px 16px 16px; position:relative; overflow:hidden;
+  transition:transform .2s ease,box-shadow .2s ease;
+  animation:fadeUp .45s ease both;
+}
+.kpi-card:hover {
+  transform:translateY(-5px);
+  box-shadow:0 16px 48px rgba(0,0,0,.4),0 0 0 1px var(--kc) inset;
+}
+.kpi-card::after {
+  content:''; position:absolute; top:-60px; right:-60px;
+  width:160px; height:160px; border-radius:50%;
+  background:radial-gradient(circle,var(--kc) 0%,transparent 70%);
+  opacity:.05; pointer-events:none;
+}
+.kpi-orb {
+  position:absolute; bottom:-24px; left:-24px;
+  width:90px; height:90px; border-radius:50%;
+  background:radial-gradient(circle,var(--kc) 0%,transparent 70%);
+  opacity:.08; pointer-events:none; animation:orbFloat 4s ease-in-out infinite;
+}
+.kpi-icon { font-size:1.35rem; margin-bottom:9px; line-height:1; }
+.kpi-val  {
+  font-size:2rem; font-weight:900; color:var(--kc);
+  line-height:1; letter-spacing:-.04em;
+  animation:numPop .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+.kpi-lbl  { font-size:.65rem; color:#475569; text-transform:uppercase; letter-spacing:.14em; margin-top:6px; }
+.kpi-sub  { font-size:.72rem; color:#64748b; margin-top:6px; line-height:1.45; }
+.kpi-badge {
+  display:inline-block; padding:2px 9px; border-radius:20px;
+  font-size:.6rem; font-weight:700; margin-top:8px;
+  background:rgba(0,212,170,.1); color:#00d4aa; letter-spacing:.04em;
+}
+.kpi-badge.warn   { background:rgba(255,209,102,.1); color:#ffd166; }
+.kpi-badge.danger { background:rgba(248,113,113,.1); color:#f87171; }
+.kpi-badge.purple { background:rgba(123,97,255,.1);  color:#7b61ff; }
+.kpi-badge.cyan   { background:rgba(0,180,216,.1);   color:#00b4d8; }
+.kpi-spark { margin-top:10px; }
+
+/* ── Alert strip ─────────────────────────────────────────────────── */
+.alert-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+.alert-card {
+  border-radius:14px; padding:16px 18px; border:1px solid;
+  display:flex; align-items:center; gap:14px; position:relative; overflow:hidden;
+}
+.alert-card::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg,var(--ac) 0%,transparent 60%);
+  opacity:.04; pointer-events:none;
+}
+.alert-card.red   { background:rgba(248,113,113,.06); border-color:rgba(248,113,113,.25); --ac:#f87171; animation:alertPulse 2.6s ease-in-out infinite; }
+.alert-card.amber { background:rgba(255,209,102,.06); border-color:rgba(255,209,102,.25); --ac:#ffd166; animation:alertPulse 3s ease-in-out infinite; }
+.alert-card.blue  { background:rgba(0,180,216,.06);   border-color:rgba(0,180,216,.22);   --ac:#00b4d8; }
+.alert-card.teal  { background:rgba(0,212,170,.06);   border-color:rgba(0,212,170,.22);   --ac:#00d4aa; }
+.alert-icon  { font-size:1.8rem; line-height:1; flex-shrink:0; }
+.alert-count { font-size:1.6rem; font-weight:900; color:#e2e8f0; line-height:1.1; }
+.alert-title { font-size:.71rem; color:#94a3b8; margin-top:3px; }
+
+/* ── Section divider ─────────────────────────────────────────────── */
+.dash-sec {
+  font-size:.67rem; font-weight:800; text-transform:uppercase; letter-spacing:.16em;
+  color:#334155; padding:18px 0 9px; border-bottom:1px solid #1a2540; margin-bottom:14px;
+  display:flex; align-items:center; gap:8px;
+}
+
+/* ── Proposal feed cards ─────────────────────────────────────────── */
+.pfd-card {
+  background:#0b1424; border:1px solid #1a2540; border-radius:12px;
+  padding:12px 15px; display:flex; align-items:center; gap:13px;
+  margin-bottom:7px; transition:all .18s; position:relative; overflow:hidden;
+}
+.pfd-card:hover { background:#0f1929; border-color:#243050; transform:translateX(3px); }
+.pfd-card::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--avc); border-radius:2px 0 0 2px;
+}
+.pfd-av {
+  width:36px; height:36px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.68rem; font-weight:800; color:#0a0e1a; background:var(--avc);
+}
+.pfd-body { flex:1; min-width:0; }
+.pfd-name { font-size:.82rem; font-weight:700; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pfd-meta { font-size:.68rem; color:#64748b; margin-top:2px; }
+.pfd-badge {
+  padding:2px 9px; border-radius:20px; font-size:.6rem; font-weight:700;
+  white-space:nowrap; flex-shrink:0; letter-spacing:.04em;
+}
+.pfd-badge.approved      { background:rgba(74,222,128,.12);  color:#4ade80; }
+.pfd-badge.pending       { background:rgba(255,209,102,.12); color:#ffd166; }
+.pfd-badge.needs_changes { background:rgba(248,113,113,.12); color:#f87171; }
+.pfd-hrs { font-size:.7rem; color:#64748b; min-width:46px; text-align:right; flex-shrink:0; }
+
+/* ── Leaderboard ─────────────────────────────────────────────────── */
+.lb-row {
+  display:flex; align-items:center; gap:10px; padding:11px 14px;
+  background:#0b1424; border:1px solid #1a2540; border-radius:12px;
+  margin-bottom:6px; transition:all .18s;
+}
+.lb-row:hover { background:#0f1929; transform:translateX(3px); border-color:#243050; }
+.lb-rank { font-size:.85rem; font-weight:800; color:#475569; min-width:26px; }
+.lb-info { flex:1; min-width:0; }
+.lb-name { font-size:.82rem; font-weight:700; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lb-bar  { height:3px; border-radius:2px; background:linear-gradient(90deg,#00d4aa,#7b61ff); margin-top:5px; max-width:100%; }
+.lb-cnt  { font-size:.85rem; font-weight:800; color:#00d4aa; min-width:28px; text-align:right; }
+.lb-wr   { font-size:.67rem; color:#64748b; min-width:55px; text-align:right; }
+
+/* ── Technology pills ────────────────────────────────────────────── */
+.tech-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:5px 12px; border-radius:20px; margin:3px;
+  background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.14);
+  transition:all .2s; cursor:default;
+}
+.tech-pill:hover { background:rgba(0,212,170,.14); transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,212,170,.12); }
+
+/* ── Activity log stats row ──────────────────────────────────────── */
+.log-stats {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px;
+}
+.log-stat {
+  background:linear-gradient(#0b1424,#0b1424) padding-box,
+             linear-gradient(145deg,var(--sc) 0%,rgba(10,20,40,0) 60%) border-box;
+  border:1px solid transparent; border-radius:14px; padding:16px; position:relative; overflow:hidden;
+}
+.log-stat::after {
+  content:''; position:absolute; top:-30px; right:-30px; width:80px; height:80px; border-radius:50%;
+  background:radial-gradient(circle,var(--sc),transparent 70%); opacity:.06; pointer-events:none;
+}
+.log-stat-val  { font-size:1.7rem; font-weight:900; color:var(--sc); line-height:1; animation:numPop .5s cubic-bezier(.34,1.56,.64,1) both; }
+.log-stat-lbl  { font-size:.66rem; color:#475569; text-transform:uppercase; letter-spacing:.12em; margin-top:5px; }
+.log-stat-sub  { font-size:.7rem; color:#64748b; margin-top:4px; }
+
+/* ── Activity timeline ───────────────────────────────────────────── */
+.log-timeline  { display:flex; flex-direction:column; gap:0; }
+.log-entry     { display:flex; align-items:flex-start; gap:0; animation:logSlide .3s ease both; }
+.log-line-wrap { display:flex; flex-direction:column; align-items:center; width:32px; flex-shrink:0; }
+.log-dot       { width:12px; height:12px; border-radius:50%; flex-shrink:0; margin-top:16px;
+                 border:2px solid var(--lc); background:#060d1a;
+                 box-shadow:0 0 8px var(--lc); }
+.log-vline     { width:2px; flex:1; min-height:18px; opacity:.25;
+                 background:linear-gradient(to bottom,var(--lc),rgba(26,37,64,0)); }
+.log-body {
+  flex:1; background:#0b1424; border:1px solid #1a2540; border-radius:12px;
+  padding:12px 15px; margin:6px 0 4px 10px; transition:all .18s;
+}
+.log-body:hover { background:#0f1929; border-color:#243050; }
+.log-head  { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.log-av    { width:28px; height:28px; border-radius:50%; flex-shrink:0;
+             display:flex; align-items:center; justify-content:center;
+             font-size:.6rem; font-weight:800; color:#0a0e1a; background:var(--lc); }
+.log-user  { font-size:.78rem; font-weight:700; color:#e2e8f0; }
+.log-act   { padding:2px 8px; border-radius:10px; font-size:.6rem; font-weight:700; letter-spacing:.04em; color:var(--lc); }
+.log-time  { font-size:.67rem; color:#475569; margin-left:auto; white-space:nowrap; }
+.log-detail{ font-size:.73rem; color:#94a3b8; margin-top:6px; line-height:1.5; }
+.log-module{ display:inline-block; font-size:.58rem; color:#334155; margin-top:4px;
+             letter-spacing:.07em; text-transform:uppercase;
+             padding:1px 7px; border-radius:8px; background:#0f1929; border:1px solid #1a2540; }
+.log-scroll { max-height:580px; overflow-y:auto; padding-right:4px; }
+.log-scroll::-webkit-scrollbar       { width:4px; }
+.log-scroll::-webkit-scrollbar-track { background:transparent; }
+.log-scroll::-webkit-scrollbar-thumb { background:#1a2540; border-radius:4px; }
+.log-scroll::-webkit-scrollbar-thumb:hover { background:#243050; }
+
+/* ── Pulse / live-feed cards ─────────────────────────────────────── */
+.pulse-feed { display:flex; flex-direction:column; gap:8px; }
+.pulse-card {
+  background:#0b1424; border:1px solid #1a2540; border-radius:12px;
+  padding:11px 15px; display:flex; align-items:center; gap:12px;
+  transition:all .2s; position:relative; overflow:hidden;
+  animation:logSlide .3s ease both;
+}
+.pulse-card:hover { background:#0f1929; transform:translateX(3px); border-color:#243050; }
+.pulse-card::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--pc); border-radius:2px 0 0 2px;
+}
+.pulse-icon { font-size:1.3rem; flex-shrink:0; }
+.pulse-body { flex:1; min-width:0; }
+.pulse-who  { font-size:.78rem; font-weight:700; color:#e2e8f0; }
+.pulse-what { font-size:.68rem; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pulse-ts   { font-size:.63rem; color:#334155; flex-shrink:0; }
+.pulse-badge{ padding:2px 8px; border-radius:10px; font-size:.6rem; font-weight:700;
+              background:rgba(from var(--pc) r g b / .1); color:var(--pc); flex-shrink:0; }
+
+/* ── Feature usage bar ───────────────────────────────────────────── */
+.feat-row   { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #1a2540; }
+.feat-row:last-child { border-bottom:none; }
+.feat-icon  { font-size:1.1rem; width:26px; text-align:center; flex-shrink:0; }
+.feat-lbl   { font-size:.75rem; color:#94a3b8; flex:1; }
+.feat-bar-wrap { width:120px; height:6px; background:#1a2540; border-radius:4px; overflow:hidden; flex-shrink:0; }
+.feat-bar   { height:6px; border-radius:4px; background:linear-gradient(90deg,var(--fc),var(--fc2,var(--fc))); }
+.feat-cnt   { font-size:.75rem; font-weight:700; color:var(--fc); min-width:32px; text-align:right; flex-shrink:0; }
+
+/* ── Client heatmap grid ─────────────────────────────────────────── */
+.client-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.client-row  { background:#0b1424; border:1px solid #1a2540; border-radius:10px; padding:10px 14px;
+               display:flex; align-items:center; gap:10px; transition:all .18s; }
+.client-row:hover { background:#0f1929; border-color:#243050; }
+.client-name { font-size:.78rem; font-weight:700; color:#e2e8f0; flex:1; min-width:0;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.client-cnt  { font-size:.85rem; font-weight:800; color:#00d4aa; min-width:24px; text-align:right; }
+.client-bar  { width:100%; height:3px; border-radius:2px; background:linear-gradient(90deg,#00d4aa,#7b61ff);
+               margin-top:5px; }
+
+/* ── Hour heatmap ────────────────────────────────────────────────── */
+.hour-hm-wrap { display:flex; gap:3px; align-items:flex-end; flex-wrap:wrap; }
+.hour-cell    { width:22px; height:22px; border-radius:4px; cursor:default;
+                transition:transform .15s; display:flex; align-items:center; justify-content:center;
+                font-size:.5rem; color:transparent; }
+.hour-cell:hover { transform:scale(1.35); color:#e2e8f0; }
+
+/* ── User session pill ───────────────────────────────────────────── */
+.session-sep {
+  display:flex; align-items:center; gap:10px; margin:14px 0 8px;
+  padding:7px 13px; background:#080d1a; border-radius:8px; border:1px solid #1a2540;
+}
+.session-av  { width:26px; height:26px; border-radius:50%;
+               display:flex; align-items:center; justify-content:center;
+               font-size:.58rem; font-weight:800; color:#0a0e1a; background:var(--sac); flex-shrink:0; }
+.session-name{ font-size:.75rem; font-weight:700; color:#e2e8f0; }
+.session-meta{ font-size:.65rem; color:#475569; margin-left:auto; }
+.session-dur { font-size:.65rem; color:#64748b; }
+</style>
+""", unsafe_allow_html=True)
+
+    # ── Load data ─────────────────────────────────────────────────────────
+    all_runs   = _cached_load_runs("All", False)
+    _acts      = _cached_activity_log(600)
+    _N         = len(all_runs)
+
+    # ── KPI computation ───────────────────────────────────────────────────
+    _pend   = [r for r in all_runs if (r.get("review_status") or "pending") == "pending"]
+    _needs  = [r for r in all_runs if (r.get("review_status") or "") == "needs_changes"]
+    _approv = [r for r in all_runs if (r.get("review_status") or "") == "approved"]
+    _won    = [r for r in all_runs if r.get("project_outcome") == "won"]
+    _lost   = [r for r in all_runs if r.get("project_outcome") == "lost"]
+    _nobid  = [r for r in all_runs if r.get("project_outcome") == "no_bid"]
+    _open   = [r for r in all_runs if r.get("project_outcome") in (None, "", "pending")]
+    _decided  = len(_won) + len(_lost)
+    _win_rate = round(len(_won) / _decided * 100, 1) if _decided else None
+    _acc_runs = [r for r in all_runs if r.get("actual_hours") and r.get("total_hours")]
+    if _acc_runs:
+        _errs    = [abs((r["actual_hours"] - r["total_hours"]) / r["total_hours"]) * 100 for r in _acc_runs]
+        _avg_acc = round(100 - sum(_errs) / len(_errs), 1)
+    else:
+        _avg_acc = None
+    _this_week  = [r for r in all_runs if (r.get("ts") or "")[:10] >= _WEEK_AGO]
+    _this_month = [r for r in all_runs if (r.get("ts") or "")[:10] >= _MONTH_AGO]
+    _pipe_val   = sum(r.get("monthly_cost", 0) or 0 for r in all_runs)
+    _overdue    = [r for r in _pend if (r.get("ts") or "")[:10] < _WEEK_AGO]
+
+    # ── Animated gradient header banner ───────────────────────────────────
+    _ai_live = bool(st.session_state.get("azure_api_key") or st.session_state.get("anthropic_api_key"))
+    _acts_today = [a for a in _acts if (a.get("ts") or "").startswith(_TODAY)]
+    _users_today_set = set(a.get("user_email", "") for a in _acts_today if a.get("user_email"))
+
+    _hdr_c, _ref_c = st.columns([8, 2])
+    with _hdr_c:
+        st.markdown(
+            f'<div class="dash-banner">'
+            f'<div style="display:flex;align-items:center;gap:12px">'
+            f'<div class="dash-title">Intelligence Dashboard</div>'
+            f'<span style="font-size:.68rem;padding:3px 10px;border-radius:20px;'
+            f'background:{"rgba(0,212,170,.1)" if _ai_live else "rgba(248,113,113,.1)"};'
+            f'color:{"#00d4aa" if _ai_live else "#f87171"};font-weight:700;letter-spacing:.05em">'
+            f'{"● AI LIVE" if _ai_live else "● AI OFFLINE"}</span></div>'
+            f'<div class="dash-sub">'
+            f'ECI Presale Intelligence &nbsp;·&nbsp; {_N} active proposals &nbsp;·&nbsp; '
+            f'{len(_acts_today)} events today &nbsp;·&nbsp; '
+            f'{len(_users_today_set)} user{"s" if len(_users_today_set) != 1 else ""} active &nbsp;·&nbsp; '
+            f'{_NOW.strftime("%a, %b %d %Y · %H:%M")}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+    with _ref_c:
+        if st.button("↻  Refresh", key="dash_refresh_btn", use_container_width=True, type="secondary"):
+            _cached_load_runs.clear()
+            _cached_category_counts.clear()
+            _cached_activity_log.clear()
+            st.rerun()
+
+    # ── Sub-tabs: Overview | Activity Log ─────────────────────────────────
+    _dtab_ov, _dtab_log = st.tabs(["📊  Overview", "👁️  Activity Log"])
+
+    # ── Shared action metadata (used in both tabs) ────────────────────────
+    _ACT_META = {
+        "login":                ("Sign In",        "#00d4aa", "🔐"),
+        "pipeline_run":         ("Estimation",     "#7b61ff", "⚡"),
+        "bella_chat":           ("BELLA Chat",     "#ffd166", "🤖"),
+        "tab_view":             ("Feature Opened", "#64748b", "👁️"),
+        "export_pdf":           ("PDF Export",     "#00b4d8", "📄"),
+        "export_pptx":          ("PPTX Export",    "#00b4d8", "📑"),
+        "export_excel":         ("Excel Export",   "#4ade80", "📊"),
+        "export_json":          ("JSON Export",    "#94a3b8", "📥"),
+        "review_approved":      ("Approved",       "#4ade80", "✅"),
+        "review_needs_changes": ("Needs Changes",  "#f87171", "✏️"),
+        "review_pending":       ("Reset Review",   "#ffd166", "🔄"),
+        "archive":              ("Archived",       "#94a3b8", "🗄️"),
+        "restore":              ("Restored",       "#a78bfa", "↩️"),
+        "compare":              ("Compare",        "#00b4d8", "📊"),
+        "outcome_update":       ("Outcome Logged", "#4ade80", "🏆"),
+        "discovery_run":        ("Discovery Run",  "#fb923c", "🔍"),
+    }
+
+    def _act_meta(action):
+        for _k, _v in _ACT_META.items():
+            if _k in (action or ""):
+                return _v
+        return ((action or "event").replace("_", " ").title(), "#64748b", "•")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  TAB 1 — OVERVIEW
+    # ═══════════════════════════════════════════════════════════════════════
+    with _dtab_ov:
+
+        # ── Needs Attention ───────────────────────────────────────────────
+        if _overdue or _needs or _pend:
+            st.markdown('<div class="dash-sec">⚠️ Needs Attention</div>', unsafe_allow_html=True)
+
+            def _ac(cls, icon, cnt, lbl):
+                return (
+                    f'<div class="alert-card {cls}">'
+                    f'<div class="alert-icon">{icon}</div>'
+                    f'<div><div class="alert-count">{cnt if cnt else "✓"}</div>'
+                    f'<div class="alert-title">{lbl}</div></div>'
+                    f'</div>'
+                )
+
+            st.markdown(
+                f'<div class="alert-grid">'
+                + _ac("red" if _overdue else "teal",   "🕐", len(_overdue),    "Overdue reviews >7 days")
+                + _ac("amber" if _pend else "teal",    "📋", len(_pend),        "Awaiting review")
+                + _ac("red" if _needs else "teal",     "✏️", len(_needs),       "Needs changes")
+                + _ac("blue",                           "🚀", len(_this_week),   "New this week")
+                + '</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── KPI Cards ─────────────────────────────────────────────────────
+        st.markdown('<div class="dash-sec">📊 Key Performance Indicators</div>', unsafe_allow_html=True)
+
+        def _spark(values, color, w=64, h=22):
+            if not values or max(values) == 0:
+                return ""
+            _mx = max(values) or 1
+            pts = " ".join(
+                f'{round(i * w / max(len(values)-1,1))},{round(h - v/_mx*h)}'
+                for i, v in enumerate(values)
+            )
+            return (
+                f'<div class="kpi-spark">'
+                f'<svg width="{w}" height="{h}" style="display:block">'
+                f'<defs><linearGradient id="sg{abs(hash(color))%999}" x1="0" y1="0" x2="1" y2="0">'
+                f'<stop offset="0" stop-color="{color}" stop-opacity=".3"/>'
+                f'<stop offset="1" stop-color="{color}"/></linearGradient></defs>'
+                f'<polyline points="{pts}" fill="none" stroke="url(#sg{abs(hash(color))%999})" '
+                f'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'</svg></div>'
+            )
+
+        # Build 6-month counts for sparklines
+        _mo6   = [(_NOW - timedelta(days=30*i)).strftime("%Y-%m") for i in range(5,-1,-1)]
+        _mo_c  = collections.defaultdict(int)
+        _mo_w  = collections.defaultdict(int)
+        for _r in all_runs:
+            _mo = (_r.get("ts") or "")[:7]
+            if _mo: _mo_c[_mo] += 1
+            if _mo and _r.get("project_outcome") == "won": _mo_w[_mo] += 1
+        _spark_all = [_mo_c.get(m,0) for m in _mo6]
+        _spark_win = [_mo_w.get(m,0) for m in _mo6]
+
+        def _kpi(icon, val, lbl, sub, color, badge=None, bcls="", spark=None):
+            _b = f'<span class="kpi-badge {bcls}">{badge}</span>' if badge else ""
+            _s = spark or ""
+            return (
+                f'<div class="kpi-card" style="--kc:{color}">'
+                f'<div class="kpi-orb"></div>'
+                f'<div class="kpi-icon">{icon}</div>'
+                f'<div class="kpi-val">{val}</div>'
+                f'<div class="kpi-lbl">{lbl}</div>'
+                f'<div class="kpi-sub">{sub}</div>'
+                f'{_b}{_s}</div>'
+            )
+
+        _wr_c  = "#4ade80" if (_win_rate or 0) >= 60 else "#ffd166" if (_win_rate or 0) >= 40 else "#f87171"
+        _ac_c  = "#4ade80" if (_avg_acc  or 0) >= 85 else "#7b61ff" if (_avg_acc  or 0) >= 70 else "#ffd166"
+
+        st.markdown(
+            f'<div class="kpi-grid">'
+            + _kpi("📁", _N, "Active Proposals",
+                   f"{len(_this_month)} this month · {len(_this_week)} this week",
+                   "#00d4aa", f"+{len(_this_week)} new", "",
+                   _spark(_spark_all, "#00d4aa"))
+            + _kpi("🏆", f"{_win_rate}%" if _win_rate is not None else "—", "Win Rate",
+                   f"{len(_won)} won · {len(_lost)} lost of {_decided} decided",
+                   _wr_c, "On Track" if (_win_rate or 0) >= 60 else "Needs Work",
+                   "" if (_win_rate or 0) >= 60 else "warn",
+                   _spark(_spark_win, _wr_c))
+            + _kpi("🎯", f"{_avg_acc}%" if _avg_acc is not None else "—", "Estimation Accuracy",
+                   f"{len(_acc_runs)} validated against actuals",
+                   _ac_c, f"{len(_acc_runs)} actuals" if _acc_runs else "No actuals yet",
+                   "purple" if _avg_acc else "warn")
+            + _kpi("⏳", len(_pend), "Pending Reviews",
+                   f"{len(_needs)} need changes · {len(_approv)} approved",
+                   "#f87171" if _overdue else "#ffd166" if _pend else "#4ade80",
+                   f"{len(_overdue)} overdue!" if _overdue else "All recent",
+                   "danger" if _overdue else "warn" if _pend else "")
+            + _kpi("💰", f"${_pipe_val:,.0f}" if _pipe_val else "—", "Monthly Pipeline",
+                   f"Annualised: ${_pipe_val*12/1_000:,.0f}K" if _pipe_val else "No cost data yet",
+                   "#00b4d8", f"Across {_N} proposals", "cyan")
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Charts ────────────────────────────────────────────────────────
+        _PL = dict(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#64748b", size=11),
+            margin=dict(l=8, r=8, t=38, b=8),
+        )
+
+        st.markdown('<div class="dash-sec">📈 Pipeline Analytics</div>', unsafe_allow_html=True)
+        _c1, _c2 = st.columns([3, 2])
+
+        with _c1:
+            _xlabels = [m[-5:].replace("-", "/") for m in _mo6]
+            _ycnt    = _spark_all
+            _ywin    = _spark_win
+            _fig_t   = go.Figure()
+            _fig_t.add_trace(go.Scatter(
+                x=_xlabels, y=_ycnt, fill="tozeroy", mode="lines+markers", name="Proposals",
+                line=dict(color="#00d4aa", width=2.5),
+                marker=dict(size=7, color="#00d4aa", line=dict(color="#0a0e1a", width=2)),
+                fillcolor="rgba(0,212,170,.09)",
+            ))
+            _fig_t.add_trace(go.Scatter(
+                x=_xlabels, y=_ywin, mode="lines+markers", name="Won",
+                line=dict(color="#4ade80", width=2, dash="dot"),
+                marker=dict(size=5, color="#4ade80"),
+            ))
+            _fig_t.update_layout(
+                **_PL,
+                title=dict(text="Proposals & Wins — Last 6 Months", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, color="#64748b"),
+                yaxis=dict(showgrid=True, gridcolor="#1a2540", color="#64748b", zeroline=False),
+                legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10)),
+                height=248,
+            )
+            st.plotly_chart(_fig_t, use_container_width=True, config={"displayModeBar": False})
+
+        with _c2:
+            _o_lbl = ["Won", "Lost", "No Bid", "Open"]
+            _o_val = [len(_won), len(_lost), len(_nobid), len(_open)]
+            _o_col = ["#4ade80", "#f87171", "#94a3b8", "#7b61ff"]
+            _fig_d = go.Figure(go.Pie(
+                labels=_o_lbl, values=_o_val, hole=0.64,
+                marker=dict(colors=_o_col, line=dict(color="#0a0e1a", width=2)),
+                textinfo="label+percent", textfont=dict(color="#94a3b8", size=10.5),
+                hovertemplate="%{label}: <b>%{value}</b><extra></extra>",
+            ))
+            _fig_d.add_annotation(
+                text=f"<b>{_win_rate}%</b><br>Win" if _win_rate else "—",
+                font=dict(size=14, color="#e2e8f0"), showarrow=False,
+            )
+            _fig_d.update_layout(**_PL,
+                title=dict(text="Outcome Distribution", font=dict(size=12, color="#94a3b8")),
+                showlegend=False, height=248)
+            st.plotly_chart(_fig_d, use_container_width=True, config={"displayModeBar": False})
+
+        _c3, _c4, _c5 = st.columns(3)
+        _cats  = collections.Counter(r.get("category", "General") for r in all_runs)
+        _risks = collections.Counter(r.get("risk_level") or "Unknown" for r in all_runs if r.get("risk_level"))
+
+        with _c3:
+            _cat_col = {"AI": "#7b61ff", "Data": "#00d4aa", "Cloud": "#00b4d8", "General": "#94a3b8"}
+            _cl = list(_cats.keys()); _cv = list(_cats.values())
+            _fig_c = go.Figure(go.Bar(
+                y=_cl, x=_cv, orientation="h",
+                marker=dict(color=[_cat_col.get(c, "#64748b") for c in _cl], line=dict(color="rgba(0,0,0,0)")),
+                text=_cv, textposition="outside", textfont=dict(color="#94a3b8", size=11),
+            ))
+            _fig_c.update_layout(**_PL, title=dict(text="By Category", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=False, color="#94a3b8"), height=210)
+            st.plotly_chart(_fig_c, use_container_width=True, config={"displayModeBar": False})
+
+        with _c4:
+            _r_ord = ["Low","Medium","High","Critical"]
+            _r_col = {"Low":"#4ade80","Medium":"#ffd166","High":"#f87171","Critical":"#dc2626"}
+            _rl = [r for r in _r_ord if r in _risks]; _rv = [_risks[r] for r in _rl]
+            _fig_r = go.Figure(go.Bar(
+                x=_rl, y=_rv,
+                marker=dict(color=[_r_col[r] for r in _rl], line=dict(color="rgba(0,0,0,0)")),
+                text=_rv, textposition="outside", textfont=dict(color="#94a3b8", size=11),
+            ))
+            _fig_r.update_layout(**_PL, title=dict(text="Risk Distribution", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, color="#94a3b8"),
+                yaxis=dict(showgrid=True, gridcolor="#1a2540", showticklabels=False, zeroline=False), height=210)
+            st.plotly_chart(_fig_r, use_container_width=True, config={"displayModeBar": False})
+
+        with _c5:
+            _rv_lbl = ["Approved","Pending","Needs Changes"]
+            _rv_val = [len(_approv), len(_pend), len(_needs)]
+            _rv_col = ["#4ade80","#ffd166","#f87171"]
+            _fig_rv = go.Figure(go.Bar(
+                y=_rv_lbl, x=_rv_val, orientation="h",
+                marker=dict(color=_rv_col, line=dict(color="rgba(0,0,0,0)")),
+                text=_rv_val, textposition="outside", textfont=dict(color="#94a3b8", size=11),
+            ))
+            _fig_rv.update_layout(**_PL, title=dict(text="Review Pipeline", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=False, color="#94a3b8"), height=210)
+            st.plotly_chart(_fig_rv, use_container_width=True, config={"displayModeBar": False})
+
+        # ── Activity Heatmap — GitHub-style calendar ───────────────────────
+        st.markdown('<div class="dash-sec">📅 Proposal Activity — Last 12 Weeks</div>', unsafe_allow_html=True)
+        try:
+            from datetime import date as _date
+            _hm_today = _date.today()
+            _hm_start = _hm_today - timedelta(days=83)   # ~12 weeks
+            _hm_cnt: dict = {}
+            for _r in all_runs:
+                _d = (_r.get("ts") or "")[:10]
+                if _d: _hm_cnt[_d] = _hm_cnt.get(_d, 0) + 1
+            _hm_max   = max(_hm_cnt.values()) if _hm_cnt else 1
+            _hm_weeks = []
+            _cur = _hm_start - timedelta(days=_hm_start.weekday())  # start on Monday
+            while _cur <= _hm_today:
+                week_col = []
+                for _dow in range(7):
+                    _day = _cur + timedelta(days=_dow)
+                    _ds  = str(_day)
+                    _cnt = _hm_cnt.get(_ds, 0)
+                    _int = min(int(_cnt / _hm_max * 4), 4) if _cnt else 0
+                    week_col.append((_ds, _cnt, _int))
+                _hm_weeks.append(week_col)
+                _cur += timedelta(days=7)
+            _HEAT_COLS = ["#1a2540", "#00463a", "#006a54", "#00956e", "#00d4aa"]
+            _cells = []
+            for _wk in _hm_weeks:
+                _col_cells = []
+                for _ds, _cnt, _int in _wk:
+                    _col = _HEAT_COLS[_int]
+                    _tip = f"{_cnt} proposal{'s' if _cnt!=1 else ''} on {_ds}" if _cnt else _ds
+                    _col_cells.append(
+                        f'<div title="{_tip}" style="width:13px;height:13px;border-radius:3px;'
+                        f'background:{_col};margin-bottom:2px;'
+                        f'{"box-shadow:0 0 6px " + _col + "80;" if _int >= 3 else ""}"></div>'
+                    )
+                _cells.append('<div style="display:flex;flex-direction:column;margin-right:2px">' + "".join(_col_cells) + '</div>')
+            _hm_html = (
+                '<div style="display:flex;align-items:flex-start;gap:0;padding:8px 0;overflow-x:auto">'
+                + "".join(_cells) + '</div>'
+                + f'<div style="font-size:.66rem;color:#334155;margin-top:4px">'
+                f'Less &nbsp; <span style="display:inline-flex;gap:3px">'
+                + "".join(f'<span style="width:10px;height:10px;border-radius:2px;display:inline-block;background:{c}"></span>' for c in _HEAT_COLS)
+                + f'</span> &nbsp; More &nbsp;·&nbsp; Total: {_N} proposals</div>'
+            )
+            st.markdown(_hm_html, unsafe_allow_html=True)
+        except Exception:
+            pass
+
+        # ── Recent Proposals + Team Leaderboard ───────────────────────────
+        st.markdown('<div class="dash-sec">🔄 Recent Proposals  &  Team Leaderboard</div>', unsafe_allow_html=True)
+        _fa1, _fa2 = st.columns([3, 2])
+        _AV_PAL = ["#00d4aa","#7b61ff","#f87171","#ffd166","#00b4d8","#4ade80","#fb923c","#a78bfa"]
+
+        with _fa1:
+            st.markdown('<div style="font-size:.76rem;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase">Last 15 Proposals</div>', unsafe_allow_html=True)
+            _feed_html = []
+            for _fi, _r in enumerate(all_runs[:15]):
+                _ar = _r.get("created_by") or _r.get("created_by_email") or "Unknown"
+                _ad = _ar.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _ar else _ar
+                _init = "".join(p[0].upper() for p in _ad.split()[:2])
+                _avc  = _AV_PAL[_fi % len(_AV_PAL)]
+                _cli  = _r.get("client_name") or "Unnamed Client"
+                _pty  = _r.get("project_type") or _r.get("category") or "General"
+                _st   = _r.get("review_status") or "pending"
+                _hrs  = _r.get("total_hours")
+                _ts   = (_r.get("ts") or "")[:10]
+                try:
+                    _age = (_NOW.date() - datetime.strptime(_ts, "%Y-%m-%d").date()).days
+                    _ago = "Today" if _age==0 else f"{_age}d ago" if _age<30 else f"{_age//30}mo ago"
+                except Exception:
+                    _ago = _ts
+                _feed_html.append(
+                    f'<div class="pfd-card" style="--avc:{_avc}">'
+                    f'<div class="pfd-av">{_init}</div>'
+                    f'<div class="pfd-body">'
+                    f'<div class="pfd-name">{_cli}</div>'
+                    f'<div class="pfd-meta">{_pty} · {_ad} · {_ago}</div>'
+                    f'</div>'
+                    f'<span class="pfd-badge {_st}">{_st.replace("_"," ").title()}</span>'
+                    f'<div class="pfd-hrs">{"—" if not _hrs else f"{_hrs:,}h"}</div>'
+                    f'</div>'
+                )
+            st.markdown("".join(_feed_html) or '<div style="color:#64748b;font-size:.8rem;padding:12px">No proposals yet.</div>',
+                        unsafe_allow_html=True)
+
+        with _fa2:
+            st.markdown('<div style="font-size:.76rem;font-weight:700;color:#64748b;margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase">Team Leaderboard</div>', unsafe_allow_html=True)
+            _team: dict = {}
+            for _r in all_runs:
+                _nr = _r.get("created_by") or _r.get("created_by_email") or "Unknown"
+                _nm = _nr.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _nr else _nr
+                _team.setdefault(_nm, {"count":0,"won":0,"decided":0})
+                _team[_nm]["count"] += 1
+                if _r.get("project_outcome") == "won":   _team[_nm]["won"] += 1
+                if _r.get("project_outcome") in ("won","lost"): _team[_nm]["decided"] += 1
+            _lb = sorted(_team.items(), key=lambda x:(-x[1]["count"],-x[1]["won"]))[:8]
+            _mcnt = _lb[0][1]["count"] if _lb else 1
+            for _rk, (_nm, _st) in enumerate(_lb, 1):
+                _wrs  = f'{round(_st["won"]/_st["decided"]*100)}% WR' if _st["decided"] else "—"
+                _barw = round(_st["count"] / _mcnt * 100)
+                _med  = "🥇" if _rk==1 else "🥈" if _rk==2 else "🥉" if _rk==3 else f"#{_rk}"
+                st.markdown(
+                    f'<div class="lb-row"><span class="lb-rank">{_med}</span>'
+                    f'<div class="lb-info">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                    f'<span class="lb-name">{_nm}</span>'
+                    f'<div style="display:flex;gap:8px"><span class="lb-wr">{_wrs}</span>'
+                    f'<span class="lb-cnt">{_st["count"]}</span></div></div>'
+                    f'<div class="lb-bar" style="width:{_barw}%"></div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+            if not _lb:
+                st.markdown('<div style="color:#64748b;font-size:.8rem;padding:12px">No team data yet.</div>', unsafe_allow_html=True)
+
+        # ── Technology Adoption ───────────────────────────────────────────
+        st.markdown('<div class="dash-sec">🔧 Technology Adoption</div>', unsafe_allow_html=True)
+        _tc: collections.Counter = collections.Counter()
+        for _r in all_runs:
+            for _t in (_r.get("tech_stack") or []):
+                if isinstance(_t, str) and _t.strip():
+                    _tc[_t.strip().title()] += 1
+        if _tc:
+            _top20 = _tc.most_common(20)
+            _mx_tc = _top20[0][1]
+            _pills = []
+            for _tn, _cnt in _top20:
+                _sz  = 0.73 + (_cnt / _mx_tc) * 0.62
+                _col = "#00d4aa" if _cnt == _mx_tc else "#7b61ff" if _cnt >= _mx_tc*.55 else "#94a3b8"
+                _op  = 0.55 + (_cnt / _mx_tc) * 0.45
+                _pills.append(
+                    f'<span class="tech-pill" style="opacity:{_op:.2f}">'
+                    f'<span style="color:{_col};font-size:{_sz:.2f}rem;font-weight:700">{_tn}</span>'
+                    f'<span style="color:#334155;font-size:.63rem">{_cnt}</span></span>'
+                )
+            st.markdown('<div style="line-height:2.8">' + "".join(_pills) + '</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="color:#64748b;font-size:.8rem;padding:8px 0">No technology data yet.</div>', unsafe_allow_html=True)
+
+        # ── Analytics Row 2: Activity Volume + Feature Usage ──────────────
+        st.markdown('<div class="dash-sec">📡 Platform Engagement</div>', unsafe_allow_html=True)
+        _eng_c1, _eng_c2 = st.columns([3, 2])
+
+        with _eng_c1:
+            # Activity volume: events per day last 30 days
+            from datetime import date as _d2
+            _vol_days = [(_NOW - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(29, -1, -1)]
+            _vol_cnt  = collections.Counter(
+                (a.get("ts") or "")[:10] for a in _acts
+                if (a.get("ts") or "")[:10] >= (_NOW - timedelta(days=30)).strftime("%Y-%m-%d")
+            )
+            _vol_y    = [_vol_cnt.get(d, 0) for d in _vol_days]
+            _vol_lbl  = [d[-5:].replace("-", "/") for d in _vol_days]
+            _vol_cols = ["#7b61ff" if v == max(_vol_y or [0]) else
+                         "#00d4aa" if v >= (max(_vol_y or [0]) * 0.6) else
+                         "#1a2540" for v in _vol_y]
+            _fig_vol = go.Figure(go.Bar(
+                x=_vol_lbl, y=_vol_y,
+                marker=dict(color=_vol_cols, line=dict(color="rgba(0,0,0,0)")),
+                hovertemplate="%{x}: <b>%{y} events</b><extra></extra>",
+            ))
+            _fig_vol.update_layout(
+                **_PL,
+                title=dict(text="Platform Events — Last 30 Days", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, color="#475569", tickangle=-45,
+                           tickmode="array",
+                           tickvals=[_vol_lbl[i] for i in range(0, 30, 5)],
+                           ticktext=[_vol_lbl[i] for i in range(0, 30, 5)]),
+                yaxis=dict(showgrid=True, gridcolor="#1a2540", color="#64748b", zeroline=False),
+                height=240,
+            )
+            st.plotly_chart(_fig_vol, use_container_width=True, config={"displayModeBar": False})
+
+        with _eng_c2:
+            # Feature usage breakdown
+            _feat_ctr = collections.Counter(a.get("action", "other") for a in _acts)
+            _feat_top = _feat_ctr.most_common(8)
+            _feat_max = _feat_top[0][1] if _feat_top else 1
+            _f_rows   = []
+            for _fa, _fc in _feat_top:
+                _flbl, _fcol, _fic = _act_meta(_fa)
+                _fw = round(_fc / _feat_max * 100)
+                _fc2 = "#7b61ff" if _fa == "pipeline_run" else _fcol
+                _f_rows.append(
+                    f'<div class="feat-row">'
+                    f'<span class="feat-icon">{_fic}</span>'
+                    f'<span class="feat-lbl">{_flbl}</span>'
+                    f'<div class="feat-bar-wrap"><div class="feat-bar" style="width:{_fw}%;--fc:{_fcol};--fc2:{_fc2}"></div></div>'
+                    f'<span class="feat-cnt" style="--fc:{_fcol}">{_fc}</span>'
+                    f'</div>'
+                )
+            st.markdown(
+                f'<div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Feature Usage</div>'
+                + ("".join(_f_rows) if _f_rows else
+                   '<div style="color:#334155;font-size:.8rem;padding:12px">No usage data yet.</div>'),
+                unsafe_allow_html=True,
+            )
+
+        # ── Analytics Row 3: Win Rate by Category + Top Clients ───────────
+        st.markdown('<div class="dash-sec">🏆 Win Intelligence &  Top Clients</div>', unsafe_allow_html=True)
+        _int_c1, _int_c2 = st.columns([3, 2])
+
+        with _int_c1:
+            # Win rate by category — grouped bar
+            _cat_names = sorted(set(r.get("category", "General") for r in all_runs))
+            _cat_won   = [sum(1 for r in all_runs if r.get("category") == c and r.get("project_outcome") == "won") for c in _cat_names]
+            _cat_lost  = [sum(1 for r in all_runs if r.get("category") == c and r.get("project_outcome") == "lost") for c in _cat_names]
+            _cat_open  = [sum(1 for r in all_runs if r.get("category") == c and r.get("project_outcome") not in ("won","lost","no_bid")) for c in _cat_names]
+            _fig_cat   = go.Figure()
+            _fig_cat.add_trace(go.Bar(name="Won",  x=_cat_names, y=_cat_won,  marker_color="#4ade80", text=_cat_won,  textposition="outside", textfont=dict(color="#94a3b8", size=10)))
+            _fig_cat.add_trace(go.Bar(name="Lost", x=_cat_names, y=_cat_lost, marker_color="#f87171", text=_cat_lost, textposition="outside", textfont=dict(color="#94a3b8", size=10)))
+            _fig_cat.add_trace(go.Bar(name="Open", x=_cat_names, y=_cat_open, marker_color="#475569", text=_cat_open, textposition="outside", textfont=dict(color="#94a3b8", size=10)))
+            _fig_cat.update_layout(
+                **_PL, barmode="group", height=230,
+                title=dict(text="Win Rate by Category", font=dict(size=12, color="#94a3b8")),
+                xaxis=dict(showgrid=False, color="#94a3b8"),
+                yaxis=dict(showgrid=True, gridcolor="#1a2540", zeroline=False, color="#64748b"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10), orientation="h", y=1.12),
+            )
+            st.plotly_chart(_fig_cat, use_container_width=True, config={"displayModeBar": False})
+
+        with _int_c2:
+            # Top clients by proposal count
+            _client_ctr = collections.Counter(r.get("client_name", "Unnamed") or "Unnamed" for r in all_runs)
+            _top_cli    = _client_ctr.most_common(8)
+            _cli_max    = _top_cli[0][1] if _top_cli else 1
+            _cli_rows   = []
+            for _cn, _cc in _top_cli:
+                _cbw = round(_cc / _cli_max * 100)
+                _cli_rows.append(
+                    f'<div class="client-row">'
+                    f'<span class="client-name">{_cn[:28]}</span>'
+                    f'<span class="client-cnt">{_cc}</span>'
+                    f'<div style="position:absolute;bottom:0;left:0;right:0;height:2px;opacity:.4"><div class="client-bar" style="width:{_cbw}%"></div></div>'
+                    f'</div>'
+                )
+            st.markdown(
+                f'<div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Top Clients</div>'
+                + '<div style="position:relative;display:flex;flex-direction:column;gap:7px">'
+                + "".join(_cli_rows) + "</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ── Live Pulse Feed ────────────────────────────────────────────────
+        _pulse_c1, _pulse_c2 = st.columns([1, 1])
+
+        with _pulse_c1:
+            st.markdown('<div class="dash-sec">🔴 Live Activity Feed</div>', unsafe_allow_html=True)
+            _live_acts = _acts[:8]
+            if _live_acts:
+                _pulse_cards = []
+                for _i, _ev in enumerate(_live_acts):
+                    _lbl, _col, _ico = _act_meta(_ev.get("action", ""))
+                    _uname   = _ev.get("user_name") or _ev.get("user_email") or "System"
+                    _udisp   = _uname.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _uname else _uname
+                    _detail  = _ev.get("details", "") or "—"
+                    _ts_str  = _ev.get("ts", "")
+                    try:
+                        _from_now = (datetime.now() - datetime.strptime(_ts_str, "%Y-%m-%d %H:%M:%S")).total_seconds()
+                        _ts_disp  = (f"{int(_from_now//60)}m ago" if _from_now < 3600
+                                     else f"{int(_from_now//3600)}h ago" if _from_now < 86400
+                                     else _ts_str[:10])
+                    except Exception:
+                        _ts_disp = _ts_str[11:16] if len(_ts_str) > 10 else _ts_str
+                    _pulse_cards.append(
+                        f'<div class="pulse-card" style="--pc:{_col};animation-delay:{_i*0.06:.2f}s">'
+                        f'<span class="pulse-icon">{_ico}</span>'
+                        f'<div class="pulse-body">'
+                        f'<div class="pulse-who">{_udisp}</div>'
+                        f'<div class="pulse-what">{_detail[:80]}</div>'
+                        f'</div>'
+                        f'<span class="pulse-ts">{_ts_disp}</span>'
+                        f'</div>'
+                    )
+                st.markdown('<div class="pulse-feed">' + "".join(_pulse_cards) + '</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div style="color:#334155;font-size:.8rem;padding:12px">No activity yet. Events will appear here in real-time.</div>', unsafe_allow_html=True)
+
+        with _pulse_c2:
+            st.markdown('<div class="dash-sec">👥 Team Leaderboard</div>', unsafe_allow_html=True)
+            _team2: dict = {}
+            for _r in all_runs:
+                _nr = _r.get("created_by") or _r.get("created_by_email") or "Unknown"
+                _nm = _nr.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _nr else _nr
+                _team2.setdefault(_nm, {"count":0,"won":0,"decided":0})
+                _team2[_nm]["count"] += 1
+                if _r.get("project_outcome") == "won":   _team2[_nm]["won"] += 1
+                if _r.get("project_outcome") in ("won","lost"): _team2[_nm]["decided"] += 1
+            _lb2 = sorted(_team2.items(), key=lambda x:(-x[1]["count"],-x[1]["won"]))[:7]
+            _mcnt2 = _lb2[0][1]["count"] if _lb2 else 1
+            _AV_PAL2 = ["#00d4aa","#7b61ff","#f87171","#ffd166","#00b4d8","#4ade80","#fb923c"]
+            for _rk, (_nm, _st2) in enumerate(_lb2, 1):
+                _wrs2  = f'{round(_st2["won"]/_st2["decided"]*100)}% WR' if _st2["decided"] else "—"
+                _barw2 = round(_st2["count"] / _mcnt2 * 100)
+                _med2  = "🥇" if _rk==1 else "🥈" if _rk==2 else "🥉" if _rk==3 else f"#{_rk}"
+                _av_color2 = _AV_PAL2[(_rk-1) % len(_AV_PAL2)]
+                _av_init2  = "".join(p[0].upper() for p in _nm.split()[:2]) or "?"
+                st.markdown(
+                    f'<div class="lb-row">'
+                    f'<div style="width:28px;height:28px;border-radius:50%;background:{_av_color2};'
+                    f'display:flex;align-items:center;justify-content:center;font-size:.58rem;'
+                    f'font-weight:800;color:#0a0e1a;flex-shrink:0">{_av_init2}</div>'
+                    f'<div class="lb-info">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center">'
+                    f'<span class="lb-name">{_nm}</span>'
+                    f'<div style="display:flex;gap:8px"><span class="lb-wr">{_wrs2}</span>'
+                    f'<span class="lb-cnt">{_st2["count"]}</span></div></div>'
+                    f'<div class="lb-bar" style="width:{_barw2}%"></div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+            if not _lb2:
+                st.markdown('<div style="color:#64748b;font-size:.8rem;padding:12px">No team data yet.</div>', unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  TAB 2 — ACTIVITY LOG
+    # ═══════════════════════════════════════════════════════════════════════
+    with _dtab_log:
+
+        # ── Derived analytics ─────────────────────────────────────────────
+        _acts_all     = _acts
+        _acts_today_  = [a for a in _acts_all if (a.get("ts") or "").startswith(_TODAY)]
+        _acts_week_   = [a for a in _acts_all if (a.get("ts") or "")[:10] >= _WEEK_AGO]
+        _users_unique = sorted(set(a.get("user_email","") for a in _acts_all if a.get("user_email")))
+        _most_active  = collections.Counter(a.get("user_name") or a.get("user_email","?") for a in _acts_all)
+        _top_user     = _most_active.most_common(1)[0][0] if _most_active else "—"
+        _top_udisp    = _top_user.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _top_user else _top_user
+        _login_ct     = sum(1 for a in _acts_all if a.get("action") == "login")
+        _run_ct       = sum(1 for a in _acts_all if a.get("action") == "pipeline_run")
+        _chat_ct      = sum(1 for a in _acts_all if a.get("action") == "bella_chat")
+        _export_ct    = sum(1 for a in _acts_all if "export" in (a.get("action") or ""))
+        _users_today_ct = len(set(a.get("user_email","") for a in _acts_today_))
+
+        # ── Stats row ─────────────────────────────────────────────────────
+        st.markdown(
+            f'<div class="log-stats">'
+            f'<div class="log-stat" style="--sc:#00d4aa">'
+            f'<div class="log-stat-val">{len(_acts_today_)}</div>'
+            f'<div class="log-stat-lbl">Events Today</div>'
+            f'<div class="log-stat-sub">{_users_today_ct} user{"s" if _users_today_ct!=1 else ""} active · {len(_acts_week_)} this week</div></div>'
+            f'<div class="log-stat" style="--sc:#7b61ff">'
+            f'<div class="log-stat-val">{len(_users_unique)}</div>'
+            f'<div class="log-stat-lbl">Total Users</div>'
+            f'<div class="log-stat-sub">{_login_ct} logins recorded · {_run_ct} estimations</div></div>'
+            f'<div class="log-stat" style="--sc:#ffd166">'
+            f'<div class="log-stat-val">{_chat_ct}</div>'
+            f'<div class="log-stat-lbl">BELLA Chats</div>'
+            f'<div class="log-stat-sub">{_export_ct} exports generated</div></div>'
+            f'<div class="log-stat" style="--sc:#4ade80">'
+            f'<div class="log-stat-val" style="font-size:{"1.1" if len(_top_udisp)>8 else "1.7"}rem">{_top_udisp[:16]}</div>'
+            f'<div class="log-stat-lbl">Most Active</div>'
+            f'<div class="log-stat-sub">{_most_active.get(_top_user,0)} total events</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Mini analytics: Hour heatmap + Feature breakdown ──────────────
+        _log_vis1, _log_vis2 = st.columns([3, 2])
+
+        with _log_vis1:
+            st.markdown(
+                '<div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;'
+                'letter-spacing:.1em;margin-bottom:10px">Activity by Hour of Day</div>',
+                unsafe_allow_html=True,
+            )
+            _hr_cnt = [0] * 24
+            for _a in _acts_all:
+                try:
+                    _hr_cnt[int((_a.get("ts") or "00:00:00")[11:13])] += 1
+                except Exception:
+                    pass
+            _hr_max = max(_hr_cnt) or 1
+            _HM_COLS = ["#0f1929", "#0d2a3a", "#0a3a4a", "#006a54", "#00956e", "#00d4aa"]
+
+            _cells_html = []
+            for _h, _hv in enumerate(_hr_cnt):
+                _idx = min(int(_hv / _hr_max * 5), 5)
+                _hc  = _HM_COLS[_idx]
+                _tip = f"{_h:02d}:00 — {_hv} event{'s' if _hv!=1 else ''}"
+                _cells_html.append(
+                    f'<div class="hour-cell" style="background:{_hc}" title="{_tip}">'
+                    f'{_h:02d}</div>'
+                )
+            _peak_h = _hr_cnt.index(max(_hr_cnt)) if _hr_max > 0 else 0
+            st.markdown(
+                f'<div class="hour-hm-wrap">{"".join(_cells_html)}</div>'
+                f'<div style="font-size:.63rem;color:#334155;margin-top:6px">'
+                f'Peak hour: <span style="color:#00d4aa;font-weight:700">{_peak_h:02d}:00</span>'
+                f' ({_hr_max} events) &nbsp;·&nbsp; Hover cells to see counts</div>',
+                unsafe_allow_html=True,
+            )
+
+        with _log_vis2:
+            st.markdown(
+                '<div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;'
+                'letter-spacing:.1em;margin-bottom:10px">What Users Do Most</div>',
+                unsafe_allow_html=True,
+            )
+            _feat_c2 = collections.Counter(a.get("action","other") for a in _acts_all)
+            _feat_t2 = _feat_c2.most_common(7)
+            _feat_mx = _feat_t2[0][1] if _feat_t2 else 1
+            _f2_rows = []
+            for _fa2, _fc2 in _feat_t2:
+                _flbl2, _fcol2, _fic2 = _act_meta(_fa2)
+                _fw2 = round(_fc2 / _feat_mx * 100)
+                _f2_rows.append(
+                    f'<div class="feat-row">'
+                    f'<span class="feat-icon">{_fic2}</span>'
+                    f'<span class="feat-lbl">{_flbl2}</span>'
+                    f'<div class="feat-bar-wrap"><div class="feat-bar" style="width:{_fw2}%;--fc:{_fcol2}"></div></div>'
+                    f'<span class="feat-cnt" style="--fc:{_fcol2}">{_fc2}</span>'
+                    f'</div>'
+                )
+            st.markdown("".join(_f2_rows) or '<div style="color:#334155;font-size:.8rem">No data yet.</div>',
+                        unsafe_allow_html=True)
+
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
+        # ── Filter bar ────────────────────────────────────────────────────
+        _fc1, _fc2, _fc3, _fc4, _fc5 = st.columns([2, 1.6, 2, 1, 1])
+        with _fc1:
+            _uopts = ["All users"] + [f'{u.split("@")[0].replace("."," ").replace("_"," ").title()} ({u})' if "@" in u else u for u in _users_unique]
+            _sel_u = st.selectbox("User", _uopts, key="actlog_user_flt", label_visibility="collapsed")
+            _sel_email = _sel_u.split("(")[-1].rstrip(")") if "(" in _sel_u else ("" if _sel_u == "All users" else _sel_u)
+        with _fc2:
+            _all_act_types = sorted(set(a.get("action","") for a in _acts_all if a.get("action")))
+            _act_disp      = ["All actions"] + [f'{_act_meta(a)[2]} {_act_meta(a)[0]}' for a in _all_act_types]
+            _sel_ai        = st.selectbox("Action", _act_disp, key="actlog_act_flt", label_visibility="collapsed")
+            _sel_a         = "" if _sel_ai == "All actions" else _all_act_types[_act_disp.index(_sel_ai) - 1]
+        with _fc3:
+            _srch = st.text_input("", placeholder="🔍  Search user, feature, client...",
+                                  key="actlog_srch", label_visibility="collapsed")
+        with _fc4:
+            _do_refresh = st.button("↻ Refresh", key="actlog_ref_btn", use_container_width=True)
+        with _fc5:
+            _do_export = st.button("⬇ CSV", key="actlog_export_btn", use_container_width=True)
+
+        if _do_refresh:
+            _cached_activity_log.clear()
+            st.rerun()
+
+        # ── Apply filters ─────────────────────────────────────────────────
+        _filtered = _acts_all
+        if _sel_email:
+            _filtered = [a for a in _filtered if a.get("user_email") == _sel_email]
+        if _sel_a:
+            _filtered = [a for a in _filtered if a.get("action") == _sel_a]
+        if _srch:
+            _sl = _srch.lower()
+            _filtered = [a for a in _filtered
+                         if _sl in (a.get("details","") + a.get("user_name","") + a.get("user_email","") + a.get("module","")).lower()]
+
+        # ── CSV export ────────────────────────────────────────────────────
+        if _do_export and _filtered:
+            _buf = _io.StringIO()
+            _wr  = csv.DictWriter(_buf, fieldnames=["ts","user_name","user_email","action","details","module"])
+            _wr.writeheader(); _wr.writerows(_filtered)
+            st.download_button(
+                "⬇ Download activity_log.csv",
+                data=_buf.getvalue(), file_name="eci_activity_log.csv",
+                mime="text/csv", key="actlog_dl",
+            )
+
+        st.markdown(
+            f'<div style="font-size:.7rem;color:#334155;margin:8px 0 12px">'
+            f'Showing <b style="color:#64748b">{len(_filtered)}</b> of {len(_acts_all)} events — newest first'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Timeline — grouped by date × user ─────────────────────────────
+        if not _filtered:
+            st.markdown(
+                '<div style="text-align:center;padding:56px 24px;color:#334155;font-size:.85rem;'
+                'border:1px solid #1a2540;border-radius:16px;background:#080d1a;margin-top:8px">'
+                '🔍  No events match your filters.<br>'
+                '<span style="font-size:.72rem;color:#1e293b">Events are recorded whenever users log in, run estimations, '
+                'use BELLA, export documents, compare proposals, or perform any platform action.</span></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Group by date
+            _grouped: dict = {}
+            for _ev in _filtered[:400]:
+                _gd2 = (_ev.get("ts") or "")[:10]
+                _grouped.setdefault(_gd2, []).append(_ev)
+
+            _tl_html = ['<div class="log-scroll"><div class="log-timeline">']
+            _av_pal  = ["#00d4aa","#7b61ff","#f87171","#ffd166","#00b4d8","#4ade80","#fb923c","#a78bfa"]
+            _user_col: dict = {}  # stable color per user
+            _col_idx = [0]
+            def _get_ucol(email):
+                if email not in _user_col:
+                    _user_col[email] = _av_pal[_col_idx[0] % len(_av_pal)]
+                    _col_idx[0] += 1
+                return _user_col[email]
+
+            for _gd in sorted(_grouped.keys(), reverse=True):
+                try:
+                    _gdate  = datetime.strptime(_gd, "%Y-%m-%d")
+                    _gd_lbl = "Today" if _gd == _TODAY else (
+                              "Yesterday" if _gd == (_NOW - timedelta(days=1)).strftime("%Y-%m-%d") else
+                              _gdate.strftime("%A, %B %d %Y"))
+                except Exception:
+                    _gd_lbl = _gd
+                _gd_evts = _grouped[_gd]
+                _gd_cnt  = len(_gd_evts)
+                _gd_users = len(set(a.get("user_email","") for a in _gd_evts))
+
+                # Day separator with mini summary
+                _gd_action_ctr = collections.Counter(a.get("action","") for a in _gd_evts)
+                _gd_top_acts = [_act_meta(a)[2] for a, _ in _gd_action_ctr.most_common(4)]
+                _gd_icons = " ".join(_gd_top_acts)
+                _tl_html.append(
+                    f'<div style="display:flex;align-items:center;gap:10px;margin:20px 0 12px 2px">'
+                    f'<div style="background:#080d1a;border:1px solid #1a2540;border-radius:8px;'
+                    f'padding:5px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0">'
+                    f'<span style="font-size:.68rem;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em">{_gd_lbl}</span>'
+                    f'<span style="font-size:.7rem">{_gd_icons}</span>'
+                    f'</div>'
+                    f'<span style="flex:1;height:1px;background:#1a2540"></span>'
+                    f'<span style="font-size:.62rem;color:#334155;font-weight:700;white-space:nowrap">'
+                    f'{_gd_cnt} event{"s" if _gd_cnt!=1 else ""} · {_gd_users} user{"s" if _gd_users!=1 else ""}</span>'
+                    f'</div>'
+                )
+
+                # Group events by user within the day (for user-session feel)
+                _day_by_user: dict = {}
+                for _ev2 in _gd_evts:
+                    _eu = _ev2.get("user_email","") or "system"
+                    _day_by_user.setdefault(_eu, []).append(_ev2)
+
+                _user_order = list(_day_by_user.keys())
+                _rendered = 0
+                for _uemail in _user_order:
+                    _u_evts = _day_by_user[_uemail]
+                    _u_ev0  = _u_evts[0]
+                    _uname  = _u_ev0.get("user_name") or _u_ev0.get("user_email") or "System"
+                    _udisp  = _uname.split("@")[0].replace("."," ").replace("_"," ").title() if "@" in _uname else _uname
+                    _uinit  = "".join(p[0].upper() for p in _udisp.split()[:2]) or "?"
+                    _ucol   = _get_ucol(_uemail)
+
+                    # Session header (user pill)
+                    _first_ts = _u_evts[-1].get("ts","")
+                    _last_ts  = _u_evts[0].get("ts","")
+                    try:
+                        _t0 = datetime.strptime(_first_ts, "%Y-%m-%d %H:%M:%S")
+                        _t1 = datetime.strptime(_last_ts,  "%Y-%m-%d %H:%M:%S")
+                        _dur_min = int((_t1 - _t0).total_seconds() / 60)
+                        _dur_txt = f"{_dur_min}m session" if _dur_min > 0 else "< 1m"
+                    except Exception:
+                        _dur_txt = ""
+                    _sess_acts_unique = list({_act_meta(e.get("action",""))[2] for e in _u_evts})
+                    _sess_icons = " ".join(_sess_acts_unique[:5])
+
+                    _tl_html.append(
+                        f'<div class="session-sep" style="--sac:{_ucol}">'
+                        f'<div class="session-av">{_uinit}</div>'
+                        f'<div><div class="session-name">{_udisp}</div>'
+                        f'<div class="session-dur">{len(_u_evts)} action{"s" if len(_u_evts)!=1 else ""}'
+                        + (f' · {_dur_txt}' if _dur_txt else "")
+                        + f' · {_sess_icons}</div></div>'
+                        f'<span class="session-meta">{_first_ts[11:16] if len(_first_ts)>10 else ""}'
+                        + (f' – {_last_ts[11:16]}' if _last_ts != _first_ts and len(_last_ts)>10 else "")
+                        + f'</span></div>'
+                    )
+
+                    for _i, _ev in enumerate(_u_evts):
+                        _lbl, _col, _ico = _act_meta(_ev.get("action",""))
+                        _ts_str  = _ev.get("ts","")
+                        try:
+                            _ts_fmt = datetime.strptime(_ts_str, "%Y-%m-%d %H:%M:%S").strftime("%H:%M:%S")
+                        except Exception:
+                            _ts_fmt = _ts_str[11:19] if len(_ts_str) > 10 else _ts_str
+                        _detail  = _ev.get("details","") or ""
+                        _module  = _ev.get("module","") or ""
+                        _is_last = (_i == len(_u_evts) - 1)
+                        _vline   = "" if _is_last else f'<div class="log-vline" style="--lc:{_col}"></div>'
+                        _mod_html2 = f'<span class="log-module">{_module}</span>' if _module else ""
+
+                        # Render detail as rich text — highlight key info
+                        _detail_clean = _detail.replace("<","&lt;").replace(">","&gt;")
+                        _rendered += 1
+                        _tl_html.append(
+                            f'<div class="log-entry" style="animation-delay:{min(_rendered*0.03,0.5):.2f}s">'
+                            f'<div class="log-line-wrap">'
+                            f'<div class="log-dot" style="--lc:{_col}"></div>'
+                            f'{_vline}'
+                            f'</div>'
+                            f'<div class="log-body">'
+                            f'<div class="log-head">'
+                            f'<span class="log-act" style="--lc:{_col};border:1px solid rgba(0,0,0,.2);'
+                            f'background:rgba(0,0,0,.2)">{_ico} {_lbl}</span>'
+                            f'<span class="log-time">{_ts_fmt}</span>'
+                            f'</div>'
+                            + (f'<div class="log-detail">{_detail_clean}</div>' if _detail_clean else "")
+                            + (f'<div style="margin-top:4px">{_mod_html2}</div>' if _mod_html2 else "")
+                            + f'</div></div>'
+                        )
+
+            _tl_html.append('</div></div>')
+            st.markdown("".join(_tl_html), unsafe_allow_html=True)
+
+    # ── Footer ────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="text-align:center;font-size:.65rem;color:#1e293b;padding:16px 0 4px">'
+        f'ECI Presale Intelligence &nbsp;·&nbsp; Admin Dashboard &nbsp;·&nbsp; '
+        f'{_N} proposals · {len(_acts)} activity events tracked &nbsp;·&nbsp; '
+        f'Cache: proposals 15s · activity 10s</div>',
+        unsafe_allow_html=True,
+    )

@@ -277,10 +277,16 @@ class MilvusRAG:
         similar_projects, context_parts = [], []
         all_benchmark_services = {}
         best_total = 0
+        _seen_sources: set = set()
         for hit in hits:
             score = round(float(hit.score), 3)
             ent = hit.entity
             source = ent.get("source") or "Unknown project"
+            # Skip duplicate source documents (same scope stored multiple times)
+            _src_key = source.strip().lower()
+            if _src_key in _seen_sources:
+                continue
+            _seen_sources.add(_src_key)
             full_text = ent.get("text") or ""
             snippet = full_text[:800]
             ref_url = ent.get("estimation_reference_url") or ""
@@ -344,8 +350,16 @@ class MilvusRAG:
         similar_projects, context_parts = [], []
         all_benchmark_services = {}
         best_total = 0
-        for score, row in scored[:top_k]:
+        _seen_sources: set = set()
+        for score, row in scored:
+            if len(similar_projects) >= top_k:
+                break
             source = row.get("source") or "Unknown project"
+            # Skip duplicate source documents (same scope stored multiple times)
+            _src_key = source.strip().lower()
+            if _src_key in _seen_sources:
+                continue
+            _seen_sources.add(_src_key)
             full_text = row.get("text") or ""
             snippet = full_text[:800]
             ref_url = row.get("estimation_reference_url") or ""

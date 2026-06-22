@@ -1,7 +1,7 @@
 import sys, os, base64, zipfile
 import streamlit as st
 
-st.set_page_config(page_title="ECI Presale", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ECI Presale Intelligence", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
 import json, time, io, re, smtplib
 from datetime import datetime, timedelta
@@ -161,6 +161,21 @@ def inject_css():
     [data-testid="stMetricValue"]{font-family:'JetBrains Mono',monospace!important;color:var(--c1)!important}
     #MainMenu{visibility:hidden}footer{visibility:hidden}
     header[data-testid="stHeader"]{background:rgba(10,14,26,.95);backdrop-filter:blur(10px)}
+    /* ── Hide Streamlit splash/branding; keep running indicator ── */
+    [data-testid="stSplashScreen"]{display:none!important}
+    [data-testid="stToolbar"]{display:none!important}
+    /* Style the running spinner to match ECI brand */
+    [data-testid="stStatusWidget"]{background:rgba(10,14,26,.92)!important;border:1px solid rgba(0,212,170,.35)!important;border-radius:10px!important;padding:4px 10px!important;backdrop-filter:blur(8px)!important}
+    [data-testid="stStatusWidget"] svg{color:#00d4aa!important}
+    [data-testid="stStatusWidget"] p,[data-testid="stStatusWidget"] span{color:#94a3b8!important;font-size:.75rem!important}
+    /* Custom ECI loading overlay — shows until app JS removes it */
+    #eci-splash{position:fixed;inset:0;z-index:999999;background:#0a0e1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:eci-fade 0.4s ease 1.2s forwards}
+    @keyframes eci-fade{to{opacity:0;pointer-events:none;visibility:hidden}}
+    #eci-splash .eci-s-logo{font-family:'Space Grotesk',sans-serif;font-size:2.4rem;font-weight:700;background:linear-gradient(135deg,#00d4aa,#00b4d8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    #eci-splash .eci-s-sub{font-family:'DM Sans',sans-serif;font-size:.8rem;letter-spacing:3px;text-transform:uppercase;color:#64748b}
+    #eci-splash .eci-s-bar{width:180px;height:2px;background:#1e2a4a;border-radius:2px;overflow:hidden}
+    #eci-splash .eci-s-fill{height:100%;background:linear-gradient(90deg,#00d4aa,#00b4d8);animation:eci-bar 1.1s ease-in-out forwards}
+    @keyframes eci-bar{from{width:0}to{width:100%}}
     ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
     </style>""", unsafe_allow_html=True)
 
@@ -9052,6 +9067,13 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 inject_css()
+st.markdown("""
+<div id="eci-splash">
+  <div class="eci-s-logo">ECI</div>
+  <div class="eci-s-sub">Presale Intelligence</div>
+  <div class="eci-s-bar"><div class="eci-s-fill"></div></div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════

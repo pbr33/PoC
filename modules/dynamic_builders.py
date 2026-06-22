@@ -136,7 +136,7 @@ def _stream(name, domain, tasks, mult=1.0, parallel_with=None):
     }
 
 
-def _build_dynamic_time(semantic, text=""):
+def _build_dynamic_time(semantic, text="", rag=None):
     """Domain-aware parallel-stream time estimator with per-tech complexity multipliers."""
     reqs       = safe_list(semantic.get("requirements"))
     mandated   = safe_list(semantic.get("mandated_technologies", []))
@@ -476,6 +476,53 @@ def _build_dynamic_time(semantic, text=""):
     total_low  = sum(s["low_hours"] for s in streams)
     total_high = sum(s["high_hours"] for s in streams)
 
+    # ── RAG hour calibration — blend formula with historical similar projects ─
+    rag_calibration = None
+    if rag:
+        _sim = [p for p in safe_list(rag.get("similar_projects", []))
+                if isinstance(p, dict) and safe_int(p.get("hours", 0)) > 0]
+        _bench = safe_int(rag.get("benchmark_hours", 0))
+        _wsum, _wtot = 0.0, 0.0
+        for p in _sim[:8]:
+            _sim_score = float(p.get("similarity") or 0.5)
+            _hrs = safe_int(p.get("hours", 0))
+            if _hrs > 0 and _sim_score > 0.20:
+                _wsum += _hrs * _sim_score
+                _wtot += _sim_score
+        _hist_hrs = int(_wsum / _wtot) if _wtot > 0 else _bench
+        if not _hist_hrs and _bench:
+            _hist_hrs = _bench
+        if _hist_hrs > 0:
+            _avg_sim  = (_wtot / len(_sim)) if _sim else 0.30
+            # Weight of historical data: more similar → slightly more influence,
+            # but formula always dominates so one outlier can't swing the number wildly
+            hist_w = 0.35 if _avg_sim >= 0.65 else 0.20 if _avg_sim >= 0.40 else 0.10
+            _formula  = total
+            calibrated = int(_formula * (1 - hist_w) + _hist_hrs * hist_w)
+            if calibrated != _formula and _formula > 0:
+                _ratio = calibrated / _formula
+                for s in streams:
+                    s["hours"]          = max(1, int(s["hours"]      * _ratio))
+                    s["low_hours"]      = max(1, int(s["low_hours"]  * _ratio))
+                    s["high_hours"]     = max(1, int(s["high_hours"] * _ratio))
+                    s["duration_weeks"] = round(s["hours"] / 40, 1)
+                    for t in s.get("tasks", []):
+                        t["hours"]      = max(1, int(t["hours"]                           * _ratio))
+                        t["low_hours"]  = max(1, int(t.get("low_hours",  t["hours"])      * _ratio))
+                        t["high_hours"] = max(1, int(t.get("high_hours", t["hours"])      * _ratio))
+            total      = sum(s["hours"]     for s in streams)
+            total_low  = sum(s["low_hours"] for s in streams)
+            total_high = sum(s["high_hours"] for s in streams)
+            rag_calibration = {
+                "formula_hours":    _formula,
+                "historical_hours": _hist_hrs,
+                "similar_count":    len(_sim),
+                "avg_similarity":   round(_avg_sim, 2),
+                "hist_weight":      f"{int(hist_w * 100)}%",
+                "calibrated_hours": total,
+            }
+    # ─────────────────────────────────────────────────────────────────────────
+
     disc_w     = streams[0]["duration_weeks"]
     par_strs   = [s for s in streams if s["domain"] not in ("Discovery", "Documentation", "PM", "QA")]
     critical_w = max((s["duration_weeks"] for s in par_strs), default=4.0)
@@ -529,14 +576,15 @@ def _build_dynamic_time(semantic, text=""):
     ]
 
     return {
-        "total_hours":    total,
-        "duration_weeks": str(total_weeks) + " weeks",
-        "confidence":     conf,
-        "buffer":         str(buffer_pct) + "%",
-        "phases":         streams,
-        "milestones":     milestones,
-        "three_point":    {"optimistic": total_low, "most_likely": total, "pessimistic": total_high},
-        "roles":          roles,
+        "total_hours":      total,
+        "duration_weeks":   str(total_weeks) + " weeks",
+        "confidence":       conf,
+        "buffer":           str(buffer_pct) + "%",
+        "phases":           streams,
+        "milestones":       milestones,
+        "three_point":      {"optimistic": total_low, "most_likely": total, "pessimistic": total_high},
+        "roles":            roles,
+        "rag_calibration":  rag_calibration,
     }
 
 

@@ -1374,7 +1374,7 @@ class AzureAI:
                 "Compare new project with historical data. Return JSON: "
                 "{\"similar_projects\": [{\"name\": str, \"similarity\": float, \"hours\": int, \"cost\": int, \"outcome\": str}], "
                 "\"benchmark_hours\": int, \"benchmark_cost\": int, \"success_patterns\": [str], \"risk_patterns\": [str]}",
-                "New:\n" + text[:5000] + "\n\nHistory:\n" + json.dumps(projects[:20], default=str),
+                "New:\n" + text[:5000] + "\n\nHistory:\n" + json.dumps(projects, default=str),
             )
             if r:
                 return r
@@ -1891,7 +1891,7 @@ class AzureAI:
         return _analyze_text_dynamic(text)
 
     def _fb_time(self, semantic, rag):
-        return _build_dynamic_time(semantic)
+        return _build_dynamic_time(semantic, rag=rag)
 
     def _fb_cost(self, time_est):
         sem = st.session_state.get("_last_semantic", {})

@@ -10042,7 +10042,7 @@ def tab_run_library():
     cats   = ["All", "AI", "Data", "Cloud", "General"]
     # For "My Runs" mode compute per-category counts from my runs only
     if _show_my_only and _me_email:
-        _my_all = _cached_load_runs("All", include_archived=show_archived)
+        _my_all = _cached_load_runs("All", include_archived=st.session_state.get("lib_show_archived", False))
         _my_runs_all = [r for r in _my_all if (r.get("created_by_email") or "").lower() == _me_email.lower()]
         _my_counts = {"All": len(_my_runs_all)}
         for _cat in ["AI","Data","Cloud","General"]:

@@ -9579,16 +9579,43 @@ def tab_run_library():
     import pandas as pd
     from datetime import date as _date, timedelta as _td
 
-    st.markdown('<div class="shdr"><span class="shdr-i">🗂️</span> Run Library — All Proposals</div>', unsafe_allow_html=True)
+    _me_email = st.session_state.get("auth_email", "")
+    _is_admin = st.session_state.get("auth_method") == "Admin"
+
+    # ── My Runs / All Runs toggle ──────────────────────────────────────
+    _lib_hdr_c, _lib_tog_c = st.columns([5, 3])
+    with _lib_hdr_c:
+        st.markdown('<div class="shdr"><span class="shdr-i">🗂️</span> Run Library</div>', unsafe_allow_html=True)
+    with _lib_tog_c:
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+        _view_mode = st.radio(
+            "View",
+            ["👤 My Runs", "🌐 All Runs"],
+            horizontal=True,
+            key="lib_view_mode",
+            label_visibility="collapsed",
+        )
+    _show_my_only = (_view_mode == "👤 My Runs")
+
     st.markdown(
-        "Every pipeline run is **automatically saved here** and survives page refreshes, "
-        "browser closes, and app restarts. Filter, compare, restore, or export any run."
+        ("Showing **your proposals only**. Switch to 🌐 All Runs to see the full team library."
+         if _show_my_only else
+         "Every pipeline run is **automatically saved here** and survives page refreshes, "
+         "browser closes, and app restarts. Filter, compare, restore, or export any run."),
     )
     st.markdown("---")
 
     # ── Category pill badges ───────────────────────────────────────────
     counts = _cached_category_counts()
     cats   = ["All", "AI", "Data", "Cloud", "General"]
+    # For "My Runs" mode compute per-category counts from my runs only
+    if _show_my_only and _me_email:
+        _my_all = _cached_load_runs("All", include_archived=show_archived)
+        _my_runs_all = [r for r in _my_all if (r.get("created_by_email") or "").lower() == _me_email.lower()]
+        _my_counts = {"All": len(_my_runs_all)}
+        for _cat in ["AI","Data","Cloud","General"]:
+            _my_counts[_cat] = sum(1 for r in _my_runs_all if r.get("category") == _cat)
+        counts = _my_counts
     pill_html = ""
     for cat in cats:
         n     = counts.get(cat, 0)
@@ -9659,6 +9686,10 @@ def tab_run_library():
 
     # ── Load ──────────────────────────────────────────────────────────
     runs = _cached_load_runs(selected_cat, include_archived=show_archived)
+
+    # My Runs filter
+    if _show_my_only and _me_email:
+        runs = [r for r in runs if (r.get("created_by_email") or "").lower() == _me_email.lower()]
 
     # Date filter
     if from_date and to_date:
@@ -10627,6 +10658,71 @@ def tab_dashboard():
                 + '</div>',
                 unsafe_allow_html=True,
             )
+
+        # ── My Pending Reviews panel ──────────────────────────────────────
+        _me       = st.session_state.get("auth_email", "")
+        _me_name  = st.session_state.get("auth_user", "")
+        _my_pend  = [r for r in all_runs if (r.get("review_status") or "pending") in ("pending", "needs_changes")]
+        _my_won   = [r for r in all_runs if r.get("project_outcome") == "won"
+                     and (r.get("created_by_email","").lower() == _me.lower() or not _me)]
+        _my_lost  = [r for r in all_runs if r.get("project_outcome") == "lost"
+                     and (r.get("created_by_email","").lower() == _me.lower() or not _me)]
+        _my_total_dec = len(_my_won) + len(_my_lost)
+        _my_wr    = round(len(_my_won) / _my_total_dec * 100, 1) if _my_total_dec else None
+
+        _wr_c2    = "#4ade80" if (_my_wr or 0) >= 60 else "#ffd166" if (_my_wr or 0) >= 40 else "#f87171"
+
+        # Personal win rate bar
+        st.markdown(
+            f'<div style="display:flex;align-items:stretch;gap:14px;margin-bottom:18px">'
+
+            # My Win Rate card
+            f'<div style="background:linear-gradient(#0b1424,#0b1424) padding-box,'
+            f'linear-gradient(145deg,{_wr_c2},rgba(10,20,40,0) 60%) border-box;'
+            f'border:1px solid transparent;border-radius:16px;padding:18px 22px;min-width:200px">'
+            f'<div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">My Win Rate</div>'
+            f'<div style="font-size:2.2rem;font-weight:900;color:{_wr_c2};line-height:1">'
+            f'{"—" if _my_wr is None else f"{_my_wr}%"}</div>'
+            f'<div style="font-size:.7rem;color:#64748b;margin-top:5px">'
+            f'{len(_my_won)}W · {len(_my_lost)}L · {_my_total_dec} decided</div>'
+            f'<div style="margin-top:10px;height:4px;background:#1a2540;border-radius:4px;overflow:hidden">'
+            f'<div style="height:4px;width:{min(_my_wr or 0,100):.0f}%;background:{_wr_c2};border-radius:4px;transition:width .8s ease"></div>'
+            f'</div></div>'
+
+            # Pending reviews list
+            f'<div style="flex:1;background:#080d1a;border:1px solid #1a2540;border-radius:16px;padding:18px 22px;overflow:hidden">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+            f'<span style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:.12em">Pending Reviews ({len(_my_pend)})</span>'
+            f'<span style="font-size:.62rem;color:#334155">'
+            + (f'<span style="color:#f87171;font-weight:700">{len(_overdue)} overdue</span>' if _overdue else
+               '<span style="color:#4ade80">All current ✓</span>')
+            + f'</span></div>'
+            + (
+                "".join(
+                    f'<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;'
+                    f'background:#0b1424;border:1px solid #1a2540;border-radius:10px;margin-bottom:6px">'
+                    f'<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:'
+                    f'{"#f87171" if (r.get("ts") or "")[:10] < _WEEK_AGO else "#ffd166"}'
+                    f';box-shadow:0 0 6px {"#f87171" if (r.get("ts") or "")[:10] < _WEEK_AGO else "#ffd166"}"></div>'
+                    f'<div style="flex:1;min-width:0">'
+                    f'<div style="font-size:.78rem;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+                    f'{r.get("client_name") or "Unnamed"} — {r.get("project_type") or "General"}</div>'
+                    f'<div style="font-size:.66rem;color:#64748b;margin-top:1px">'
+                    f'{(r.get("ts") or "")[:10]} · '
+                    f'{r.get("total_hours",0):,}h · '
+                    + (f'<span style="color:#f87171">Needs Changes</span>' if r.get("review_status") == "needs_changes" else '<span style="color:#ffd166">Awaiting Review</span>')
+                    + f'</div></div>'
+                    f'<span style="font-size:.62rem;color:#64748b;white-space:nowrap">#{r["id"]}</span>'
+                    f'</div>'
+                    for r in _my_pend[:5]
+                )
+                if _my_pend else
+                '<div style="text-align:center;padding:20px;color:#334155;font-size:.8rem">🎉 All caught up — no pending reviews</div>'
+            )
+            + (f'<div style="font-size:.65rem;color:#334155;margin-top:6px;text-align:center">+{len(_my_pend)-5} more — go to Run Library</div>' if len(_my_pend) > 5 else "")
+            + f'</div></div>',
+            unsafe_allow_html=True,
+        )
 
         # ── KPI Cards ─────────────────────────────────────────────────────
         st.markdown('<div class="dash-sec">📊 Key Performance Indicators</div>', unsafe_allow_html=True)

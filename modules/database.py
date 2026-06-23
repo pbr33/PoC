@@ -86,7 +86,18 @@ def _db_migrate():
         ("actual_hours",       "INTEGER DEFAULT NULL"),
         ("actual_cost",        "INTEGER DEFAULT NULL"),
         ("outcome_notes",      "TEXT    DEFAULT ''"),
-        ("parent_run_id",      "INTEGER DEFAULT NULL"),
+        ("parent_run_id",        "INTEGER DEFAULT NULL"),
+        # ── Versioning & negotiation metadata ──────────────────────────
+        ("version_number",       "INTEGER DEFAULT 1"),
+        ("version_status",       "TEXT    DEFAULT 'draft'"),
+        ("negotiation_stage",    "TEXT    DEFAULT 'initial'"),
+        ("revision_reason_type", "TEXT    DEFAULT ''"),
+        ("revision_notes",       "TEXT    DEFAULT ''"),
+        ("parking_lot",          "TEXT    DEFAULT '[]'"),
+        ("competitor_context",   "TEXT    DEFAULT ''"),
+        ("submitted_at",         "TEXT    DEFAULT NULL"),
+        ("is_winning_version",   "INTEGER DEFAULT 0"),
+        ("is_baseline_locked",   "INTEGER DEFAULT 0"),
     ]:
         if col not in existing_cols:
             con.execute(f"ALTER TABLE proposals ADD COLUMN {col} {ddl}")
@@ -113,30 +124,43 @@ def db_save_run(snapshot: dict, full_results: dict) -> int:
                  total_hours, duration_weeks,
                  monthly_cost, annual_cost, risk_level, risk_score,
                  req_count, tech_stack, model_used, three_point, results_json,
-                 created_by, created_by_email, parent_run_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 created_by, created_by_email, parent_run_id,
+                 version_number, version_status, negotiation_stage,
+                 revision_reason_type, revision_notes, parking_lot,
+                 competitor_context)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
-            snapshot.get("ts",              datetime.now().strftime("%Y-%m-%d %H:%M")),
+            snapshot.get("ts",                    datetime.now().strftime("%Y-%m-%d %H:%M")),
             cat,
-            snapshot.get("project_type",    ""),
-            snapshot.get("client_name",     ""),
-            snapshot.get("project_title",   ""),
-            snapshot.get("total_hours",     0),
-            snapshot.get("duration_weeks",  ""),
-            snapshot.get("monthly_cost",    0),
-            snapshot.get("annual_cost",     0),
-            snapshot.get("risk_level",      ""),
-            snapshot.get("risk_score",      0),
-            snapshot.get("req_count",       0),
+            snapshot.get("project_type",          ""),
+            snapshot.get("client_name",           ""),
+            snapshot.get("project_title",         ""),
+            snapshot.get("total_hours",           0),
+            snapshot.get("duration_weeks",        ""),
+            snapshot.get("monthly_cost",          0),
+            snapshot.get("annual_cost",           0),
+            snapshot.get("risk_level",            ""),
+            snapshot.get("risk_score",            0),
+            snapshot.get("req_count",             0),
             json.dumps(tech),
-            snapshot.get("model_used",      ""),
+            snapshot.get("model_used",            ""),
             json.dumps(snapshot.get("three_point", {})),
             json.dumps(full_results, default=str),
-            snapshot.get("created_by",      ""),
-            snapshot.get("created_by_email",""),
-            snapshot.get("parent_run_id",   None),
+            snapshot.get("created_by",            ""),
+            snapshot.get("created_by_email",      ""),
+            snapshot.get("parent_run_id",         None),
+            snapshot.get("version_number",        1),
+            snapshot.get("version_status",        "draft"),
+            snapshot.get("negotiation_stage",     "initial"),
+            snapshot.get("revision_reason_type",  ""),
+            snapshot.get("revision_notes",        ""),
+            json.dumps(snapshot.get("parking_lot", [])),
+            snapshot.get("competitor_context",    ""),
         ))
         row_id = cur.lastrowid
+        # Lock the baseline (V1) so it is never overwritten
+        if snapshot.get("parent_run_id") is None and row_id:
+            con.execute("UPDATE proposals SET is_baseline_locked=1 WHERE id=?", (row_id,))
         con.commit()
         return row_id
     finally:
@@ -333,6 +357,82 @@ def db_get_lineage(run_id: int) -> list:
     return chain   # index 0 = the run itself, last = oldest ancestor
 
 
+def db_get_version_chain(run_id: int) -> list:
+    """Return all versions of a proposal (root + all children), oldest first.
+    Works from any version in the chain — finds the root then walks forward."""
+    con = sqlite3.connect(_DB_PATH)
+    con.row_factory = sqlite3.Row
+    try:
+        # Walk up to find the root (V1 has no parent)
+        root_id, seen = run_id, set()
+        while True:
+            if root_id in seen:
+                break
+            seen.add(root_id)
+            row = con.execute("SELECT parent_run_id FROM proposals WHERE id=?", (root_id,)).fetchone()
+            if not row or not row["parent_run_id"]:
+                break
+            root_id = row["parent_run_id"]
+        # Now walk forward: collect all runs whose lineage traces to root_id
+        all_rows = con.execute(
+            "SELECT id, ts, client_name, project_type, total_hours, monthly_cost, "
+            "risk_level, risk_score, review_status, project_outcome, "
+            "version_number, version_status, negotiation_stage, "
+            "revision_reason_type, revision_notes, parking_lot, "
+            "competitor_context, submitted_at, is_winning_version, "
+            "is_baseline_locked, parent_run_id, created_by "
+            "FROM proposals ORDER BY id ASC"
+        ).fetchall()
+        # BFS from root to find all descendants
+        chain_ids, queue = set(), [root_id]
+        while queue:
+            cur = queue.pop(0)
+            chain_ids.add(cur)
+            for r in all_rows:
+                if r["parent_run_id"] == cur and r["id"] not in chain_ids:
+                    queue.append(r["id"])
+        result = [dict(r) for r in all_rows if r["id"] in chain_ids]
+        for d in result:
+            try: d["parking_lot"] = json.loads(d.get("parking_lot") or "[]")
+            except Exception: d["parking_lot"] = []
+        return sorted(result, key=lambda x: x["id"])
+    finally:
+        con.close()
+
+
+def db_mark_submitted(run_id: int):
+    """Mark a version as submitted to the client (sets submitted_at timestamp)."""
+    con = sqlite3.connect(_DB_PATH)
+    try:
+        con.execute(
+            "UPDATE proposals SET version_status='submitted', submitted_at=? WHERE id=?",
+            (datetime.now().strftime("%Y-%m-%d %H:%M"), run_id),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def db_mark_winning_version(run_id: int):
+    """Flag this version as the one that won the deal."""
+    con = sqlite3.connect(_DB_PATH)
+    try:
+        # First, clear winning flag from all versions in same chain
+        chain = db_get_version_chain(run_id)
+        for v in chain:
+            con.execute("UPDATE proposals SET is_winning_version=0 WHERE id=?", (v["id"],))
+        con.execute("UPDATE proposals SET is_winning_version=1 WHERE id=?", (run_id,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def db_get_next_version_number(parent_run_id: int) -> int:
+    """Return version_number for a new child of parent_run_id."""
+    chain = db_get_version_chain(parent_run_id)
+    return (max(v.get("version_number", 1) for v in chain) + 1) if chain else 2
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  USER ACTIVITY LOG
 # ══════════════════════════════════════════════════════════════════════
@@ -413,6 +513,10 @@ archive_run       = db_archive_run
 unarchive_run     = db_unarchive_run
 update_outcome    = db_update_outcome
 check_duplicate   = db_check_duplicate
-get_lineage       = db_get_lineage
-log_activity      = db_log_activity
-get_activity_log  = db_get_activity_log
+get_lineage           = db_get_lineage
+log_activity          = db_log_activity
+get_activity_log      = db_get_activity_log
+get_version_chain     = db_get_version_chain
+mark_submitted        = db_mark_submitted
+mark_winning_version  = db_mark_winning_version
+get_next_version_number = db_get_next_version_number

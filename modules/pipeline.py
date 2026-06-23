@@ -31,6 +31,8 @@ from .database import (save_run, load_runs, delete_run,
                        db_set_review_status, db_archive_run, db_unarchive_run,
                        db_log_activity, db_get_activity_log,
                        db_update_outcome, db_check_duplicate, db_get_lineage,
+                       db_get_version_chain, db_mark_submitted,
+                       db_mark_winning_version, db_get_next_version_number,
                        _db_save_run, _db_load_runs, _db_load_results,
                        _db_delete_run, _db_mark_reviewed, _db_category_counts,
                        _DB_PATH)
@@ -2202,8 +2204,147 @@ def _render_3d_view_tab(ar, ce, r):
 # ═══════════════════════════════════════════════════════════════════════
 
 def tab_presale():
+    # ── Revision mode — detect if user clicked "Revise" from Run Library ──────
+    _rev_parent_id = st.session_state.get("_revision_parent_id")
+    _rev_parent    = None
+    _rev_parent_results = {}
+
+    if _rev_parent_id:
+        try:
+            _rev_parent_row = db_load_runs(category="All", include_archived=True) if False else None
+            # Load parent run metadata from DB
+            import sqlite3 as _sq
+            from .database import _DB_PATH as _DBPATH
+            _con = _sq.connect(_DBPATH); _con.row_factory = _sq.Row
+            _row = _con.execute(
+                "SELECT id, client_name, project_type, total_hours, monthly_cost, "
+                "risk_level, risk_score, req_count, ts, version_number, "
+                "negotiation_stage, version_status "
+                "FROM proposals WHERE id=?", (_rev_parent_id,)
+            ).fetchone()
+            _con.close()
+            if _row:
+                _rev_parent = dict(_row)
+                try:
+                    _rev_parent_results = json.loads(
+                        db_load_results(_rev_parent_id) if isinstance(db_load_results(_rev_parent_id), str)
+                        else json.dumps(db_load_results(_rev_parent_id), default=str)
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # ── Revision Banner ───────────────────────────────────────────────────────
+    if _rev_parent:
+        _vn   = _rev_parent.get("version_number", 1)
+        _cln  = _rev_parent.get("client_name", "")
+        _pt   = _rev_parent.get("project_type", "")
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#1a1040,#0d1f3c);border:1.5px solid #7b61ff;
+             border-radius:12px;padding:18px 22px;margin-bottom:18px;display:flex;
+             align-items:center;justify-content:space-between;gap:16px">
+          <div>
+            <div style="font-size:.75rem;color:#a78bfa;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px">
+              ✏️ Revision Mode
+            </div>
+            <div style="font-size:1.05rem;font-weight:700;color:#e2e8f0">
+              Revising V{_vn}: {_cln} — {_pt}
+            </div>
+            <div style="font-size:.78rem;color:#94a3b8;margin-top:4px">
+              Upload revised scope, set revision details, then run estimation.
+              Result saves as <strong style="color:#7b61ff">V{_vn+1}</strong> linked to this baseline.
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:2rem;font-weight:800;color:#7b61ff;opacity:.35">V{_vn}</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Revision metadata form
+        _rm_c1, _rm_c2, _rm_c3 = st.columns(3)
+        with _rm_c1:
+            _REASON_TYPES = {
+                "scope_reduction":    "📉 Scope Reduction",
+                "scope_expansion":    "📈 Scope Expansion",
+                "approach_change":    "🔄 Approach Change",
+                "pricing_negotiation":"💰 Pricing Negotiation",
+                "timeline_change":    "📅 Timeline Change",
+                "team_change":        "👥 Team Change",
+                "client_feedback":    "💬 Client Feedback",
+                "other":              "📝 Other",
+            }
+            _reason = st.selectbox(
+                "Revision Reason",
+                list(_REASON_TYPES.keys()),
+                format_func=lambda k: _REASON_TYPES.get(k, k),
+                key="_rev_reason_type",
+            )
+        with _rm_c2:
+            _NEG_STAGES = {
+                "initial":     "1️⃣ Initial Proposal",
+                "negotiation": "2️⃣ Negotiation",
+                "bafo":        "3️⃣ Best & Final Offer",
+                "closed_won":  "✅ Closed Won",
+                "closed_lost": "❌ Closed Lost",
+            }
+            _neg_stage = st.selectbox(
+                "Negotiation Stage",
+                list(_NEG_STAGES.keys()),
+                format_func=lambda k: _NEG_STAGES.get(k, k),
+                index=list(_NEG_STAGES.keys()).index(
+                    _rev_parent.get("negotiation_stage", "initial")
+                    if _rev_parent.get("negotiation_stage") in _NEG_STAGES else "initial"
+                ),
+                key="_rev_neg_stage",
+            )
+        with _rm_c3:
+            _VER_STATUS = {
+                "draft":     "📝 Draft (Internal)",
+                "submitted": "📤 Submitted to Client",
+                "bafo":      "🏆 BAFO",
+                "internal":  "🔒 Internal Only",
+            }
+            _ver_status = st.selectbox(
+                "Version Status",
+                list(_VER_STATUS.keys()),
+                format_func=lambda k: _VER_STATUS.get(k, k),
+                key="_rev_ver_status",
+            )
+
+        _rev_notes = st.text_area(
+            "Revision Notes / Negotiation Context",
+            placeholder="e.g. Client pushed back on timeline. Removed Phase 3 to reduce cost by 20%...",
+            key="_rev_notes",
+            height=80,
+        )
+        _comp_ctx = st.text_input(
+            "Competitor Context (optional)",
+            placeholder="e.g. Competing against Vendor X at $120k",
+            key="_rev_competitor_ctx",
+        )
+
+        # Pre-fill client name from parent
+        if not st.session_state.get("client_name") and _cln:
+            st.session_state["client_name"]          = _cln
+            st.session_state["proposal_client_name"] = _cln
+
+        # Cancel button
+        if st.button("✖ Cancel Revision", key="_cancel_revision", type="secondary"):
+            st.session_state.pop("_revision_parent_id", None)
+            st.session_state.pop("_rev_reason_type", None)
+            st.session_state.pop("_rev_neg_stage", None)
+            st.session_state.pop("_rev_ver_status", None)
+            st.session_state.pop("_rev_notes", None)
+            st.session_state.pop("_rev_competitor_ctx", None)
+            st.rerun()
+
+        st.markdown("---")
+
     # _home_stats_banner()  # hidden
-    st.markdown('<div class="shdr"><span class="shdr-i">📄</span> Document Ingestion</div>', unsafe_allow_html=True)
+    _shdr_label = "📄 Upload Revised Scope Document" if _rev_parent else "📄 Document Ingestion"
+    st.markdown(f'<div class="shdr"><span class="shdr-i">{"✏️" if _rev_parent else "📄"}</span> {_shdr_label.split(" ",1)[1]}</div>', unsafe_allow_html=True)
 
     # ── Client name — stored in session_state and used across proposal/PDF/email ──
     _cn_col, _sp_col = st.columns([2, 3])
@@ -2226,7 +2367,8 @@ def tab_presale():
 
     uc, tc = st.columns([3, 2])
     with uc:
-        st.markdown('<div class="crd"><div class="crd-t">Upload Scope Documents</div><div class="crd-d">PDF, DOCX, XLSX, PPTX, TXT, CSV</div>', unsafe_allow_html=True)
+        _upload_hint = "Upload REVISED scope document" if _rev_parent else "Upload Scope Documents"
+        st.markdown(f'<div class="crd"><div class="crd-t">{_upload_hint}</div><div class="crd-d">PDF, DOCX, XLSX, PPTX, TXT, CSV</div>', unsafe_allow_html=True)
         files = st.file_uploader("Drop files", type=["pdf", "docx", "xlsx", "pptx", "txt", "csv"], accept_multiple_files=True, key="fu", label_visibility="collapsed")
         st.markdown("</div>", unsafe_allow_html=True)
     with tc:
@@ -2442,7 +2584,120 @@ def tab_presale():
                         return
 
     if st.session_state.processing_results:
+        # ── Delta view after revision re-run ────────────────────────────────
+        _rv_parent = st.session_state.get("_revision_completed_parent")
+        _rv_child  = st.session_state.get("_revision_completed_child")
+        if _rv_parent and _rv_child:
+            _render_revision_delta(_rv_parent, _rv_child)
         show_results()
+
+
+def _render_revision_delta(parent_id: int, child_id: int):
+    """Render a side-by-side delta comparison card between two proposal versions."""
+    try:
+        import sqlite3 as _sq
+        from .database import _DB_PATH as _DBPATH
+        _con = _sq.connect(_DBPATH); _con.row_factory = _sq.Row
+        _p = dict(_con.execute(
+            "SELECT client_name, project_type, total_hours, monthly_cost, annual_cost, "
+            "risk_score, req_count, duration_weeks, version_number, "
+            "revision_reason_type, revision_notes, negotiation_stage "
+            "FROM proposals WHERE id=?", (parent_id,)
+        ).fetchone() or {})
+        _c = dict(_con.execute(
+            "SELECT client_name, project_type, total_hours, monthly_cost, annual_cost, "
+            "risk_score, req_count, duration_weeks, version_number, "
+            "revision_reason_type, revision_notes, negotiation_stage "
+            "FROM proposals WHERE id=?", (child_id,)
+        ).fetchone() or {})
+        _con.close()
+        if not _p or not _c:
+            return
+    except Exception:
+        return
+
+    def _delta_html(label: str, old_val, new_val, fmt: str = "{}",
+                    lower_is_better: bool = False):
+        """Return a single delta row HTML."""
+        try:
+            diff    = float(new_val) - float(old_val)
+            pct     = (diff / float(old_val) * 100) if float(old_val) != 0 else 0
+            up      = diff > 0
+            is_good = (up and not lower_is_better) or (not up and lower_is_better)
+            arrow   = "▲" if up else "▼"
+            col     = "#4ade80" if is_good else "#f87171"
+            pct_str = f"{arrow} {abs(pct):.1f}%"
+            old_s   = fmt.format(int(old_val))
+            new_s   = fmt.format(int(new_val))
+            diff_block = (
+                f'<span style="color:{col};font-size:.78rem;margin-left:8px">'
+                f'{pct_str}</span>'
+            )
+        except Exception:
+            old_s, new_s, diff_block = str(old_val), str(new_val), ""
+        return (
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:8px 0;border-bottom:1px solid #1e2a3a">'
+            f'  <div style="font-size:.82rem;color:#94a3b8">{label}</div>'
+            f'  <div style="text-align:right">'
+            f'    <span style="color:#64748b;font-size:.8rem;text-decoration:line-through">{old_s}</span>'
+            f'    <span style="color:#e2e8f0;font-weight:700;margin-left:8px">{new_s}</span>'
+            f'    {diff_block}'
+            f'  </div>'
+            f'</div>'
+        )
+
+    _pv = _p.get("version_number", 1)
+    _cv = _c.get("version_number", _pv + 1)
+    _REASON_LABELS = {
+        "scope_reduction": "Scope Reduction", "scope_expansion": "Scope Expansion",
+        "approach_change": "Approach Change", "pricing_negotiation": "Pricing Negotiation",
+        "timeline_change": "Timeline Change", "team_change": "Team Change",
+        "client_feedback": "Client Feedback", "other": "Other",
+    }
+    _NEG_LABELS = {
+        "initial": "Initial", "negotiation": "Negotiation",
+        "bafo": "BAFO", "closed_won": "Closed Won", "closed_lost": "Closed Lost",
+    }
+    _reason_lbl = _REASON_LABELS.get(_c.get("revision_reason_type",""), _c.get("revision_reason_type",""))
+    _stage_lbl  = _NEG_LABELS.get(_c.get("negotiation_stage",""), _c.get("negotiation_stage",""))
+
+    _rows_html = (
+        _delta_html("Total Hours",      _p["total_hours"], _c["total_hours"],    "{:,}h",  lower_is_better=True)
+        + _delta_html("Monthly Cost",   _p["monthly_cost"], _c["monthly_cost"], "${:,}",   lower_is_better=True)
+        + _delta_html("Annual Cost",    _p["annual_cost"],  _c["annual_cost"],  "${:,}",   lower_is_better=True)
+        + _delta_html("Risk Score",     _p["risk_score"],   _c["risk_score"],   "{}/10",   lower_is_better=True)
+        + _delta_html("Requirements",   _p["req_count"],    _c["req_count"],    "{} reqs", lower_is_better=False)
+    )
+    _notes_html = (
+        f'<div style="font-size:.78rem;color:#a78bfa;margin-top:12px;padding-top:10px;'
+        f'border-top:1px solid #1e2a3a">'
+        f'📝 {_c.get("revision_notes","")}'
+        f'</div>'
+    ) if _c.get("revision_notes") else ""
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#0d1120,#131929);border:1.5px solid #7b61ff55;
+         border-radius:14px;padding:20px 24px;margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="font-size:1.5rem">🔀</div>
+        <div>
+          <div style="font-size:.72rem;color:#a78bfa;letter-spacing:.12em;text-transform:uppercase">Version Delta</div>
+          <div style="font-size:1rem;font-weight:700;color:#e2e8f0">
+            V{_pv} → V{_cv} · {_c.get("client_name","")} — {_c.get("project_type","")}
+          </div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <span style="background:#1e1040;border:1px solid #7b61ff44;border-radius:6px;
+                padding:3px 10px;font-size:.72rem;color:#a78bfa">{_reason_lbl or "Revision"}</span>
+          <span style="background:#0a1f2e;border:1px solid #00b4d844;border-radius:6px;
+                padding:3px 10px;font-size:.72rem;color:#00b4d8">{_stage_lbl}</span>
+        </div>
+      </div>
+      {_rows_html}
+      {_notes_html}
+    </div>
+    """, unsafe_allow_html=True)
 
 
 _MODEL_CLASSES = {
@@ -3030,29 +3285,51 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         st.session_state["proposal_client_name"] = _sem_client
 
     # ── Save to persistent SQLite DB + in-memory versions ──
+    # Revision mode: use _revision_parent_id as parent and carry versioning metadata
+    _rev_pid = st.session_state.get("_revision_parent_id")
+    _v_parent_id = _rev_pid or st.session_state.get("_parent_run_id")
+    _v_number = db_get_next_version_number(_v_parent_id) if _v_parent_id else 1
+
     snapshot = {
-        "ts":               datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "project_type":     safe_str(semantic.get("project_type", "")),
-        "client_name":      safe_str(semantic.get("client_name", "")),
-        "project_title":    safe_str(semantic.get("project_title", "")),
-        "total_hours":      safe_int(time_est.get("total_hours", 0)),
-        "duration_weeks":   safe_str(time_est.get("duration_weeks", "")),
-        "monthly_cost":     safe_int(cost_est.get("total_monthly_cost", 0)),
-        "annual_cost":      safe_int(cost_est.get("total_annual_cost", 0)),
-        "risk_level":       safe_str(risk.get("overall_level", "")),
-        "risk_score":       safe_int(risk.get("overall_score", 0)),
-        "req_count":        len(safe_list(semantic.get("requirements", []))),
-        "tech_stack":       safe_list(semantic.get("technology_stack", []))[:10],
-        "model_used":       model_name,
-        "three_point":      time_est.get("three_point", {}),
-        "created_by":       st.session_state.get("auth_user", ""),
-        "created_by_email": st.session_state.get("auth_email", ""),
-        "parent_run_id":    st.session_state.get("_parent_run_id"),
+        "ts":                   datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "project_type":         safe_str(semantic.get("project_type", "")),
+        "client_name":          safe_str(semantic.get("client_name", "")
+                                         or st.session_state.get("client_name", "")),
+        "project_title":        safe_str(semantic.get("project_title", "")),
+        "total_hours":          safe_int(time_est.get("total_hours", 0)),
+        "duration_weeks":       safe_str(time_est.get("duration_weeks", "")),
+        "monthly_cost":         safe_int(cost_est.get("total_monthly_cost", 0)),
+        "annual_cost":          safe_int(cost_est.get("total_annual_cost", 0)),
+        "risk_level":           safe_str(risk.get("overall_level", "")),
+        "risk_score":           safe_int(risk.get("overall_score", 0)),
+        "req_count":            len(safe_list(semantic.get("requirements", []))),
+        "tech_stack":           safe_list(semantic.get("technology_stack", []))[:10],
+        "model_used":           model_name,
+        "three_point":          time_est.get("three_point", {}),
+        "created_by":           st.session_state.get("auth_user", ""),
+        "created_by_email":     st.session_state.get("auth_email", ""),
+        "parent_run_id":        _v_parent_id,
+        # Versioning metadata
+        "version_number":       _v_number,
+        "version_status":       st.session_state.get("_rev_ver_status", "draft"),
+        "negotiation_stage":    st.session_state.get("_rev_neg_stage", "initial"),
+        "revision_reason_type": st.session_state.get("_rev_reason_type", ""),
+        "revision_notes":       st.session_state.get("_rev_notes", ""),
+        "competitor_context":   st.session_state.get("_rev_competitor_ctx", ""),
+        "parking_lot":          [],
     }
     # Persist to disk
     try:
         run_id = _db_save_run(snapshot, st.session_state.processing_results)
         st.session_state["_last_run_id"] = run_id
+        # Store parent_id for delta view display after this run
+        if _rev_pid:
+            st.session_state["_revision_completed_parent"] = _rev_pid
+            st.session_state["_revision_completed_child"]  = run_id
+        # Clear revision & restore state
+        for _rk in ["_revision_parent_id", "_rev_reason_type", "_rev_neg_stage",
+                     "_rev_ver_status", "_rev_notes", "_rev_competitor_ctx"]:
+            st.session_state.pop(_rk, None)
         st.session_state.pop("_parent_run_id", None)   # consumed — clear after save
         try:
             db_log_activity(
@@ -9995,11 +10272,39 @@ def tab_run_library():
             f'padding:1px 6px;font-size:.68rem;color:#94a3b8">{t}</span>'
             for t in tech
         )
-        lineage_html = (
+        # Version badge + lineage
+        _v_num     = run.get("version_number", 1)
+        _neg_stg   = run.get("negotiation_stage", "initial") or "initial"
+        _ver_stat  = run.get("version_status", "draft") or "draft"
+        _NEG_COLORS = {"initial":"#00b4d8","negotiation":"#ffd166","bafo":"#f87171",
+                       "closed_won":"#4ade80","closed_lost":"#94a3b8"}
+        _VER_STAT_COLORS = {"draft":"#64748b","submitted":"#00d4aa","bafo":"#f87171","internal":"#a78bfa"}
+        _neg_col   = _NEG_COLORS.get(_neg_stg, "#64748b")
+        _vstat_col = _VER_STAT_COLORS.get(_ver_stat, "#64748b")
+        _neg_labels = {"initial":"Initial","negotiation":"Negotiation","bafo":"BAFO",
+                       "closed_won":"Closed Won","closed_lost":"Closed Lost"}
+        _vstat_labels = {"draft":"Draft","submitted":"Submitted","bafo":"BAFO","internal":"Internal"}
+        version_badge = (
             f'<span style="background:#7b61ff22;color:#7b61ff;border:1px solid #7b61ff55;'
-            f'border-radius:20px;padding:2px 8px;font-size:.65rem;font-weight:700">↳ Rev of #{parent_id}</span>'
+            f'border-radius:20px;padding:2px 9px;font-size:.65rem;font-weight:700">V{_v_num}</span>'
+        )
+        lineage_html = (
+            f'<span style="background:#7b61ff11;color:#a78bfa;border:1px solid #7b61ff33;'
+            f'border-radius:20px;padding:2px 8px;font-size:.65rem">↳ #{parent_id}</span>'
             if parent_id else ""
         )
+        neg_stage_badge = (
+            f'<span style="background:{_neg_col}18;color:{_neg_col};border:1px solid {_neg_col}44;'
+            f'border-radius:20px;padding:2px 8px;font-size:.65rem">{_neg_labels.get(_neg_stg,_neg_stg)}</span>'
+        ) if _neg_stg and _neg_stg != "initial" else ""
+        submitted_badge = (
+            f'<span style="background:{_vstat_col}18;color:{_vstat_col};border:1px solid {_vstat_col}44;'
+            f'border-radius:20px;padding:2px 8px;font-size:.65rem">{_vstat_labels.get(_ver_stat,_ver_stat)}</span>'
+        ) if _ver_stat and _ver_stat != "draft" else ""
+        winning_badge = (
+            '<span style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16655;'
+            'border-radius:20px;padding:2px 8px;font-size:.65rem;font-weight:700">🏆 Winning</span>'
+        ) if run.get("is_winning_version") else ""
         _OUTCOME_STYLE = {
             "won":     ("🏆 Won",    "#06d6a0", "#06d6a022"),
             "lost":    ("❌ Lost",   "#ff6b6b", "#ff6b6b22"),
@@ -10019,7 +10324,10 @@ def tab_run_library():
                 f'padding:18px 20px;margin-bottom:6px;border-left:3px solid {c_col}">'
                 f'{arch_banner}'
                 f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
-                f'  <div style="display:flex;gap:6px;flex-wrap:wrap">{_cat_badge(cat)} {rev_badge} {outcome_badge} {lineage_html}</div>'
+                f'  <div style="display:flex;gap:5px;flex-wrap:wrap">'
+                f'    {_cat_badge(cat)} {version_badge} {rev_badge} {outcome_badge}'
+                f'    {lineage_html} {neg_stage_badge} {submitted_badge} {winning_badge}'
+                f'  </div>'
                 f'  <div style="font-size:.7rem;color:#64748b">#{run["id"]} · {run.get("ts","")}</div>'
                 f'</div>'
                 f'<div style="font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:2px">{_card_heading}</div>'
@@ -10051,13 +10359,20 @@ def tab_run_library():
             )
 
             # Action buttons
-            a1, a2, a3, a4 = st.columns(4)
+            a1, a2, a3, a4, a5 = st.columns(5)
             with a1:
+                if st.button("✏️ Revise", key=f"lib_revise_{run['id']}", use_container_width=True,
+                             help="Upload a revised scope doc and re-run estimation as a new version"):
+                    st.session_state["_revision_parent_id"] = run["id"]
+                    _log_act("revision_start", f"Started revision of Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
+                    st.session_state["_active_main_tab"] = 1  # switch to estimation tab
+                    st.rerun()
+            with a2:
                 if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
                     st.session_state["lib_pending_restore_id"] = run["id"]
                     _log_act("restore", f"Restored Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
                     st.rerun()
-            with a2:
+            with a3:
                 st.download_button(
                     "📥 JSON",
                     data=_cached_run_json(run["id"]),
@@ -10066,7 +10381,7 @@ def tab_run_library():
                     use_container_width=True,
                     key=f"lib_dl_{run['id']}",
                 )
-            with a3:
+            with a4:
                 if run.get("is_archived", 0):
                     if st.button("📤 Unarchive", key=f"lib_unarch_{run['id']}", use_container_width=True):
                         db_unarchive_run(run["id"])
@@ -10089,7 +10404,7 @@ def tab_run_library():
                                run.get("project_type", ""), {"run_id": run["id"]})
                         _cached_load_runs.clear(); _cached_category_counts.clear()
                         st.rerun()
-            with a4:
+            with a5:
                 if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", use_container_width=True):
                     notify("run_deleted", f"Run #{run['id']} deleted",
                            run.get("project_type", ""), {"run_id": run["id"]})
@@ -10204,6 +10519,69 @@ def tab_run_library():
                         f'({_est:,}h estimated → {_act:,}h actual)</div>',
                         unsafe_allow_html=True,
                     )
+
+            # Version chain expander — show only when there are multiple versions
+            if parent_id or run.get("version_number", 1) > 1 or run.get("is_winning_version"):
+                with st.expander(f"🔗 Version History (V{_v_num})", expanded=False):
+                    try:
+                        _chain = db_get_version_chain(run["id"])
+                        if len(_chain) > 1:
+                            _CHAIN_REASON = {
+                                "scope_reduction":"📉","scope_expansion":"📈","approach_change":"🔄",
+                                "pricing_negotiation":"💰","timeline_change":"📅",
+                                "team_change":"👥","client_feedback":"💬","other":"📝","":""
+                            }
+                            _CHAIN_STAGE = {
+                                "initial":"Initial","negotiation":"Negotiation",
+                                "bafo":"BAFO","closed_won":"Won","closed_lost":"Lost"
+                            }
+                            _chain_html = ""
+                            for _vi, _vr in enumerate(_chain):
+                                _is_cur   = _vr["id"] == run["id"]
+                                _is_win   = _vr.get("is_winning_version")
+                                _vc       = "#7b61ff" if _is_cur else "#4ade80" if _is_win else "#334155"
+                                _vbg      = "#1a1040" if _is_cur else "#0a1f2e" if _is_win else "#111827"
+                                _r_icon   = _CHAIN_REASON.get(_vr.get("revision_reason_type",""), "📝")
+                                _stg_lbl  = _CHAIN_STAGE.get(_vr.get("negotiation_stage","initial"), "")
+                                _win_star = " ⭐" if _is_win else ""
+                                _cur_dot  = " ◀" if _is_cur else ""
+                                _vn_label = _vr.get("version_number", _vi+1)
+                                _chain_html += (
+                                    f'<div style="background:{_vbg};border:1px solid {_vc}55;'
+                                    f'border-left:3px solid {_vc};border-radius:8px;'
+                                    f'padding:8px 12px;margin-bottom:6px">'
+                                    f'  <div style="display:flex;justify-content:space-between">'
+                                    f'    <span style="color:{_vc};font-weight:700;font-size:.82rem">'
+                                    f'      V{_vn_label}{_win_star}{_cur_dot}</span>'
+                                    f'    <span style="color:#64748b;font-size:.72rem">#{_vr["id"]} · {_vr.get("ts","")}</span>'
+                                    f'  </div>'
+                                    f'  <div style="font-size:.75rem;color:#94a3b8;margin-top:3px">'
+                                    f'    {_r_icon} {_vr.get("revision_reason_type","").replace("_"," ").title() or "Baseline"}'
+                                    + (f' · {_stg_lbl}' if _stg_lbl else "")
+                                    + f'  </div>'
+                                    + (
+                                        f'  <div style="font-size:.7rem;color:#64748b;margin-top:2px;'
+                                        f'  font-style:italic">{_vr["revision_notes"][:80]}{"…" if len(_vr.get("revision_notes",""))>80 else ""}</div>'
+                                        if _vr.get("revision_notes") else ""
+                                    )
+                                    + f'  <div style="margin-top:6px;display:flex;gap:6px;font-size:.7rem">'
+                                    + f'    <span style="color:#00d4aa">{_vr.get("total_hours",0):,}h</span>'
+                                    + f'    <span style="color:#00b4d8">${_vr.get("monthly_cost",0):,}/mo</span>'
+                                    + f'  </div>'
+                                    + f'</div>'
+                                )
+                            st.markdown(_chain_html, unsafe_allow_html=True)
+                            # Mark winning version button
+                            if not run.get("is_winning_version"):
+                                if st.button(f"⭐ Mark V{_v_num} as Winning Version",
+                                             key=f"lib_win_{run['id']}", use_container_width=True):
+                                    db_mark_winning_version(run["id"])
+                                    _cached_load_runs.clear()
+                                    st.rerun()
+                        else:
+                            st.caption("No other versions yet. Use ✏️ Revise to create V2.")
+                    except Exception:
+                        st.caption("Version history unavailable.")
 
             st.markdown("")
 

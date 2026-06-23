@@ -2210,27 +2210,26 @@ def tab_presale():
     _rev_parent_results = {}
 
     if _rev_parent_id:
-        try:
-            _rev_parent_row = db_load_runs(category="All", include_archived=True) if False else None
-            # Load parent run metadata from DB
-            import sqlite3 as _sq
-            from .database import _DB_PATH as _DBPATH
-            _con = _sq.connect(_DBPATH); _con.row_factory = _sq.Row
-            _row = _con.execute(
-                "SELECT id, client_name, project_type, total_hours, monthly_cost, "
-                "risk_level, risk_score, req_count, ts, version_number, "
-                "negotiation_stage, version_status "
-                "FROM proposals WHERE id=?", (_rev_parent_id,)
-            ).fetchone()
-            _con.close()
-            if _row:
-                _rev_parent = dict(_row)
-                try:
-                    _rev_parent_results = db_load_results(_rev_parent_id) or {}
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        with st.spinner("Loading revision details…"):
+            try:
+                import sqlite3 as _sq
+                from .database import _DB_PATH as _DBPATH
+                _con = _sq.connect(_DBPATH); _con.row_factory = _sq.Row
+                _row = _con.execute(
+                    "SELECT id, client_name, project_type, total_hours, monthly_cost, "
+                    "risk_level, risk_score, req_count, ts, version_number, "
+                    "negotiation_stage, version_status "
+                    "FROM proposals WHERE id=?", (_rev_parent_id,)
+                ).fetchone()
+                _con.close()
+                if _row:
+                    _rev_parent = dict(_row)
+                    try:
+                        _rev_parent_results = db_load_results(_rev_parent_id) or {}
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     # ── Revision Banner ───────────────────────────────────────────────────────
     if _rev_parent:
@@ -2356,15 +2355,16 @@ def tab_presale():
                     with st.expander(f"🅿️ Parking Lot — defer requirements from V{_vn} ({len(_parent_reqs)} total)", expanded=False):
                         st.caption("Check any requirements the client agreed to defer to a later phase. These will be saved to the parking lot and shown in the delta view.")
                         # Load previously saved parking lot for this parent
-                        try:
-                            import sqlite3 as _sq2
-                            from .database import _DB_PATH as _DBPATH2
-                            _con2 = _sq2.connect(_DBPATH2); _con2.row_factory = _sq2.Row
-                            _pl_row = _con2.execute("SELECT parking_lot FROM proposals WHERE id=?", (_rev_parent_id,)).fetchone()
-                            _con2.close()
-                            _existing_lot = json.loads((_pl_row["parking_lot"] if _pl_row else None) or "[]")
-                        except Exception:
-                            _existing_lot = []
+                        with st.spinner("Loading requirements…"):
+                            try:
+                                import sqlite3 as _sq2
+                                from .database import _DB_PATH as _DBPATH2
+                                _con2 = _sq2.connect(_DBPATH2); _con2.row_factory = _sq2.Row
+                                _pl_row = _con2.execute("SELECT parking_lot FROM proposals WHERE id=?", (_rev_parent_id,)).fetchone()
+                                _con2.close()
+                                _existing_lot = json.loads((_pl_row["parking_lot"] if _pl_row else None) or "[]")
+                            except Exception:
+                                _existing_lot = []
                         _existing_lot_lc = {str(x).strip().lower() for x in _existing_lot}
 
                         _parked = []
@@ -2652,7 +2652,8 @@ def tab_presale():
         _rv_parent = st.session_state.get("_revision_completed_parent")
         _rv_child  = st.session_state.get("_revision_completed_child")
         if _rv_parent and _rv_child:
-            _render_revision_delta(_rv_parent, _rv_child)
+            with st.spinner("Calculating version delta…"):
+                _render_revision_delta(_rv_parent, _rv_child)
         show_results()
 
 
@@ -10548,11 +10549,11 @@ def tab_run_library():
             with a1:
                 if st.button("✏️ Revise", key=f"lib_revise_{run['id']}", use_container_width=True,
                              help="Upload a revised scope doc and re-run estimation as a new version"):
-                    st.session_state["_revision_parent_id"] = run["id"]
-                    _log_act("revision_start", f"Started revision of Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
-                    st.session_state["_active_main_tab"] = True
-                    # No explicit st.rerun() — the button click already triggers a rerun
-                    # and preserves the current tab selection (avoids the "jumps to Dashboard" bug)
+                    with st.spinner("Setting up revision mode…"):
+                        st.session_state["_revision_parent_id"] = run["id"]
+                        _log_act("revision_start", f"Started revision of Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
+                        st.session_state["_active_main_tab"] = True
+                    st.toast(f"✏️ Revision mode ready — click ⚡ Business Estimation tab", icon="✏️")
             with a2:
                 if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
                     st.session_state["lib_pending_restore_id"] = run["id"]
@@ -10710,7 +10711,8 @@ def tab_run_library():
             if parent_id or run.get("version_number", 1) > 1 or run.get("is_winning_version"):
                 with st.expander(f"🔗 Version History (V{_v_num})", expanded=False):
                     try:
-                        _chain = db_get_version_chain(run["id"])
+                        with st.spinner("Loading version history…"):
+                            _chain = db_get_version_chain(run["id"])
                         if len(_chain) > 1:
                             _CHAIN_REASON = {
                                 "scope_reduction":"📉","scope_expansion":"📈","approach_change":"🔄",
@@ -10763,8 +10765,9 @@ def tab_run_library():
                                 if not run.get("is_winning_version"):
                                     if st.button(f"⭐ Mark V{_v_num} as Winning",
                                                  key=f"lib_win_{run['id']}", use_container_width=True):
-                                        db_mark_winning_version(run["id"])
-                                        _cached_load_runs.clear()
+                                        with st.spinner("Marking as winning version…"):
+                                            db_mark_winning_version(run["id"])
+                                            _cached_load_runs.clear()
                                         st.rerun()
                                 else:
                                     st.markdown(
@@ -10779,11 +10782,12 @@ def tab_run_library():
                                     if st.button(f"📤 Submit V{_v_num} to Client",
                                                  key=f"lib_submit_{run['id']}", use_container_width=True,
                                                  help="Marks this version as formally submitted to the client"):
-                                        db_mark_submitted(run["id"])
-                                        _log_act("version_submitted",
-                                                 f"V{_v_num} of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
-                                                 "Library")
-                                        _cached_load_runs.clear()
+                                        with st.spinner("Submitting to client…"):
+                                            db_mark_submitted(run["id"])
+                                            _log_act("version_submitted",
+                                                     f"V{_v_num} of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
+                                                     "Library")
+                                            _cached_load_runs.clear()
                                         st.rerun()
                                 else:
                                     _sub_ts = run.get("submitted_at","")
@@ -10796,11 +10800,12 @@ def tab_run_library():
                             st.caption("No other versions yet. Use ✏️ Revise to create V2.")
                             if st.button(f"📤 Submit V1 to Client",
                                          key=f"lib_submit_v1_{run['id']}", use_container_width=True):
-                                db_mark_submitted(run["id"])
-                                _log_act("version_submitted",
-                                         f"V1 of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
+                                with st.spinner("Submitting to client…"):
+                                    db_mark_submitted(run["id"])
+                                    _log_act("version_submitted",
+                                             f"V1 of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
                                          "Library")
-                                _cached_load_runs.clear()
+                                    _cached_load_runs.clear()
                                 st.rerun()
                     except Exception:
                         st.caption("Version history unavailable.")

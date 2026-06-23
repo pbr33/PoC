@@ -2226,10 +2226,7 @@ def tab_presale():
             if _row:
                 _rev_parent = dict(_row)
                 try:
-                    _rev_parent_results = json.loads(
-                        db_load_results(_rev_parent_id) if isinstance(db_load_results(_rev_parent_id), str)
-                        else json.dumps(db_load_results(_rev_parent_id), default=str)
-                    )
+                    _rev_parent_results = db_load_results(_rev_parent_id) or {}
                 except Exception:
                     pass
         except Exception:
@@ -2330,6 +2327,72 @@ def tab_presale():
             st.session_state["client_name"]          = _cln
             st.session_state["proposal_client_name"] = _cln
 
+        # ── Margin floor warning ──────────────────────────────────────
+        try:
+            _p_cost = int(_rev_parent.get("monthly_cost") or 0)
+            if _p_cost > 0:
+                _floor_pct = 80  # warn if new version might drop below 80% of V1
+                _floor_val = int(_p_cost * _floor_pct / 100)
+                st.markdown(
+                    f'<div style="background:#7c2d1222;border:1px solid #f8717144;'
+                    f'border-radius:8px;padding:10px 14px;margin-bottom:12px;'
+                    f'font-size:.8rem;color:#fca5a5">'
+                    f'⚠️ <strong>Margin floor:</strong> V{_vn} baseline is '
+                    f'<strong>${_p_cost:,}/mo</strong>. '
+                    f'If this revision drops below <strong>${_floor_val:,}/mo</strong> '
+                    f'({_floor_pct}% of baseline), flag for pricing review.</div>',
+                    unsafe_allow_html=True,
+                )
+        except Exception:
+            pass
+
+        # ── Parking lot — defer requirements ─────────────────────────
+        if _rev_parent_results:
+            try:
+                _parent_reqs = safe_list(
+                    safe_dict(_rev_parent_results.get("semantic_analysis")).get("requirements", [])
+                )
+                if _parent_reqs:
+                    with st.expander(f"🅿️ Parking Lot — defer requirements from V{_vn} ({len(_parent_reqs)} total)", expanded=False):
+                        st.caption("Check any requirements the client agreed to defer to a later phase. These will be saved to the parking lot and shown in the delta view.")
+                        # Load previously saved parking lot for this parent
+                        try:
+                            import sqlite3 as _sq2
+                            from .database import _DB_PATH as _DBPATH2
+                            _con2 = _sq2.connect(_DBPATH2); _con2.row_factory = _sq2.Row
+                            _pl_row = _con2.execute("SELECT parking_lot FROM proposals WHERE id=?", (_rev_parent_id,)).fetchone()
+                            _con2.close()
+                            _existing_lot = json.loads((_pl_row["parking_lot"] if _pl_row else None) or "[]")
+                        except Exception:
+                            _existing_lot = []
+                        _existing_lot_lc = {str(x).strip().lower() for x in _existing_lot}
+
+                        _parked = []
+                        for _pr in _parent_reqs:
+                            _pr_title = safe_str(_pr.get("title","") if isinstance(_pr, dict) else str(_pr))
+                            _pr_type  = safe_str(_pr.get("type","")  if isinstance(_pr, dict) else "")
+                            _pr_cx    = safe_str(_pr.get("complexity","") if isinstance(_pr, dict) else "")
+                            _cx_col   = {"high":"#f87171","medium":"#ffd166","low":"#4ade80"}.get(_pr_cx.lower(),"#94a3b8")
+                            _key      = f"_lot_{hash(_pr_title) & 0xFFFFFF}"
+                            _default  = _pr_title.strip().lower() in _existing_lot_lc
+                            _checked  = st.checkbox(
+                                f"{_pr_title}",
+                                value=_default,
+                                key=_key,
+                                help=f"Type: {_pr_type}  ·  Complexity: {_pr_cx}",
+                            )
+                            if _checked:
+                                _parked.append(_pr_title)
+                        if _parked:
+                            st.markdown(
+                                f'<div style="font-size:.78rem;color:#a78bfa;margin-top:6px">'
+                                f'🅿️ {len(_parked)} requirement{"s" if len(_parked)!=1 else ""} will be parked</div>',
+                                unsafe_allow_html=True,
+                            )
+                        st.session_state["_rev_parking_lot"] = _parked
+            except Exception:
+                pass
+
         # Cancel button
         if st.button("✖ Cancel Revision", key="_cancel_revision", type="secondary"):
             st.session_state.pop("_revision_parent_id", None)
@@ -2338,6 +2401,7 @@ def tab_presale():
             st.session_state.pop("_rev_ver_status", None)
             st.session_state.pop("_rev_notes", None)
             st.session_state.pop("_rev_competitor_ctx", None)
+            st.session_state.pop("_rev_parking_lot", None)
             st.rerun()
 
         st.markdown("---")
@@ -2593,7 +2657,8 @@ def tab_presale():
 
 
 def _render_revision_delta(parent_id: int, child_id: int):
-    """Render a side-by-side delta comparison card between two proposal versions."""
+    """Render a side-by-side delta comparison card between two proposal versions,
+    including a requirements diff (added / removed / kept)."""
     try:
         import sqlite3 as _sq
         from .database import _DB_PATH as _DBPATH
@@ -2601,13 +2666,13 @@ def _render_revision_delta(parent_id: int, child_id: int):
         _p = dict(_con.execute(
             "SELECT client_name, project_type, total_hours, monthly_cost, annual_cost, "
             "risk_score, req_count, duration_weeks, version_number, "
-            "revision_reason_type, revision_notes, negotiation_stage "
+            "revision_reason_type, revision_notes, negotiation_stage, results_json, parking_lot "
             "FROM proposals WHERE id=?", (parent_id,)
         ).fetchone() or {})
         _c = dict(_con.execute(
             "SELECT client_name, project_type, total_hours, monthly_cost, annual_cost, "
             "risk_score, req_count, duration_weeks, version_number, "
-            "revision_reason_type, revision_notes, negotiation_stage "
+            "revision_reason_type, revision_notes, negotiation_stage, results_json, parking_lot "
             "FROM proposals WHERE id=?", (child_id,)
         ).fetchone() or {})
         _con.close()
@@ -2615,6 +2680,33 @@ def _render_revision_delta(parent_id: int, child_id: int):
             return
     except Exception:
         return
+
+    # ── Extract requirements from each version ───────────────────────────
+    def _get_reqs(row: dict) -> list:
+        try:
+            rj = json.loads(row.get("results_json") or "{}")
+            return safe_list(safe_dict(rj.get("semantic_analysis")).get("requirements", []))
+        except Exception:
+            return []
+
+    def _req_key(r) -> str:
+        return safe_str(r.get("title", "")).strip().lower() if isinstance(r, dict) else str(r).lower()
+
+    _p_reqs  = _get_reqs(_p)
+    _c_reqs  = _get_reqs(_c)
+    _p_titles = {_req_key(r): r for r in _p_reqs if _req_key(r)}
+    _c_titles = {_req_key(r): r for r in _c_reqs if _req_key(r)}
+
+    # Parking lot titles from parent (those that were deferred last time)
+    try:
+        _p_lot = json.loads(_p.get("parking_lot") or "[]")
+    except Exception:
+        _p_lot = []
+    _p_lot_keys = {str(x).strip().lower() for x in _p_lot if x}
+
+    _kept   = [r for k, r in _c_titles.items() if k in _p_titles]
+    _added  = [r for k, r in _c_titles.items() if k not in _p_titles]
+    _removed = [r for k, r in _p_titles.items() if k not in _c_titles]
 
     def _delta_html(label: str, old_val, new_val, fmt: str = "{}",
                     lower_is_better: bool = False):
@@ -2678,7 +2770,7 @@ def _render_revision_delta(parent_id: int, child_id: int):
 
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#0d1120,#131929);border:1.5px solid #7b61ff55;
-         border-radius:14px;padding:20px 24px;margin-bottom:24px">
+         border-radius:14px;padding:20px 24px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <div style="font-size:1.5rem">🔀</div>
         <div>
@@ -2698,6 +2790,66 @@ def _render_revision_delta(parent_id: int, child_id: int):
       {_notes_html}
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Requirements diff expander ───────────────────────────────────────
+    if _p_reqs or _c_reqs:
+        _diff_label = (
+            f"📋 Requirements Diff — "
+            f"{'↑' if len(_added) else ''}{'↓' if len(_removed) else ''} "
+            f"{len(_added)} added · {len(_removed)} removed · {len(_kept)} kept"
+        )
+        with st.expander(_diff_label, expanded=(len(_added) > 0 or len(_removed) > 0)):
+            # Summary pills
+            _pill = lambda txt, col, bg: (
+                f'<span style="background:{bg};color:{col};border:1px solid {col}44;'
+                f'border-radius:12px;padding:3px 10px;font-size:.75rem;font-weight:600;margin-right:6px">'
+                f'{txt}</span>'
+            )
+            st.markdown(
+                _pill(f"✅ {len(_kept)} kept",   "#4ade80","#4ade8012")
+                + _pill(f"➕ {len(_added)} added",  "#00d4aa","#00d4aa12")
+                + _pill(f"➖ {len(_removed)} removed","#f87171","#f8717112"),
+                unsafe_allow_html=True,
+            )
+            st.markdown("")
+
+            def _req_pill(r, badge_col, badge_bg, icon):
+                _t  = safe_str(r.get("title","") if isinstance(r,dict) else str(r))
+                _tp = safe_str(r.get("type","")  if isinstance(r,dict) else "")
+                _cx = safe_str(r.get("complexity","") if isinstance(r,dict) else "")
+                _cx_col = {"high":"#f87171","medium":"#ffd166","low":"#4ade80"}.get(_cx.lower(),"#94a3b8")
+                return (
+                    f'<div style="background:{badge_bg};border-left:3px solid {badge_col};'
+                    f'border-radius:0 6px 6px 0;padding:6px 10px;margin-bottom:5px">'
+                    f'  <span style="color:{badge_col};font-weight:700;margin-right:6px">{icon}</span>'
+                    f'  <span style="color:#e2e8f0;font-size:.82rem">{_t}</span>'
+                    + (f'  <span style="color:#64748b;font-size:.7rem;margin-left:8px">{_tp}</span>' if _tp else "")
+                    + (f'  <span style="color:{_cx_col};font-size:.7rem;margin-left:6px">● {_cx}</span>' if _cx else "")
+                    + f'</div>'
+                )
+
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                if _added:
+                    st.markdown("**Added in this version**")
+                    st.markdown(
+                        "".join(_req_pill(r, "#00d4aa", "#00d4aa0a", "➕") for r in _added),
+                        unsafe_allow_html=True,
+                    )
+            with rc2:
+                if _removed:
+                    st.markdown("**Removed from previous version**")
+                    st.markdown(
+                        "".join(_req_pill(r, "#f87171", "#f871710a", "➖") for r in _removed),
+                        unsafe_allow_html=True,
+                    )
+            if _kept and st.checkbox("Show kept requirements", key=f"_delta_kept_{child_id}"):
+                st.markdown("**Carried forward unchanged**")
+                st.markdown(
+                    "".join(_req_pill(r, "#4ade80", "#4ade800a", "✓") for r in _kept),
+                    unsafe_allow_html=True,
+                )
+    st.markdown("")
 
 
 _MODEL_CLASSES = {
@@ -3316,7 +3468,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         "revision_reason_type": st.session_state.get("_rev_reason_type", ""),
         "revision_notes":       st.session_state.get("_rev_notes", ""),
         "competitor_context":   st.session_state.get("_rev_competitor_ctx", ""),
-        "parking_lot":          [],
+        "parking_lot":          st.session_state.get("_rev_parking_lot", []),
     }
     # Persist to disk
     try:
@@ -3328,7 +3480,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
             st.session_state["_revision_completed_child"]  = run_id
         # Clear revision & restore state
         for _rk in ["_revision_parent_id", "_rev_reason_type", "_rev_neg_stage",
-                     "_rev_ver_status", "_rev_notes", "_rev_competitor_ctx"]:
+                     "_rev_ver_status", "_rev_notes", "_rev_competitor_ctx", "_rev_parking_lot"]:
             st.session_state.pop(_rk, None)
         st.session_state.pop("_parent_run_id", None)   # consumed — clear after save
         try:
@@ -10571,15 +10723,51 @@ def tab_run_library():
                                     + f'</div>'
                                 )
                             st.markdown(_chain_html, unsafe_allow_html=True)
-                            # Mark winning version button
-                            if not run.get("is_winning_version"):
-                                if st.button(f"⭐ Mark V{_v_num} as Winning Version",
-                                             key=f"lib_win_{run['id']}", use_container_width=True):
-                                    db_mark_winning_version(run["id"])
-                                    _cached_load_runs.clear()
-                                    st.rerun()
+                            _wb1, _wb2 = st.columns(2)
+                            with _wb1:
+                                # Mark winning version button
+                                if not run.get("is_winning_version"):
+                                    if st.button(f"⭐ Mark V{_v_num} as Winning",
+                                                 key=f"lib_win_{run['id']}", use_container_width=True):
+                                        db_mark_winning_version(run["id"])
+                                        _cached_load_runs.clear()
+                                        st.rerun()
+                                else:
+                                    st.markdown(
+                                        '<div style="text-align:center;font-size:.78rem;color:#ffd166;'
+                                        'padding:6px">⭐ This is the Winning Version</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                            with _wb2:
+                                # Submit to client button
+                                _cur_vstat = run.get("version_status","draft")
+                                if _cur_vstat != "submitted":
+                                    if st.button(f"📤 Submit V{_v_num} to Client",
+                                                 key=f"lib_submit_{run['id']}", use_container_width=True,
+                                                 help="Marks this version as formally submitted to the client"):
+                                        db_mark_submitted(run["id"])
+                                        _log_act("version_submitted",
+                                                 f"V{_v_num} of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
+                                                 "Library")
+                                        _cached_load_runs.clear()
+                                        st.rerun()
+                                else:
+                                    _sub_ts = run.get("submitted_at","")
+                                    st.markdown(
+                                        f'<div style="text-align:center;font-size:.78rem;color:#00d4aa;'
+                                        f'padding:6px">📤 Submitted{(" · "+_sub_ts) if _sub_ts else ""}</div>',
+                                        unsafe_allow_html=True,
+                                    )
                         else:
                             st.caption("No other versions yet. Use ✏️ Revise to create V2.")
+                            if st.button(f"📤 Submit V1 to Client",
+                                         key=f"lib_submit_v1_{run['id']}", use_container_width=True):
+                                db_mark_submitted(run["id"])
+                                _log_act("version_submitted",
+                                         f"V1 of Run #{run['id']} ({run.get('client_name','')}) submitted to client",
+                                         "Library")
+                                _cached_load_runs.clear()
+                                st.rerun()
                     except Exception:
                         st.caption("Version history unavailable.")
 

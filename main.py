@@ -200,6 +200,28 @@ if not is_any_ai_configured():
         )
 
 # ═══════════════════════════════════════════════════════════════════════
+#  TAB AUTO-SWITCH (fired after "Revise" click in Run Library)
+# ═══════════════════════════════════════════════════════════════════════
+if st.session_state.pop("_active_main_tab", None) is not None:
+    import streamlit.components.v1 as _stc
+    _stc.html("""
+    <script>
+    (function() {
+        function _doClick() {
+            var tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
+            for (var i = 0; i < tabs.length; i++) {
+                if (tabs[i].textContent && tabs[i].textContent.indexOf("Business Estimation") !== -1) {
+                    tabs[i].click(); return;
+                }
+            }
+            setTimeout(_doClick, 120);
+        }
+        setTimeout(_doClick, 350);
+    })();
+    </script>
+    """, height=0)
+
+# ═══════════════════════════════════════════════════════════════════════
 #  MAIN TABS
 # ═══════════════════════════════════════════════════════════════════════
 

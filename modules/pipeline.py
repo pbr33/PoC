@@ -3445,8 +3445,11 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     snapshot = {
         "ts":                   datetime.now().strftime("%Y-%m-%d %H:%M"),
         "project_type":         safe_str(semantic.get("project_type", "")),
-        "client_name":          safe_str(semantic.get("client_name", "")
-                                         or st.session_state.get("client_name", "")),
+        "client_name":          safe_str(
+                                    st.session_state.get("client_name", "")    # user-typed always wins
+                                    or st.session_state.get("proposal_client_name", "")
+                                    or semantic.get("client_name", "")         # AI fallback only if user left it blank
+                                ),
         "project_title":        safe_str(semantic.get("project_title", "")),
         "total_hours":          safe_int(time_est.get("total_hours", 0)),
         "duration_weeks":       safe_str(time_est.get("duration_weeks", "")),

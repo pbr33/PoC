@@ -10035,6 +10035,36 @@ def tab_run_library():
          "Every pipeline run is **automatically saved here** and survives page refreshes, "
          "browser closes, and app restarts. Filter, compare, restore, or export any run."),
     )
+
+    # ── Revision mode active banner ────────────────────────────────────
+    _rev_pid = st.session_state.get("_revision_parent_id")
+    if _rev_pid:
+        try:
+            import sqlite3 as _sqx; from .database import _DB_PATH as _DBPX
+            _cx = _sqx.connect(_DBPX); _cx.row_factory = _sqx.Row
+            _rx = dict(_cx.execute(
+                "SELECT client_name, project_type, version_number FROM proposals WHERE id=?", (_rev_pid,)
+            ).fetchone() or {})
+            _cx.close()
+            _rev_label = f"Run #{_rev_pid}" + (f" · {_rx['client_name']}" if _rx.get("client_name") else "") + (f" — {_rx['project_type']}" if _rx.get("project_type") else "")
+        except Exception:
+            _rev_label = f"Run #{_rev_pid}"
+        st.markdown(
+            f'<div style="background:linear-gradient(90deg,#1a1040,#0d1635);'
+            f'border:1.5px solid #7b61ff;border-radius:10px;padding:14px 18px;'
+            f'display:flex;align-items:center;justify-content:space-between;gap:12px">'
+            f'  <div>'
+            f'    <span style="color:#a78bfa;font-weight:700;font-size:.85rem">✏️ Revision mode active</span>'
+            f'    <span style="color:#64748b;font-size:.8rem;margin-left:10px">{_rev_label}</span>'
+            f'  </div>'
+            f'  <div style="color:#7b61ff;font-size:.82rem;font-weight:600">'
+            f'    → Click <strong style="color:#e2e8f0">⚡ Business Estimation</strong> tab to upload revised scope'
+            f'  </div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
+
     st.markdown("---")
 
     # ── Category pill badges ───────────────────────────────────────────
@@ -10520,8 +10550,9 @@ def tab_run_library():
                              help="Upload a revised scope doc and re-run estimation as a new version"):
                     st.session_state["_revision_parent_id"] = run["id"]
                     _log_act("revision_start", f"Started revision of Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
-                    st.session_state["_active_main_tab"] = 1  # switch to estimation tab
-                    st.rerun()
+                    st.session_state["_active_main_tab"] = True
+                    # No explicit st.rerun() — the button click already triggers a rerun
+                    # and preserves the current tab selection (avoids the "jumps to Dashboard" bug)
             with a2:
                 if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
                     st.session_state["lib_pending_restore_id"] = run["id"]

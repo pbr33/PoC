@@ -207,19 +207,30 @@ if st.session_state.pop("_active_main_tab", None) is not None:
     _stc.html("""
     <script>
     (function() {
-        function _doClick() {
-            var tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
-            for (var i = 0; i < tabs.length; i++) {
-                if (tabs[i].textContent && tabs[i].textContent.indexOf("Business Estimation") !== -1) {
-                    tabs[i].click(); return;
+        var _n = 0;
+        function _trySwitch() {
+            _n++;
+            if (_n > 40) return;
+            try {
+                var doc = window.parent ? window.parent.document : document;
+                // data-baseweb="tab" is Streamlit's internal attribute; role="tab" is the ARIA fallback
+                var tabs = doc.querySelectorAll('[data-baseweb="tab"]');
+                if (!tabs || !tabs.length) tabs = doc.querySelectorAll('[role="tab"]');
+                for (var i = 0; i < tabs.length; i++) {
+                    var txt = tabs[i].innerText || tabs[i].textContent || '';
+                    if (txt.indexOf('Business Estimation') > -1) {
+                        tabs[i].click();
+                        return;
+                    }
                 }
-            }
-            setTimeout(_doClick, 120);
+            } catch(e) {}
+            setTimeout(_trySwitch, 150);
         }
-        setTimeout(_doClick, 350);
+        // Start immediately after a short grace period for Streamlit to render tabs
+        setTimeout(_trySwitch, 400);
     })();
     </script>
-    """, height=0)
+    """, height=1)
 
 # ═══════════════════════════════════════════════════════════════════════
 #  MAIN TABS

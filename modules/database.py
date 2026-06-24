@@ -112,6 +112,30 @@ def _db_migrate():
 _db_migrate()
 
 
+def _db_add_indexes():
+    """Add indexes for the most common query patterns (safe to call repeatedly)."""
+    con = sqlite3.connect(_DB_PATH)
+    existing = {r[1] for r in con.execute("SELECT type,name FROM sqlite_master WHERE type='index'").fetchall()}
+    for idx_name, ddl in [
+        ("idx_proposals_archived",  "CREATE INDEX IF NOT EXISTS idx_proposals_archived  ON proposals(is_archived)"),
+        ("idx_proposals_category",  "CREATE INDEX IF NOT EXISTS idx_proposals_category  ON proposals(category, is_archived)"),
+        ("idx_proposals_parent",    "CREATE INDEX IF NOT EXISTS idx_proposals_parent    ON proposals(parent_run_id)"),
+        ("idx_proposals_email",     "CREATE INDEX IF NOT EXISTS idx_proposals_email     ON proposals(created_by_email)"),
+        ("idx_proposals_id_desc",   "CREATE INDEX IF NOT EXISTS idx_proposals_id_desc   ON proposals(id DESC)"),
+        ("idx_activity_ts",         "CREATE INDEX IF NOT EXISTS idx_activity_ts         ON user_activity(ts DESC)"),
+        ("idx_activity_email",      "CREATE INDEX IF NOT EXISTS idx_activity_email      ON user_activity(user_email)"),
+    ]:
+        if idx_name not in existing:
+            try:
+                con.execute(ddl)
+            except Exception:
+                pass
+    con.commit()
+    con.close()
+
+_db_add_indexes()
+
+
 def db_save_run(snapshot: dict, full_results: dict) -> int:
     """Insert a run into the DB and return its new row id."""
     tech = snapshot.get("tech_stack", [])
@@ -167,6 +191,18 @@ def db_save_run(snapshot: dict, full_results: dict) -> int:
         con.close()
 
 
+_PROPOSALS_COLS = (
+    "id, ts, category, project_type, client_name, project_title, "
+    "total_hours, duration_weeks, monthly_cost, annual_cost, "
+    "risk_level, risk_score, req_count, tech_stack, model_used, three_point, "
+    "architect_reviewed, review_ts, review_notes, created_by, created_by_email, "
+    "is_archived, review_status, reviewed_by, project_outcome, "
+    "actual_hours, actual_cost, outcome_notes, parent_run_id, "
+    "version_number, version_status, negotiation_stage, "
+    "revision_reason_type, revision_notes, parking_lot, "
+    "competitor_context, submitted_at, is_winning_version, is_baseline_locked"
+)
+
 def db_load_runs(category: str = "All", include_archived: bool = False) -> list:
     """Return list of run dicts (no results_json) newest-first."""
     con = sqlite3.connect(_DB_PATH)
@@ -179,8 +215,9 @@ def db_load_runs(category: str = "All", include_archived: bool = False) -> list:
         if not include_archived:
             conditions.append("(is_archived IS NULL OR is_archived=0)")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        # Explicit column list — intentionally excludes results_json (avg 45 KB/row)
         rows  = con.execute(
-            f"SELECT * FROM proposals {where} ORDER BY id DESC", params
+            f"SELECT {_PROPOSALS_COLS} FROM proposals {where} ORDER BY id DESC", params
         ).fetchall()
     finally:
         con.close()
@@ -195,7 +232,10 @@ def db_load_runs(category: str = "All", include_archived: bool = False) -> list:
             d["three_point"] = json.loads(d.get("three_point", "{}"))
         except Exception:
             d["three_point"] = {}
-        d.pop("results_json", None)
+        try:
+            d["parking_lot"] = json.loads(d.get("parking_lot", "[]"))
+        except Exception:
+            d["parking_lot"] = []
         result.append(d)
     return result
 
@@ -373,25 +413,33 @@ def db_get_version_chain(run_id: int) -> list:
             if not row or not row["parent_run_id"]:
                 break
             root_id = row["parent_run_id"]
-        # Now walk forward: collect all runs whose lineage traces to root_id
-        all_rows = con.execute(
-            "SELECT id, ts, client_name, project_type, total_hours, monthly_cost, "
-            "risk_level, risk_score, review_status, project_outcome, "
-            "version_number, version_status, negotiation_stage, "
-            "revision_reason_type, revision_notes, parking_lot, "
-            "competitor_context, submitted_at, is_winning_version, "
-            "is_baseline_locked, parent_run_id, created_by "
-            "FROM proposals ORDER BY id ASC"
-        ).fetchall()
-        # BFS from root to find all descendants
+        # Load only parent_run_id + id to build the chain map (no heavy columns)
+        _id_map = {r[0]: r[1] for r in con.execute(
+            "SELECT id, parent_run_id FROM proposals ORDER BY id ASC"
+        ).fetchall()}
+        # BFS from root to find all descendant IDs
         chain_ids, queue = set(), [root_id]
         while queue:
             cur = queue.pop(0)
             chain_ids.add(cur)
-            for r in all_rows:
-                if r["parent_run_id"] == cur and r["id"] not in chain_ids:
-                    queue.append(r["id"])
-        result = [dict(r) for r in all_rows if r["id"] in chain_ids]
+            for cid, pid in _id_map.items():
+                if pid == cur and cid not in chain_ids:
+                    queue.append(cid)
+        # Fetch only the display columns for the chain members (by ID)
+        if not chain_ids:
+            return []
+        placeholders = ",".join("?" * len(chain_ids))
+        all_rows = con.execute(
+            f"SELECT id, ts, client_name, project_type, total_hours, monthly_cost, "
+            f"risk_level, risk_score, review_status, project_outcome, "
+            f"version_number, version_status, negotiation_stage, "
+            f"revision_reason_type, revision_notes, parking_lot, "
+            f"competitor_context, submitted_at, is_winning_version, "
+            f"is_baseline_locked, parent_run_id, created_by "
+            f"FROM proposals WHERE id IN ({placeholders}) ORDER BY id ASC",
+            list(chain_ids),
+        ).fetchall()
+        result = [dict(r) for r in all_rows]
         for d in result:
             try: d["parking_lot"] = json.loads(d.get("parking_lot") or "[]")
             except Exception: d["parking_lot"] = []

@@ -9972,15 +9972,15 @@ def _cached_run_json(run_id: int) -> str:
     """Cache the full results blob as a JSON string (5-min TTL, avoids DB hit on every rerun)."""
     return json.dumps(_db_load_results(run_id), indent=2, default=str)
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def _cached_category_counts() -> dict:
     return _db_category_counts()
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def _cached_load_runs(category: str, include_archived: bool) -> list:
     return _db_load_runs(category, include_archived=include_archived)
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=20, show_spinner=False)
 def _cached_activity_log(limit: int) -> list:
     return db_get_activity_log(limit=limit)
 

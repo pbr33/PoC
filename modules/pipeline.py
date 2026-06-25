@@ -2315,11 +2315,8 @@ def tab_presale():
             key="_rev_notes",
             height=80,
         )
-        _comp_ctx = st.text_input(
-            "Competitor Context (optional)",
-            placeholder="e.g. Competing against Vendor X at $120k",
-            key="_rev_competitor_ctx",
-        )
+        # Competitor context hidden for now (kept in session state for DB save)
+        st.session_state.setdefault("_rev_competitor_ctx", "")
 
         # Pre-fill client name from parent
         if not st.session_state.get("client_name") and _cln:
@@ -8174,11 +8171,19 @@ def show_results():
     st.session_state["_live_infra_total"] = _kpi_monthly
     # ─────────────────────────────────────────────────────────────────
 
+    _kpi_hours = safe_int(te.get("total_hours"))
+    _kpi_reqs  = len(safe_list(se.get("requirements")))
+    _kpi_risk  = safe_int(ri.get("overall_score"))
+    # Save exact displayed values so the Review tab "before" panel matches what user saw
+    st.session_state["_last_rendered_kpi"] = {
+        "hours": _kpi_hours, "cost": _kpi_monthly,
+        "risk": _kpi_risk, "reqs": _kpi_reqs,
+    }
     kpis = [
-        ("📝", "Requirements", str(len(safe_list(se.get("requirements")))), "Identified"),
-        ("⏱️", "Hours", str(safe_int(te.get("total_hours"))), "Person-hours"),
+        ("📝", "Requirements", str(_kpi_reqs), "Identified"),
+        ("⏱️", "Hours", str(_kpi_hours), "Person-hours"),
         ("💰", "Infra Cost", "$" + str(_kpi_monthly) + "/mo", "Cloud Infrastructure"),
-        ("⚠️", "Risk", str(safe_int(ri.get("overall_score"))) + "/10", safe_str(ri.get("overall_level"))),
+        ("⚠️", "Risk", str(_kpi_risk) + "/10", safe_str(ri.get("overall_level"))),
         ("🏗️", "Components", str(len(safe_list(ar.get("components")))), "Designed"),
     ]
     cols = st.columns(5)

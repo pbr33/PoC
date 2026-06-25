@@ -523,10 +523,18 @@ def _render_accept_reject_panel():
     sections = st.session_state.get("regen_sections", [])
     if not before or not sections: return
 
-    r_now    = st.session_state.get("processing_results", {})
-    kpi_b    = _get_kpi_snapshot(before)
-    kpi_a    = _get_kpi_snapshot(r_now)
-    delta    = _kpi_delta(kpi_b, kpi_a)
+    r_now = st.session_state.get("processing_results", {})
+    # Use the KPI values that were DISPLAYED to the user (saved at last parent render)
+    # so "before" always matches what was on screen — not a re-derived value that may drift.
+    _saved_kpi = st.session_state.get("_last_rendered_kpi") or {}
+    kpi_b = _get_kpi_snapshot(before)
+    if _saved_kpi:
+        kpi_b["hours"] = _saved_kpi.get("hours", kpi_b["hours"])
+        kpi_b["cost"]  = _saved_kpi.get("cost",  kpi_b["cost"])
+        kpi_b["risk"]  = _saved_kpi.get("risk",  kpi_b["risk"])
+        kpi_b["reqs"]  = _saved_kpi.get("reqs",  kpi_b["reqs"])
+    kpi_a = _get_kpi_snapshot(r_now)
+    delta = _kpi_delta(kpi_b, kpi_a)
 
     def kpi_cell(label, b_val, a_val, unit, diff, pct, reverse_good=False):
         changed = diff != 0
@@ -628,6 +636,7 @@ def _render_accept_reject_panel():
                      use_container_width=True, key="rfb_accept_inline"):
             st.session_state["results_before_regen"] = None
             st.session_state["regen_sections"]       = []
+            st.session_state.pop("_last_rendered_kpi", None)
             st.toast(f"✅ Changes accepted — proposal is now at v{_current_version()}!", icon="✅")
             st.rerun()  # full rerun so ALL tabs re-render with the updated results
     with ac2:

@@ -321,102 +321,156 @@ def generate_drawio_xml(ar: dict, se: dict = None) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 
 def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> str:
-    """Generate a Lucidchart-compatible draw.io export of the AI Vision Architecture.
-    Uses flat cell structure (all parent=1, absolute coords) and zlib compression.
+    """Generate a Lucidchart-compatible draw.io export matching the in-app HTML diagram.
+    Light theme, three-column layout (Sources | Flow Tiers | Consumers), infra bands.
+    All cells parent=1 (flat), absolute coords, zlib compressed.
     """
     import zlib as _zlib, base64 as _b64
-    se = se or {}
-    ce = ce or {}
+    se = se or {}; ce = ce or {}
 
+    # ── XML helpers ──────────────────────────────────────────────────────
     def _x(s):
-        return (str(s) if s else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-    def _label(name, svc, cost=""):
-        parts = [_x(name)]
-        if svc:  parts.append(_x(svc))
-        if cost: parts.append(_x(cost))
-        return "&#xa;".join(parts)
+        return (str(s) if s else "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 
     def _cell(id_, val, style, x, y, w, h):
         return (f'<mxCell id="{id_}" value="{val}" style="{style}" vertex="1" parent="1">'
                 f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>')
 
-    def _edge(id_, src, tgt, color):
-        return (f'<mxCell id="{id_}" value="" style="endArrow=block;endFill=1;'
-                f'strokeColor={color};strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;'
-                f'entryX=0;entryY=0.5;entryDx=0;entryDy=0;" '
-                f'edge="1" source="{src}" target="{tgt}" parent="1">'
-                f'<mxGeometry relative="1" as="geometry"/></mxCell>')
+    def _arrow(id_, x1, y1, x2, y2, color, sw=2, dashed=False):
+        dash = "dashed=1;dashPattern=6 3;" if dashed else ""
+        return (f'<mxCell id="{id_}" value="" style="endArrow=block;endFill=1;{dash}'
+                f'strokeColor={color};strokeWidth={sw};" edge="1" parent="1">'
+                f'<mxGeometry relative="0" as="geometry">'
+                f'<mxPoint x="{x1}" y="{y1}" as="sourcePoint"/>'
+                f'<mxPoint x="{x2}" y="{y2}" as="targetPoint"/>'
+                f'</mxGeometry></mxCell>')
 
-    # ── provider + AI detection ──────────────────────────────────────────
+    # ── Provider & AI detection ──────────────────────────────────────────
     def _provider(se_d):
         txt = (" ".join(str(t) for t in (se_d.get("technology_stack") or []))
-               + " " + str(se_d.get("project_type", ""))).lower()
-        scores = {"aws": sum(1 for k in ["aws","amazon","s3","ec2","lambda","rds","bedrock","eks"] if k in txt),
-                  "gcp": sum(1 for k in ["gcp","google","bigquery","cloud run","vertex","firebase"] if k in txt),
-                  "azure": sum(1 for k in ["azure","cosmos","entra","app service","azure openai"] if k in txt)}
+               + " " + str(se_d.get("project_type",""))).lower()
+        scores = {
+            "aws":   sum(1 for k in ["aws","amazon","s3","ec2","lambda","rds","bedrock","eks"] if k in txt),
+            "gcp":   sum(1 for k in ["gcp","google","bigquery","cloud run","vertex","firebase"] if k in txt),
+            "azure": sum(1 for k in ["azure","cosmos","entra","app service","azure openai","mcp"] if k in txt),
+        }
         best = max(scores, key=scores.get)
         return best if scores[best] >= 1 else "azure"
 
     def _has_ai(se_d, ar_d):
         txt = (" ".join(str(t) for t in (se_d.get("technology_stack") or []))
-               + " " + str(se_d.get("project_type", ""))
+               + " " + str(se_d.get("project_type",""))
                + " " + " ".join(str(c.get("name","")) + " " + str(c.get("azure_service",""))
-                                 for c in (ar_d.get("components") or []) if isinstance(c, dict))).lower()
+                                 for c in (ar_d.get("components") or []) if isinstance(c,dict))).lower()
         return any(k in txt for k in ["openai","gpt","llm","ai search","machine learning",
-                                       "sagemaker","bedrock","vertex","cognitive","copilot","rag"])
+                                       "sagemaker","bedrock","vertex","cognitive","copilot","rag",
+                                       "anthropic","claude","mcp"])
 
     comps    = [c for c in (ar.get("components") or []) if isinstance(c, dict)]
     provider = _provider(se)
     has_ai   = _has_ai(se, ar)
 
-    # ── tier colors ──────────────────────────────────────────────────────
-    _ps = {"aws": "#FF9900", "gcp": "#4285F4", "azure": "#00B4D8"}.get(provider, "#00B4D8")
-    DARK = {
-        "presentation": {"fill": "#0A1825", "stroke": _ps,       "font": "#DBEAFE", "comp": "#0F2235"},
-        "application":  {"fill": "#0A1A25", "stroke": "#06B6D4", "font": "#CFFAFE", "comp": "#0F2030"},
-        "ai":           {"fill": "#1A0D2E", "stroke": "#7B61FF", "font": "#EDE9FE", "comp": "#221040"},
-        "data":         {"fill": "#091A14", "stroke": "#00D4AA", "font": "#D1FAE5", "comp": "#0E2A20"},
-        "security":     {"fill": "#1A0808", "stroke": "#F87171", "font": "#FEE2E2", "comp": "#2A0F0F"},
-        "operations":   {"fill": "#1A1200", "stroke": "#FFD166", "font": "#FEF3C7", "comp": "#2A1E00"},
+    # ── Provider config (matching HTML diagram) ──────────────────────────
+    PROV = {
+        "azure": {"clr":"#0078D4","bg":"#EBF5FB","lbl":"Azure Subscription",
+                  "grad_s":"#003d82","grad_e":"#0091D5"},
+        "aws":   {"clr":"#FF9900","bg":"#FFF8EE","lbl":"AWS Account",
+                  "grad_s":"#232F3E","grad_e":"#FF9900"},
+        "gcp":   {"clr":"#4285F4","bg":"#E8F0FE","lbl":"GCP Project",
+                  "grad_s":"#1a1a2e","grad_e":"#4285F4"},
     }
-    TIER_LABELS = {
-        "presentation": "Presentation & API",  "application": "Application Services",
-        "ai":           "AI & Cognitive",       "data":        "Data & Storage",
-        "security":     "Security & Identity",  "operations":  "Monitoring & Operations",
+    pc = PROV.get(provider, PROV["azure"])
+
+    # ── Tier config: (label, hdr_color, hdr_text, card_bg, border) ──────
+    TIERS = {
+        "presentation": ("Presentation & API" if provider=="azure" else "Frontend & API",
+                          "#0078D4","#FFFFFF","#EBF5FB","#0078D4"),
+        "application":  ("Application Services","#00B294","#FFFFFF","#E6FFF9","#00B294"),
+        "ai":           ("AI & Cognitive" if provider=="azure" else "AI & ML",
+                          "#5C2D91","#FFFFFF","#F5F0FF","#5C2D91"),
+        "data":         ("Data & Storage","#107C10","#FFFFFF","#E8F5E9","#107C10"),
+        "security":     ("Security & Identity","#D83B01","#FFFFFF","#FFF3ED","#D83B01"),
+        "operations":   ("Monitoring & Operations","#C48800","#1A1A1A","#FFFBF0","#C48800"),
     }
 
-    # ── component → tier mapping ─────────────────────────────────────────
+    # ── Icon mapping ─────────────────────────────────────────────────────
+    ICON_MAP = {
+        "api gateway":"🔌","api management":"🔌","mcp gateway":"🔌","mcp":"🔌",
+        "front door":"🌍","cdn":"📡","cloudfront":"🌍","cloud cdn":"🌍",
+        "web app":"🌐","app service":"🌐","react":"⚛","angular":"⚛","static web":"📄",
+        "function":"⚡","functions":"⚡","lambda":"⚡","cloud functions":"⚡",
+        "service bus":"📨","event hub":"📬","sqs":"📨","sns":"📢","pub/sub":"📨",
+        "logic app":"🔗","step functions":"🔗","cloud build":"🚀",
+        "container":"📦","kubernetes":"☸","aks":"☸","ecs":"📦","eks":"☸",
+        "cloud run":"📦","fargate":"📦","app engine":"🌐",
+        "slack":"💬","microsoft 365":"📊","m365":"📊","teams":"💬",
+        "notion":"📝","obsidian":"💎","granola":"🌿","affinity":"🔗",
+        "datasite":"🗄","grata":"🌐","oauth":"🔐","tls":"🔒",
+        "openai":"🤖","cognitive":"🧠","copilot":"🤖","ai search":"🔍",
+        "bedrock":"🤖","sagemaker":"🧠","vertex":"🤖","claude":"🤖","anthropic":"🤖",
+        "language":"💬","speech":"🎤","vision":"👁","form recognizer":"📝",
+        "sql":"🗄","cosmos":"🌀","blob":"💾","storage":"💾","redis":"⚡","cache":"⚡",
+        "data lake":"🏞","synapse":"🔬","databricks":"🔥","s3":"💾","rds":"🗄",
+        "dynamodb":"🌀","bigquery":"🔬","cloud storage":"💾","firestore":"🌀",
+        "key vault":"🔑","entra":"👤","active directory":"👤","firewall":"🛡",
+        "defender":"🛡","iam":"👤","cognito":"🔐","shield":"🛡","waf":"🛡",
+        "secrets manager":"🔑","kms":"🔑","secret manager":"🔑","cloud armor":"🛡",
+        "monitor":"📊","insights":"📈","devops":"🚀","cloudwatch":"📊","log":"📋",
+        "azure monitor":"📊","cloud monitoring":"📊","cloud logging":"📋",
+        "integration":"🔗","messaging":"📨","authentication":"🔐","load balancer":"⚖",
+    }
+
+    def _icon(name, svc=""):
+        s = (str(name)+" "+str(svc)).lower()
+        for kw, ic in ICON_MAP.items():
+            if kw in s: return ic
+        return "☁"
+
+    # ── Tier classification ──────────────────────────────────────────────
     TYPE_MAP = {
         "front door":"presentation","cdn":"presentation","web app":"presentation",
         "react":"presentation","angular":"presentation","api management":"presentation",
         "app service":"presentation","cloudfront":"presentation","api gateway":"presentation",
         "load balancer":"presentation","static web":"presentation","alb":"presentation",
+        "cloud load":"presentation","cloud endpoints":"presentation","cloud cdn":"presentation",
+        "mcp gateway":"presentation","mcp integration":"presentation",
         "function":"application","service bus":"application","event hub":"application",
         "logic app":"application","backend":"application","container":"application",
         "kubernetes":"application","aks":"application","lambda":"application",
         "ecs":"application","eks":"application","sqs":"application","sns":"application",
         "cloud run":"application","pub/sub":"application","fargate":"application",
+        "dataflow":"application","composer":"application","app engine":"application",
+        "slack":"application","microsoft 365":"application","m365":"application",
+        "notion":"application","obsidian":"application","granola":"application",
+        "affinity":"application","datasite":"application","grata":"application",
+        "integration":"application","messaging":"application",
         "openai":"ai","cognitive":"ai","ai search":"ai","machine learning":"ai",
         "bedrock":"ai","sagemaker":"ai","vertex":"ai","speech":"ai","language":"ai",
+        "claude":"ai","anthropic":"ai","copilot":"ai","rekognition":"ai",
+        "comprehend":"ai","textract":"ai","document ai":"ai","dialogflow":"ai",
         "sql":"data","cosmos":"data","blob":"data","storage":"data","redis":"data",
         "data lake":"data","synapse":"data","s3":"data","rds":"data","dynamodb":"data",
-        "bigquery":"data","cloud sql":"data","aurora":"data",
+        "bigquery":"data","cloud sql":"data","aurora":"data","bigtable":"data",
+        "firestore":"data","spanner":"data","alloydb":"data","redshift":"data",
         "key vault":"security","active directory":"security","entra":"security",
         "firewall":"security","defender":"security","iam":"security","waf":"security",
-        "cognito":"security","shield":"security","secrets manager":"security","kms":"security",
+        "cognito":"security","shield":"security","secrets manager":"security",
+        "kms":"security","cloud armor":"security","secret manager":"security",
+        "oauth":"security","tls":"security","authentication":"security","identity":"security",
         "monitor":"operations","insights":"operations","devops":"operations",
         "cloudwatch":"operations","cloudtrail":"operations","cloud logging":"operations",
+        "azure monitor":"operations","cloud monitoring":"operations","log analytics":"operations",
+        "pipeline":"operations","cloud build":"operations","cloud trace":"operations",
     }
 
     def _tier(c):
-        txt = (str(c.get("name","")) + " " + str(c.get("type","")) + " " + str(c.get("azure_service",""))).lower()
+        txt = (str(c.get("name",""))+" "+str(c.get("type",""))+" "+str(c.get("azure_service",""))).lower()
         for kw, t in TYPE_MAP.items():
             if kw in txt: return t
         return "application"
 
-    FLOW_TIERS  = ["presentation", "application", "ai", "data"] if has_ai else ["presentation", "application", "data"]
-    INFRA_TIERS = ["security", "operations"]
+    FLOW_TIERS  = ["presentation","application","ai","data"] if has_ai else ["presentation","application","data"]
+    INFRA_TIERS = ["security","operations"]
     ALL_TIERS   = FLOW_TIERS + INFRA_TIERS
 
     tier_comps: dict = {k: [] for k in ALL_TIERS}
@@ -424,13 +478,88 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
         t = _tier(c)
         tier_comps[t if t in tier_comps else "application"].append(c)
 
-    # ── cost lookup ──────────────────────────────────────────────────────
+    # Use defaults for empty tiers
+    _DEF: dict = {
+        "azure": {
+            "presentation": [{"name":"Front Door","azure_service":"Azure Front Door"},
+                              {"name":"Web App","azure_service":"Azure App Service"},
+                              {"name":"API Management","azure_service":"Azure APIM"}],
+            "application":  [{"name":"Functions","azure_service":"Azure Functions"},
+                              {"name":"Service Bus","azure_service":"Azure Service Bus"},
+                              {"name":"Logic Apps","azure_service":"Azure Logic Apps"}],
+            "ai":           [{"name":"Azure OpenAI","azure_service":"Azure OpenAI Service"},
+                              {"name":"AI Search","azure_service":"Azure AI Search"},
+                              {"name":"Cognitive Svcs","azure_service":"Azure AI Services"}],
+            "data":         [{"name":"SQL Database","azure_service":"Azure SQL Database"},
+                              {"name":"Cosmos DB","azure_service":"Azure Cosmos DB"},
+                              {"name":"Blob Storage","azure_service":"Azure Blob Storage"}],
+            "security":     [{"name":"Key Vault","azure_service":"Azure Key Vault"},
+                              {"name":"Entra ID","azure_service":"Microsoft Entra ID"},
+                              {"name":"Firewall","azure_service":"Azure Firewall"},
+                              {"name":"Defender","azure_service":"Microsoft Defender"}],
+            "operations":   [{"name":"Monitor","azure_service":"Azure Monitor"},
+                              {"name":"App Insights","azure_service":"Application Insights"},
+                              {"name":"DevOps","azure_service":"Azure DevOps"},
+                              {"name":"Log Analytics","azure_service":"Log Analytics"}],
+        },
+        "aws": {
+            "presentation": [{"name":"CloudFront","azure_service":"AWS CloudFront"},
+                              {"name":"API Gateway","azure_service":"AWS API Gateway"},
+                              {"name":"Load Balancer","azure_service":"AWS ALB"}],
+            "application":  [{"name":"Lambda","azure_service":"AWS Lambda"},
+                              {"name":"ECS / EKS","azure_service":"AWS ECS / EKS"},
+                              {"name":"SQS / SNS","azure_service":"AWS SQS / SNS"}],
+            "ai":           [{"name":"Amazon Bedrock","azure_service":"Amazon Bedrock"},
+                              {"name":"SageMaker","azure_service":"Amazon SageMaker"},
+                              {"name":"Rekognition","azure_service":"Amazon Rekognition"}],
+            "data":         [{"name":"S3 Bucket","azure_service":"Amazon S3"},
+                              {"name":"RDS","azure_service":"Amazon RDS"},
+                              {"name":"DynamoDB","azure_service":"Amazon DynamoDB"}],
+            "security":     [{"name":"IAM","azure_service":"AWS IAM"},
+                              {"name":"Cognito","azure_service":"Amazon Cognito"},
+                              {"name":"WAF + Shield","azure_service":"AWS WAF + Shield"},
+                              {"name":"Secrets Manager","azure_service":"AWS Secrets Manager"}],
+            "operations":   [{"name":"CloudWatch","azure_service":"Amazon CloudWatch"},
+                              {"name":"CloudTrail","azure_service":"AWS CloudTrail"},
+                              {"name":"CodePipeline","azure_service":"AWS CodePipeline"},
+                              {"name":"X-Ray","azure_service":"AWS X-Ray"}],
+        },
+        "gcp": {
+            "presentation": [{"name":"Cloud CDN","azure_service":"Google Cloud CDN"},
+                              {"name":"API Gateway","azure_service":"Cloud Endpoints"},
+                              {"name":"Load Balancer","azure_service":"Cloud Load Balancing"}],
+            "application":  [{"name":"Cloud Run","azure_service":"Google Cloud Run"},
+                              {"name":"Cloud Functions","azure_service":"Cloud Functions"},
+                              {"name":"Pub/Sub","azure_service":"Google Cloud Pub/Sub"}],
+            "ai":           [{"name":"Vertex AI","azure_service":"Google Vertex AI"},
+                              {"name":"AI Platform","azure_service":"Google AI Platform"},
+                              {"name":"Document AI","azure_service":"Google Document AI"}],
+            "data":         [{"name":"Cloud Storage","azure_service":"Google Cloud Storage"},
+                              {"name":"Cloud SQL","azure_service":"Google Cloud SQL"},
+                              {"name":"BigQuery","azure_service":"Google BigQuery"}],
+            "security":     [{"name":"Cloud IAM","azure_service":"Google Cloud IAM"},
+                              {"name":"Identity Platform","azure_service":"Identity Platform"},
+                              {"name":"Cloud Armor","azure_service":"Google Cloud Armor"},
+                              {"name":"Secret Manager","azure_service":"GCP Secret Manager"}],
+            "operations":   [{"name":"Cloud Logging","azure_service":"Google Cloud Logging"},
+                              {"name":"Cloud Monitoring","azure_service":"Cloud Monitoring"},
+                              {"name":"Cloud Build","azure_service":"Google Cloud Build"},
+                              {"name":"Cloud Trace","azure_service":"Google Cloud Trace"}],
+        },
+    }
+    defs = _DEF.get(provider, _DEF["azure"])
+    for k in ALL_TIERS:
+        if not tier_comps.get(k):
+            tier_comps[k] = defs.get(k, [])
+
+    # ── Cost lookup ──────────────────────────────────────────────────────
     _cost_map: dict = {}
-    for _ck in ("azure_costs","aws_costs","gcp_costs","cloud_costs","services","infrastructure_costs","cost_breakdown","cloud_services"):
+    for _ck in ("azure_costs","aws_costs","gcp_costs","cloud_costs","cost_breakdown",
+                "cloud_services","services","infrastructure_costs"):
         for _sv in (ce.get(_ck) or []):
             if isinstance(_sv, dict):
                 _sn = str(_sv.get("service","") or _sv.get("name","")).lower()
-                _mc = int(_sv.get("monthly_cost", 0) or 0)
+                _mc = int(_sv.get("monthly_cost",0) or 0)
                 if _sn and _mc: _cost_map[_sn] = _mc
 
     def _cost(name):
@@ -439,116 +568,343 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
             if k[:10] in n or n[:10] in k: return f"${v}/mo"
         return ""
 
-    # ── layout constants ─────────────────────────────────────────────────
+    # ── Sources & Consumers (matching HTML diagram logic) ────────────────
+    tech_stack = list(se.get("technology_stack") or [])
+    data_flow  = list(ar.get("data_flow") or [])
+
+    src_labels: list = []
+    for t in tech_stack:
+        tl = str(t).lower()
+        if any(k in tl for k in ["user","client","sharepoint","excel","file","external","browser","erp","crm","source"]):
+            src_labels.append(str(t))
+    if data_flow:
+        lbl0 = str(data_flow[0])
+        if lbl0 and lbl0 not in src_labels:
+            src_labels.insert(0, lbl0)
+    if not src_labels:
+        src_labels = ["External Users","Data Sources","3rd-party APIs"]
+    src_labels = src_labels[:4]
+
+    cons_labels: list = []
+    for t in tech_stack:
+        tl = str(t).lower()
+        if any(k in tl for k in ["teams","copilot","power bi","portal","dashboard","app","mobile","client app"]):
+            cons_labels.append(str(t))
+    if data_flow and len(data_flow) > 1:
+        lblz = str(data_flow[-1])
+        if lblz and lblz not in cons_labels:
+            cons_labels.insert(0, lblz)
+    if not cons_labels:
+        cons_labels = ["End Users","Web Portal","Mobile App"]
+    cons_labels = cons_labels[:4]
+
+    # ── Layout constants ─────────────────────────────────────────────────
+    PAGE_W   = 1800
     MARGIN   = 30
-    HDR_H    = 54   # title banner height
-    TIER_GAP = 14   # gap between flow columns
-    COMP_W   = 240  # component box width
-    COMP_H   = 64   # component box height
-    COMP_GAP = 12   # gap between components vertically
-    TIER_PAD = 16   # padding inside tier box (top after header)
-    TIER_HDR = 40   # tier header area height
+
+    TITLE_H  = 68    # title banner
+    TITLE_Y  = MARGIN
+    TITLE_W  = PAGE_W - 2*MARGIN
+
+    # Panels
+    SRC_W    = 168
+    SRC_X    = MARGIN
+    CONS_W   = 178
+    CONS_X   = PAGE_W - MARGIN - CONS_W
+    PANEL_GAP= 26    # gap between side panels and center
+
+    # Center (provider subscription outline)
+    CTR_X    = SRC_X + SRC_W + PANEL_GAP
+    CTR_W    = CONS_X - PANEL_GAP - CTR_X
+    SUB_PAD  = 14    # padding inside subscription box
+    SUB_HDR_H= 32    # sub label strip height
+
+    # Flow column geometry
     n_flow   = len(FLOW_TIERS)
+    COL_GAP  = 14
+    avail    = CTR_W - 2*SUB_PAD
+    COL_W    = (avail - (n_flow-1)*COL_GAP) // n_flow
+    CARD_W   = COL_W - 24   # 12px pad each side
+    CARD_H   = 80
+    CARD_GAP = 10
+    HDR_H    = 46    # tier column header height
+    COL_PTOP = HDR_H + 12
+    COL_PBOT = 14
 
-    # Dynamic tier width — fits all columns in 1700px
-    PAGE_W = 1700
-    TIER_W = (PAGE_W - 2 * MARGIN - (n_flow - 1) * TIER_GAP) // n_flow
+    MAX_CARDS = 6
+    max_cards = max(min(len(tier_comps[t]), MAX_CARDS) for t in FLOW_TIERS)
+    max_cards = max(max_cards, 2)
+    COL_H    = COL_PTOP + max_cards*(CARD_H+CARD_GAP) - CARD_GAP + COL_PBOT
 
-    def _tier_h(key):
-        n = max(len(tier_comps[key]), 1)
-        return TIER_HDR + TIER_PAD + n * (COMP_H + COMP_GAP) + TIER_PAD
+    CONTENT_Y= TITLE_Y + TITLE_H + 18
+    SUB_Y    = CONTENT_Y
+    SUB_H    = SUB_HDR_H + 8 + COL_H + 14
+    FLOW_Y   = SUB_Y + SUB_HDR_H + 8    # top of flow columns
 
-    FLOW_Y     = MARGIN + HDR_H + 16
-    max_flow_h = max(_tier_h(t) for t in FLOW_TIERS)
+    # Side card geometry
+    SC_H     = 74
+    SC_GAP   = 12
+    sc_total = lambda n: n*SC_H + (n-1)*SC_GAP
+    src_y0   = FLOW_Y + max(0,(COL_H - sc_total(len(src_labels)))//2)
+    cons_y0  = FLOW_Y + max(0,(COL_H - sc_total(len(cons_labels)))//2)
 
-    INFRA_Y    = FLOW_Y + max_flow_h + 20
-    INFRA_W    = PAGE_W - 2 * MARGIN
-    INFRA_H    = TIER_HDR + TIER_PAD + (COMP_H + COMP_GAP) + TIER_PAD
-    PAGE_H     = INFRA_Y + len(INFRA_TIERS) * (INFRA_H + 10) + MARGIN
+    # Infra bands
+    BAND_X   = CTR_X
+    BAND_W   = CTR_W
+    BAND_GAP = 10
+    BAND_Y0  = SUB_Y + SUB_H + 16
+    # Each infra band height depends on component count (1 row if ≤ 5, else 2 rows)
+    def _band_h(tk):
+        n = len(tier_comps.get(tk,[]))
+        rows = max(1, (n+4)//5)  # up to 5 per row
+        return HDR_H + 12 + rows*(CARD_H+CARD_GAP) - CARD_GAP + 14
 
-    # ── build cells ──────────────────────────────────────────────────────
-    cells = []
-    _id   = 2
-    tier_box_ids: dict = {}
+    band_ys = []
+    by = BAND_Y0
+    for tk in INFRA_TIERS:
+        band_ys.append(by)
+        by += _band_h(tk) + BAND_GAP
 
-    # Title banner
-    client    = str(se.get("client_name", "") or "")
-    ptype     = str(se.get("project_type", "") or "AI Vision Architecture")
-    title_txt = _x((client + " - " if client else "") + ptype)
-    cells.append(_cell(_id, title_txt,
-        "rounded=1;arcSize=4;fillColor=#1A0D2E;strokeColor=#7B61FF;fontColor=#C4B5FD;"
-        "align=center;verticalAlign=middle;fontSize=16;fontStyle=1;",
-        MARGIN, MARGIN, PAGE_W - 2 * MARGIN, HDR_H))
+    # Data flow sequence bar
+    FLOW_SEQ_Y = by + 10
+    FLOW_SEQ_H = 90
+    PAGE_H     = FLOW_SEQ_Y + FLOW_SEQ_H + MARGIN + 10
+
+    # Arrow mid-Y for horizontal tier-to-tier arrows
+    ARR_Y    = FLOW_Y + COL_H // 2
+
+    # ── Build cells ──────────────────────────────────────────────────────
+    cells: list = []
+    _id  = 2
+
+    # Page background
+    cells.append(_cell(_id,"","fillColor=#F0F4FA;strokeColor=none;",0,0,PAGE_W,PAGE_H))
     _id += 1
 
-    # Flow tier boxes (all parent="1", absolute coords)
-    for i, tk in enumerate(FLOW_TIERS):
-        tc  = DARK[tk]
-        tx  = MARGIN + i * (TIER_W + TIER_GAP)
+    # Title banner (dark with gradient look)
+    client  = str(se.get("client_name","") or "")
+    ptype   = str(se.get("project_type","") or "AI Vision Architecture")
+    ttxt    = _x((client+" — " if client else "")+ptype)
+    n_comps = len(comps)
+    total_cost = sum(_cost_map.values())
+    sub_info = f"{n_comps} Components" if n_comps else ""
+    if total_cost: sub_info += f"  |  ${total_cost:,}/mo"
+    if sub_info:   ttxt += "&#xa;" + _x(sub_info)
+    cells.append(_cell(_id, ttxt,
+        "fillColor=#1A0D2E;strokeColor=#7B61FF;strokeWidth=2;"
+        "fontColor=#C4B5FD;align=center;verticalAlign=middle;"
+        "fontSize=17;fontStyle=1;rounded=1;arcSize=3;",
+        MARGIN, TITLE_Y, TITLE_W, TITLE_H))
+    _id += 1
+
+    # Provider subscription outline
+    cells.append(_cell(_id, "☁  "+_x(pc["lbl"]),
+        f"fillColor={pc['bg']};strokeColor={pc['clr']};strokeWidth=2;"
+        f"fontColor={pc['clr']};fontStyle=1;fontSize=11;"
+        "verticalAlign=top;align=left;spacingLeft=12;spacingTop=7;"
+        "rounded=1;arcSize=2;",
+        CTR_X, SUB_Y, CTR_W, SUB_H))
+    _id += 1
+
+    # DATA SOURCES label
+    cells.append(_cell(_id, "DATA&#xa;SOURCES",
+        "fillColor=none;strokeColor=none;fontColor=#4B5563;"
+        "fontStyle=1;fontSize=10;align=center;verticalAlign=bottom;",
+        SRC_X, CONTENT_Y, SRC_W, 28))
+    _id += 1
+
+    # Source cards + ids for arrows
+    src_ids = []
+    for si, src in enumerate(src_labels):
+        ey = src_y0 + si*(SC_H+SC_GAP)
+        ic = ("👤" if any(k in src.lower() for k in ["user","client","person"])
+              else "📁" if any(k in src.lower() for k in ["share","file","excel","doc"])
+              else "🏢" if any(k in src.lower() for k in ["erp","crm","system","3rd","third"])
+              else "🌐")
+        lbl = ic+" "+_x(src)+"&#xa;External Source"
+        cells.append(_cell(_id, lbl,
+            "fillColor=#F8FAFC;strokeColor=#9CA3AF;strokeWidth=1.5;"
+            "fontColor=#374151;fontSize=10;fontStyle=0;"
+            "align=center;verticalAlign=middle;dashed=1;dashPattern=6 3;"
+            "rounded=1;arcSize=12;whiteSpace=wrap;",
+            SRC_X, ey, SRC_W, SC_H))
+        src_ids.append(_id); _id += 1
+
+    # CONSUMERS label
+    cells.append(_cell(_id, "CONSUMERS&#xa;& CLIENTS",
+        f"fillColor=none;strokeColor=none;fontColor={pc['clr']};"
+        "fontStyle=1;fontSize=10;align=center;verticalAlign=bottom;",
+        CONS_X, CONTENT_Y, CONS_W, 28))
+    _id += 1
+
+    # Consumer cards + ids for arrows
+    cons_ids = []
+    for ci2, cons in enumerate(cons_labels):
+        cy2 = cons_y0 + ci2*(SC_H+SC_GAP)
+        c_ic = ("💬" if "teams" in cons.lower()
+                else "🤖" if "copilot" in cons.lower()
+                else "📊" if any(k in cons.lower() for k in ["bi","dashboard","report"])
+                else "📱" if "mobile" in cons.lower()
+                else "👤")
+        lbl = c_ic+" "+_x(cons)+"&#xa;Consumer"
+        cells.append(_cell(_id, lbl,
+            f"fillColor={pc['bg']};strokeColor={pc['clr']};strokeWidth=1.5;"
+            "fontColor=#1E3A5F;fontSize=10;fontStyle=0;"
+            "align=center;verticalAlign=middle;"
+            "rounded=1;arcSize=12;whiteSpace=wrap;",
+            CONS_X, cy2, CONS_W, SC_H))
+        cons_ids.append(_id); _id += 1
+
+    # ── Flow tier columns ────────────────────────────────────────────────
+    tier_box_ids: dict = {}
+    col_xs = []
+    for fi, tk in enumerate(FLOW_TIERS):
+        tx = CTR_X + SUB_PAD + fi*(COL_W+COL_GAP)
+        col_xs.append(tx)
+        label, hdr_c, hdr_t, card_bg, border = TIERS[tk]
         tid = _id
         tier_box_ids[tk] = tid
-        # Tier container box
-        cells.append(_cell(_id, _x(TIER_LABELS[tk]),
-            f"rounded=1;arcSize=4;fillColor={tc['fill']};strokeColor={tc['stroke']};"
-            f"fontColor={tc['font']};fontStyle=1;fontSize=12;verticalAlign=top;",
-            tx, FLOW_Y, TIER_W, max_flow_h))
-        _id += 1
-        # Component boxes (absolute y positions)
-        cx = tx + (TIER_W - COMP_W) // 2
-        cy = FLOW_Y + TIER_HDR + TIER_PAD
-        for comp in tier_comps[tk]:
-            nm  = str(comp.get("name", "Component"))[:36]
-            svc = str(comp.get("azure_service", ""))[:44]
-            cells.append(_cell(_id, _label(nm, svc, _cost(nm)),
-                f"rounded=1;arcSize=12;whiteSpace=wrap;fillColor={tc['comp']};"
-                f"strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
-                cx, cy, COMP_W, COMP_H))
-            _id += 1
-            cy += COMP_H + COMP_GAP
 
-    # Arrows between tier boxes (thick, prominent)
-    for i in range(len(FLOW_TIERS) - 1):
-        cells.append(_edge(_id,
-            tier_box_ids[FLOW_TIERS[i]],
-            tier_box_ids[FLOW_TIERS[i + 1]],
-            DARK[FLOW_TIERS[i]]["stroke"]))
+        # Column container
+        cells.append(_cell(_id, _x(label),
+            f"fillColor={card_bg};strokeColor={border};strokeWidth=2;"
+            f"fontColor={hdr_c};fontStyle=1;fontSize=12;align=center;"
+            "verticalAlign=top;spacingTop=12;rounded=1;arcSize=4;",
+            tx, FLOW_Y, COL_W, COL_H))
         _id += 1
 
-    # Infra bands (Security + Operations) — full width, absolute coords
-    for j, tk in enumerate(INFRA_TIERS):
-        tc  = DARK[tk]
-        iy  = INFRA_Y + j * (INFRA_H + 10)
-        tid = _id
-        tier_box_ids[tk] = tid
-        cells.append(_cell(_id, _x(TIER_LABELS[tk]),
-            f"rounded=1;arcSize=3;fillColor={tc['fill']};strokeColor={tc['stroke']};"
-            f"fontColor={tc['font']};fontStyle=1;fontSize=12;verticalAlign=top;",
-            MARGIN, iy, INFRA_W, INFRA_H))
+        # Component cards
+        cx_c = tx + 12
+        cy_c = FLOW_Y + COL_PTOP
+        shown = 0
+        for comp in tier_comps.get(tk,[]):
+            if shown >= MAX_CARDS: break
+            nm   = str(comp.get("name","Component"))
+            svc  = str(comp.get("azure_service","") or "")
+            ic   = _icon(nm, svc)
+            cost = _cost(nm)
+            lbl  = ic+" "+_x(nm)
+            if svc:  lbl += "&#xa;"+_x(svc)
+            if cost: lbl += "&#xa;"+_x(cost)
+            cells.append(_cell(_id, lbl,
+                f"fillColor=#FFFFFF;strokeColor={border};strokeWidth=1.5;"
+                "fontColor=#1E293B;fontSize=10;align=left;verticalAlign=middle;"
+                "spacingLeft=10;rounded=1;arcSize=8;whiteSpace=wrap;",
+                cx_c, cy_c, CARD_W, CARD_H))
+            _id += 1; cy_c += CARD_H+CARD_GAP; shown += 1
+
+    # ── Horizontal arrows between flow columns ───────────────────────────
+    for fi in range(len(FLOW_TIERS)-1):
+        ax1 = col_xs[fi] + COL_W
+        ax2 = col_xs[fi+1]
+        _, _, _, _, border = TIERS[FLOW_TIERS[fi]]
+        cells.append(_arrow(_id, ax1, ARR_Y, ax2, ARR_Y, border, sw=3))
         _id += 1
-        n_c = len(tier_comps[tk])
+
+    # Arrow: Sources → first tier
+    if src_ids:
+        a_src_y = src_y0 + SC_H//2
+        cells.append(_arrow(_id, SRC_X+SRC_W, a_src_y, col_xs[0], ARR_Y,
+                            "#6B7280", sw=2, dashed=True))
+        _id += 1
+
+    # Arrow: last tier → Consumers
+    if cons_ids:
+        a_cons_y = cons_y0 + SC_H//2
+        cells.append(_arrow(_id, col_xs[-1]+COL_W, ARR_Y, CONS_X, a_cons_y,
+                            pc["clr"], sw=2))
+        _id += 1
+
+    # ── Infra bands ──────────────────────────────────────────────────────
+    for ji, tk in enumerate(INFRA_TIERS):
+        label, hdr_c, hdr_t, card_bg, border = TIERS[tk]
+        iy     = band_ys[ji]
+        bh     = _band_h(tk)
+        n_c    = len(tier_comps.get(tk,[]))
+        max_pc = min(n_c, 5)  # max per row
+
+        cells.append(_cell(_id, _x(label),
+            f"fillColor={card_bg};strokeColor={border};strokeWidth=2;"
+            f"fontColor={hdr_c};fontStyle=1;fontSize=12;align=center;"
+            "verticalAlign=top;spacingTop=10;rounded=1;arcSize=3;",
+            BAND_X, iy, BAND_W, bh))
+        _id += 1
+
         if n_c:
-            gap     = 24
-            cw      = min(COMP_W + 40, max(100, (INFRA_W - 2 * gap) // n_c - gap))
-            total_w = n_c * cw + (n_c - 1) * gap
-            sx      = MARGIN + (INFRA_W - total_w) // 2
-            for k, comp in enumerate(tier_comps[tk]):
-                nm  = str(comp.get("name", "Component"))[:36]
-                svc = str(comp.get("azure_service", ""))[:44]
-                cells.append(_cell(_id, _label(nm, svc, _cost(nm)),
-                    f"rounded=1;arcSize=12;whiteSpace=wrap;fillColor={tc['comp']};"
-                    f"strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
-                    sx + k * (cw + gap), iy + TIER_HDR + TIER_PAD, cw, COMP_H))
+            n_rows = max(1,(n_c+max_pc-1)//max_pc)
+            per_row= (n_c+n_rows-1)//n_rows
+            cw_i   = min(280, max(160,(BAND_W - 2*SUB_PAD - (per_row-1)*COL_GAP)//per_row))
+            total  = per_row*cw_i + (per_row-1)*COL_GAP
+            sx_i   = BAND_X + (BAND_W - total)//2
+            for ki, comp in enumerate(tier_comps.get(tk,[])[:10]):
+                row = ki // per_row; col = ki % per_row
+                nm   = str(comp.get("name","Component"))
+                svc  = str(comp.get("azure_service","") or "")
+                ic   = _icon(nm, svc)
+                cost = _cost(nm)
+                lbl  = ic+" "+_x(nm)
+                if svc:  lbl += "&#xa;"+_x(svc)
+                if cost: lbl += "&#xa;"+_x(cost)
+                cells.append(_cell(_id, lbl,
+                    f"fillColor=#FFFFFF;strokeColor={border};strokeWidth=1.5;"
+                    "fontColor=#1E293B;fontSize=10;align=left;verticalAlign=middle;"
+                    "spacingLeft=10;rounded=1;arcSize=8;whiteSpace=wrap;",
+                    sx_i+col*(cw_i+COL_GAP),
+                    iy+HDR_H+12+row*(CARD_H+CARD_GAP),
+                    cw_i, CARD_H))
                 _id += 1
 
-    # ── compress and return ──────────────────────────────────────────────
+    # ── Data flow sequence ───────────────────────────────────────────────
+    df_items = [str(d) for d in data_flow[:6]] if data_flow else []
+    if not df_items:
+        df_items = [
+            "1. User sends request",
+            f"2. Routes via {pc['lbl']}",
+            "3. AI processes request",
+            "4. Data retrieved/stored",
+            "5. Response returned",
+        ]
+
+    # Header bar
+    cells.append(_cell(_id, "► DATA FLOW SEQUENCE",
+        "fillColor=#1E2A4A;strokeColor=#3B4A6B;"
+        "fontColor=#94A3B8;fontStyle=1;fontSize=10;"
+        "align=left;spacingLeft=16;verticalAlign=middle;rounded=1;arcSize=3;",
+        MARGIN, FLOW_SEQ_Y, PAGE_W-2*MARGIN, 30))
+    _id += 1
+
+    n_steps  = len(df_items)
+    avail_sw = (PAGE_W - 2*MARGIN)
+    sw       = (avail_sw - (n_steps-1)*10) // n_steps
+    step_y   = FLOW_SEQ_Y + 38
+    step_h   = FLOW_SEQ_H - 40
+    circles  = "①②③④⑤⑥"
+
+    for si2, step in enumerate(df_items):
+        sx2 = MARGIN + si2*(sw+10)
+        # Step box
+        cells.append(_cell(_id, circles[si2]+" "+_x(step),
+            f"fillColor=#1E2A4A;strokeColor={pc['clr']};strokeWidth=1.5;"
+            "fontColor=#E2E8F0;fontSize=10;align=left;verticalAlign=middle;"
+            "spacingLeft=10;rounded=1;arcSize=8;whiteSpace=wrap;",
+            sx2, step_y, sw, step_h))
+        _id += 1
+        # Arrow to next step
+        if si2 < n_steps-1:
+            cells.append(_arrow(_id,
+                sx2+sw, step_y+step_h//2,
+                sx2+sw+10, step_y+step_h//2,
+                pc["clr"], sw=2))
+            _id += 1
+
+    # ── Compress and return ──────────────────────────────────────────────
     inner = (
-        f'<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" page="0" '
+        f'<mxGraphModel dx="1422" dy="762" grid="0" gridSize="10" page="0" '
         f'pageWidth="{PAGE_W}" pageHeight="{PAGE_H}" math="0" shadow="0">'
         '<root><mxCell id="0"/><mxCell id="1" parent="0"/>'
         + "".join(cells) +
         '</root></mxGraphModel>'
     )
-    # Raw deflate (strip 2-byte zlib header + 4-byte Adler32 checksum)
     compressed = _zlib.compress(inner.encode("utf-8"), level=9)[2:-4]
     encoded    = _b64.b64encode(compressed).decode("ascii")
     return (

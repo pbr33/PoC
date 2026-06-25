@@ -316,47 +316,32 @@ def generate_drawio_xml(ar: dict, se: dict = None) -> str:
 
 # ═══════════════════════════════════════════════════════════════════════
 #  AI VISION ARCHITECTURE — DRAW.IO EXPORT (Lucidchart-compatible)
-#  Rules that guarantee Lucidchart accepts the file:
-#    1. All cell ids are plain integers (no string ids)
-#    2. No emoji anywhere in the XML
-#    3. HTML labels use only <b>, <br/>, <i>, <font> — no inline style=""
-#    4. HTML label text is XML-attribute-escaped once (never double-encoded)
-#    5. No background="" on mxGraphModel (Lucidchart ignores / rejects it)
-#    6. mxGeometry always has explicit x/y/width/height (no relative-only)
+#  Rules:
+#    1. All cell IDs are plain integers
+#    2. NO HTML labels — plain text only (Lucidchart rejects html=1)
+#    3. Multi-line text via &#xa; (XML newline entity)
+#    4. No emoji anywhere in XML
+#    5. All text XML-attribute-escaped (&amp; &lt; &gt; &quot;)
 # ═══════════════════════════════════════════════════════════════════════
 
 def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> str:
-    """Generate a Lucidchart-compatible draw.io export of the AI Vision Architecture.
-
-    Import into Lucidchart: File → Import → diagrams.net (.drawio)
-    """
+    """Generate a Lucidchart-compatible draw.io export of the AI Vision Architecture."""
     se = se or {}
     ce = ce or {}
 
-    # ── XML helpers ──────────────────────────────────────────────────────
-    # _x     : full-escape raw text → safe XML attribute text (& < > ")
-    # _xa    : escape HTML string for XML attribute (< > " only — NOT &,
-    #          because _x() was already applied to all text nodes inside)
     def _x(s):
+        """Escape raw text for XML attribute value."""
         return (str(s) if s else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
-    def _xa(html: str) -> str:
-        """Encode a composed HTML string for use as an XML attribute value.
-        Text nodes inside were already _x()-escaped so & is already &amp;.
-        We only need to encode the HTML angle-brackets and any stray quotes."""
-        return html.replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-    # HTML label for a component.
-    # Uses ONLY <b>, <br/>, <i>, <font> — NO attributes with quotes inside.
-    # All text content already escaped via _x(); then the whole thing goes
-    # through _xa() before insertion into value="..." XML attribute.
-    def _label(name: str, svc: str, cost: str) -> str:
-        parts = [f"<b>{_x(name)}</b>"]
+    def _plain_label(name: str, svc: str, cost: str) -> str:
+        """Build a plain-text multi-line label using &#xa; line breaks.
+        No HTML tags — safe for Lucidchart import."""
+        parts = [_x(name)]
         if svc:
-            parts.append(f"<br/><i>{_x(svc)}</i>")
+            parts.append(_x(svc))
         if cost:
-            parts.append(f"<br/><font>{_x(cost)}</font>")
-        return "".join(parts)
+            parts.append(_x(cost))
+        return "&#xa;".join(parts)
 
     # ── provider + AI detection ──────────────────────────────────────────
     def _provider(se_d):
@@ -517,7 +502,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     title_val = _x((client + " - " if client else "") + ptype + " - AI Vision Architecture")
     cells.append(_cell(
         _id, title_val,
-        "text;html=0;strokeColor=#7B61FF;fillColor=#1A0D2E;fontColor=#C4B5FD;"
+        "text;strokeColor=#7B61FF;fillColor=#1A0D2E;fontColor=#C4B5FD;"
         "align=center;verticalAlign=middle;fontSize=15;fontStyle=1;",
         MARGIN, MARGIN, PAGE_W - 2 * MARGIN, HEADER_H, parent="1"
     ))
@@ -542,8 +527,8 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
             nm  = str(comp.get("name", "Component"))[:34]
             svc = str(comp.get("azure_service", ""))[:40]
             cells.append(_cell(
-                _id, _xa(_label(nm, svc, _cost(nm))),  # HTML → _xa()
-                f"rounded=1;whiteSpace=wrap;html=1;arcSize=12;"
+                _id, _plain_label(nm, svc, _cost(nm)),
+                f"rounded=1;whiteSpace=wrap;arcSize=12;"
                 f"fillColor={tc['comp']};strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
                 cx, cy, COMP_W, COMP_H, parent=str(sw_id)
             ))
@@ -587,8 +572,8 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
                 svc = str(comp.get("azure_service", ""))[:40]
                 cx  = start_x + k * (cw + gap)
                 cells.append(_cell(
-                    _id, _xa(_label(nm, svc, _cost(nm))),  # HTML → _xa()
-                    f"rounded=1;whiteSpace=wrap;html=1;arcSize=12;"
+                    _id, _plain_label(nm, svc, _cost(nm)),
+                    f"rounded=1;whiteSpace=wrap;arcSize=12;"
                     f"fillColor={tc['comp']};strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
                     cx, SWIMLANE_HDR + 12, cw, COMP_H, parent=str(sw_id)
                 ))

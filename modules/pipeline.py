@@ -4608,7 +4608,7 @@ def _ppt_slides_html(r: dict) -> str:
                 f'</div>')
 
     def check_item(text, size="clamp(9px,1.05vw,14px)"):
-        txt = _e(safe_str(text))[:200]
+        txt = _e(safe_str(text))
         return (f'<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:9px">'
                 f'<span style="color:{C["lime"]};font-size:1.15em;flex-shrink:0;margin-top:0px;'
                 f'line-height:1.45">&#x2610;</span>'
@@ -4700,7 +4700,7 @@ def _ppt_slides_html(r: dict) -> str:
     def S_CIRCLE(title, items, checkbox=True):
         t_html = _e(title).replace("\n","<br>")
         content = "".join(
-            check_item(safe_str(x)[:180]) if checkbox else arrow_item(safe_str(x)[:180])
+            check_item(safe_str(x)) if checkbox else arrow_item(safe_str(x))
             for x in items[:9]
         )
         return f"""
@@ -4718,10 +4718,10 @@ def _ppt_slides_html(r: dict) -> str:
     def S_CIRCLE_HEADER(title, header, items, challenges=None):
         t_html     = _e(title).replace("\n","<br>")
         hdr_html   = _e(header)
-        arrow_rows = "".join(arrow_item(safe_str(x)[:160]) for x in items[:5])
+        arrow_rows = "".join(arrow_item(safe_str(x)) for x in items[:5])
         ch_block   = ""
         if challenges:
-            ch_rows = "".join(arrow_item(safe_str(x)[:155],size="clamp(9px,1vw,13px)") for x in challenges[:4])
+            ch_rows = "".join(arrow_item(safe_str(x),size="clamp(9px,1vw,13px)") for x in challenges[:4])
             ch_block = (
                 f'<div style="font-size:clamp(10px,1.1vw,15px);font-weight:700;color:{C["navy"]};'
                 f'margin:9px 0 5px;display:flex;gap:8px;align-items:center">'
@@ -4906,7 +4906,7 @@ def _ppt_slides_html(r: dict) -> str:
     pattern    = safe_str(ar.get("pattern", ""))
 
     # Scope items — full sentences
-    scope_items = [safe_str(x)[:190] for x in (objectives[:5] if objectives else in_scope[:6])]
+    scope_items = [safe_str(x) for x in (objectives[:5] if objectives else in_scope[:6])]
     if not scope_items:
         scope_items = ["Deliver an enterprise-grade AI solution on time and within budget"]
 
@@ -4915,7 +4915,7 @@ def _ppt_slides_html(r: dict) -> str:
     for rq in reqs[:4]:
         rd  = safe_dict(rq)
         nm  = safe_str(rd.get("title",""))
-        ds  = safe_str(rd.get("description",""))[:80]
+        ds  = safe_str(rd.get("description",""))
         obj_items.append((nm + " – " + ds) if ds and ds != nm else nm)
 
     challenges = [
@@ -4930,7 +4930,7 @@ def _ppt_slides_html(r: dict) -> str:
     for c in comps[:5]:
         cd = safe_dict(c)
         nm = safe_str(cd.get("name",""))
-        ds = safe_str(cd.get("description",""))[:75]
+        ds = safe_str(cd.get("description",""))
         arch_items.append((nm + " – " + ds) if ds else nm)
 
     # Timeline items — with hours and description
@@ -4939,7 +4939,7 @@ def _ppt_slides_html(r: dict) -> str:
         pd  = safe_dict(p)
         nm  = safe_str(pd.get("name","Phase"))
         hrs = safe_int(pd.get("hours",0))
-        ds  = safe_str(pd.get("description",""))[:55]
+        ds  = safe_str(pd.get("description",""))
         ph_items.append(f"{nm} – {hrs} hrs" + (f" · {ds}" if ds else ""))
 
     # Risk items — with mitigation
@@ -4948,7 +4948,7 @@ def _ppt_slides_html(r: dict) -> str:
         rd  = safe_dict(rk)
         nm  = safe_str(rd.get("title",""))
         sev = safe_str(rd.get("severity",""))
-        mit = safe_str(rd.get("mitigation",""))[:65]
+        mit = safe_str(rd.get("mitigation",""))
         risk_items.append(f"{nm} [{sev}]" + (f" – {mit}" if mit else ""))
     if not risk_items:
         risk_items = [
@@ -7050,7 +7050,7 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
             f'<div class="fi">'
             f'<div class="fi-ico">{icon}</div>'
             f'<div style="flex:1;min-width:0">'
-            f'<div class="fi-ttl">{_esc(ttl[:52])}</div>'
+            f'<div class="fi-ttl">{_esc(ttl)}</div>'
             f'<div class="fi-eg">{_esc(example)}</div>'
             f'</div></div>'
         )
@@ -7099,7 +7099,7 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
             f'<div class="bi">'
             f'<div class="bi-ico">{icon}</div>'
             f'<div style="flex:1;min-width:0">'
-            f'<div class="bi-ttl">{_esc(safe_str(obj)[:55])}</div>'
+            f'<div class="bi-ttl">{_esc(safe_str(obj))}</div>'
             f'<div class="bi-eg">{_esc(example)}</div>'
             f'</div></div>'
         )
@@ -7118,8 +7118,8 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
                 f'<div class="fi">'
                 f'<div class="fi-ico">{_esc(safe_str(f.get("icon","⚡")))}</div>'
                 f'<div style="flex:1;min-width:0">'
-                f'<div class="fi-ttl">{_esc(safe_str(f.get("title",""))[:52])}</div>'
-                f'<div class="fi-eg">{_esc(safe_str(f.get("analogy",""))[:105])}</div>'
+                f'<div class="fi-ttl">{_esc(safe_str(f.get("title","")))}</div>'
+                f'<div class="fi-eg">{_esc(safe_str(f.get("analogy","")))}</div>'
                 f'</div></div>'
                 for f in _af[:3]
             )
@@ -7128,8 +7128,8 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
                 f'<div class="bi">'
                 f'<div class="bi-ico">{_esc(safe_str(o.get("icon","✦")))}</div>'
                 f'<div style="flex:1;min-width:0">'
-                f'<div class="bi-ttl">{_esc(safe_str(o.get("title",""))[:52])}</div>'
-                f'<div class="bi-eg">{_esc(safe_str(o.get("example",""))[:110])}</div>'
+                f'<div class="bi-ttl">{_esc(safe_str(o.get("title","")))}</div>'
+                f'<div class="bi-eg">{_esc(safe_str(o.get("example","")))}</div>'
                 f'</div></div>'
                 for o in _ao[:3]
             )

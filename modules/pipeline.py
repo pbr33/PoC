@@ -10632,13 +10632,9 @@ def tab_run_library():
             # Action buttons
             a1, a2, a3, a4, a5 = st.columns(5)
             with a1:
-                if st.button("✏️ Revise", key=f"lib_revise_{run['id']}", use_container_width=True,
-                             help="Upload a revised scope doc and re-run estimation as a new version"):
-                    with st.spinner("Setting up revision mode…"):
-                        st.session_state["_revision_parent_id"] = run["id"]
-                        _log_act("revision_start", f"Started revision of Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
-                        st.session_state["_active_main_tab"] = True
-                    st.toast(f"✏️ Revision mode ready — click ⚡ Business Estimation tab", icon="✏️")
+                st.button("✏️ Revise", key=f"lib_revise_{run['id']}", use_container_width=True,
+                          disabled=True,
+                          help="Revision temporarily disabled")
             with a2:
                 if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
                     st.session_state["lib_pending_restore_id"] = run["id"]

@@ -1217,13 +1217,51 @@ _DOMAIN_META = {
 _DOMAIN_META_DEFAULT = {"color": "#94a3b8", "icon": "📦", "role": "Engineer"}
 
 
+def _infer_domain(name: str) -> str:
+    """Infer domain from stream name when the domain field is empty/missing."""
+    n = name.lower()
+    if any(k in n for k in ("data eng", "dataeng", "lakehouse", "etl", "pipeline", "fabric",
+                             "databricks", "synapse", "warehouse", "data lake", "medallion")):
+        return "Data Engineering"
+    if any(k in n for k in ("ai/ml", "ai & ml", "ai/", "/ml", "machine learn", "rag",
+                             "llm", "nlp", "openai", "cognitive", "langchain", "copilot")):
+        return "AI / ML"
+    if any(k in n for k in ("devops", "dev ops", "& platform", "platform", "deploy",
+                             "infrastructure", "ci/cd", "kubernetes", "aks", "docker",
+                             "terraform", "cloud infra")):
+        return "DevOps"
+    if any(k in n for k in ("qa", "test", "quality assur", "uat", "validation")):
+        return "QA"
+    if any(k in n for k in ("discovery", "design", "architect", "kickoff", "workshop",
+                             "requirement", "inception")):
+        return "Discovery"
+    if any(k in n for k in ("document", "tech writ", "knowledge transfer", "training material")):
+        return "Documentation"
+    if any(k in n for k in ("project manag", "program manag", "scrum master", "agile coach",
+                             "governance")):
+        return "PM"
+    if any(k in n for k in ("sharepoint", "m365", "teams", "power app", "office 365",
+                             "spo", "viva", "power automate", "power bi")):
+        return "SharePoint"
+    if any(k in n for k in ("integrat", "connector", "webhook", "middleware",
+                             "mulesoft", "interface layer")):
+        return "Integration"
+    if any(k in n for k in ("custom app", "application", "react", "angular", "frontend",
+                             "backend", ".net", "blazor", "mvc", "web app", "portal")):
+        return "Custom App"
+    if any(k in n for k in ("feature dev", "implementation", "sprint", "iteration")):
+        return "Feature Development"
+    return ""
+
+
 def _render_delivery_summary(te: dict) -> None:
     """Render the Delivery Intelligence Summary card at the top of the Time tab."""
     phases = safe_list(te.get("phases", []))
     if not phases:
         return
 
-    total_h = safe_int(te.get("total_hours", 0))
+    _ph_list = [safe_dict(p) for p in phases if isinstance(p, dict)]
+    total_h = sum(safe_int(p.get("hours", 0)) for p in _ph_list) or safe_int(te.get("total_hours", 0))
     if not total_h:
         return
 
@@ -1231,29 +1269,39 @@ def _render_delivery_summary(te: dict) -> None:
     try:
         total_weeks = float(dur_str.split()[0])
     except Exception:
+        total_weeks = 0.0
+    if total_weeks <= 0:
         total_weeks = max((float(safe_dict(p).get("duration_weeks", 0)) for p in phases), default=8.0)
+    if total_weeks <= 0:
+        total_weeks = round(total_h / 40 / 0.6, 1)  # rough: 60% utilisation parallel
 
-    # Build stream list
+    # Build stream list — infer domain when field is empty
     streams = []
-    for p in phases:
-        pd   = safe_dict(p)
-        dom  = safe_str(pd.get("domain", ""))
+    for pd in _ph_list:
+        dom = safe_str(pd.get("domain", ""))
+        if not dom:
+            dom = _infer_domain(safe_str(pd.get("name", "")))
         meta = _DOMAIN_META.get(dom, _DOMAIN_META_DEFAULT)
+        h    = safe_int(pd.get("hours", 0))
+        w    = float(pd.get("duration_weeks") or 0)
+        if w <= 0 and h > 0:
+            w = round(h / 40, 1)
         streams.append({
-            "name":  safe_str(pd.get("name", dom)),
+            "name":   safe_str(pd.get("name", dom or "Phase")),
             "domain": dom,
-            "hours": safe_int(pd.get("hours", 0)),
-            "weeks": float(pd.get("duration_weeks") or 0),
-            "color": meta["color"],
-            "icon":  meta["icon"],
-            "role":  meta["role"],
+            "hours":  h,
+            "weeks":  w,
+            "color":  meta["color"],
+            "icon":   meta["icon"],
+            "role":   meta["role"],
         })
 
-    # Critical path: longest parallel stream (excluding overhead streams)
+    # Critical path: longest parallel stream (overhead streams excluded)
     _overhead = {"Discovery", "PM", "Documentation", "QA"}
     par_streams = [s for s in streams if s["domain"] not in _overhead and s["hours"] > 0]
-    critical    = max(par_streams, key=lambda s: s["weeks"]) if par_streams else None
-    disc_weeks  = next((s["weeks"] for s in streams if s["domain"] == "Discovery"), 1.0)
+    critical    = max(par_streams, key=lambda s: s["weeks"]) if par_streams else (
+        max(streams, key=lambda s: s["hours"]) if streams else None)
+    disc_weeks  = next((s["weeks"] for s in streams if s["domain"] == "Discovery"), 0.0)
 
     # Sequential vs parallel saving
     seq_weeks   = sum(s["weeks"] for s in par_streams) + disc_weeks
@@ -1287,12 +1335,14 @@ def _render_delivery_summary(te: dict) -> None:
 
     # ── Effort bars ──────────────────────────────────────────────────────
     bars_html = ""
+    _crit_name = critical["name"] if critical else ""
     for s in sorted(streams, key=lambda x: -x["hours"]):
         if not s["hours"]:
             continue
-        pct     = round(s["hours"] / total_h * 100)
-        is_crit = critical and s["domain"] == critical["domain"]
-        badge   = (
+        pct = round(s["hours"] / total_h * 100)
+        # Use stream name for identity (domain may be "" when inferred; name is always unique)
+        is_crit  = bool(critical and s["name"] == _crit_name)
+        badge    = (
             '<span style="background:rgba(239,68,68,.15);color:#fca5a5;font-size:.58rem;'
             'padding:1px 7px;border-radius:8px;margin-left:7px;font-weight:700">CRITICAL PATH</span>'
             if is_crit else ""
@@ -1311,55 +1361,65 @@ def _render_delivery_summary(te: dict) -> None:
         </div>"""
 
     # ── Gantt timeline ───────────────────────────────────────────────────
-    _max_w   = max(total_weeks, 1.0)
+    # Compute dev_end: when parallel dev finishes (disc + critical_path)
+    crit_weeks = critical["weeks"] if critical else 0.0
+    dev_end    = disc_weeks + crit_weeks
+    # Extend total_weeks if needed to fit all streams
+    _max_w     = max(total_weeks, dev_end, 1.0)
+
     gantt_rows = ""
     for s in streams:
         if not s["hours"]:
             continue
         dom = s["domain"]
+        w   = s["weeks"]
         if dom == "Discovery":
-            start, end = 0.0, s["weeks"]
-        elif dom == "Documentation":
-            end   = _max_w - 0.3
-            start = max(disc_weeks, end - s["weeks"])
-        elif dom == "QA":
-            end   = _max_w - 0.5
-            start = max(disc_weeks, end - s["weeks"])
+            start, end = 0.0, max(w, disc_weeks)
         elif dom == "PM":
             start, end = 0.0, _max_w
+        elif dom == "QA":
+            end   = _max_w
+            start = max(dev_end, _max_w - w)
+        elif dom == "Documentation":
+            end   = _max_w - 0.2
+            start = max(dev_end * 0.5, end - w)
         else:
+            # Parallel dev stream: starts after discovery window
             start = disc_weeks
-            end   = min(_max_w, disc_weeks + s["weeks"])
+            end   = min(_max_w, disc_weeks + w)
 
-        l_pct = round(start / _max_w * 100, 1)
-        w_pct = max(2.0, round((end - start) / _max_w * 100, 1))
-        is_crit = critical and dom == critical["domain"]
+        l_pct   = round(start / _max_w * 100, 1)
+        w_pct   = max(3.0, round((end - start) / _max_w * 100, 1))
+        is_crit = bool(critical and s["name"] == _crit_name)
         ring    = f"outline:2px solid {s['color']};outline-offset:1px;" if is_crit else ""
-        opacity = "1" if is_crit else "0.72"
-        label   = s["name"][:22]
+        opacity = "1" if is_crit else "0.78"
+        label   = s["name"][:26]
 
         gantt_rows += f"""
-        <div style="display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:center;margin-bottom:5px">
-          <div style="font-size:.68rem;color:#94a3b8;text-align:right;padding-right:8px;
+        <div style="display:grid;grid-template-columns:130px 1fr;gap:6px;align-items:center;margin-bottom:5px">
+          <div style="font-size:.64rem;color:#94a3b8;text-align:right;padding-right:8px;
               white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{s['icon']} {s['role']}</div>
-          <div style="background:rgba(255,255,255,.04);border-radius:4px;height:22px;position:relative">
+          <div style="background:rgba(255,255,255,.04);border-radius:4px;height:24px;position:relative">
             <div style="position:absolute;left:{l_pct}%;width:{w_pct}%;height:100%;border-radius:4px;
-                background:linear-gradient(90deg,{s['color']}dd,{s['color']}66);
+                background:linear-gradient(90deg,{s['color']}ee,{s['color']}88);
                 opacity:{opacity};{ring}
-                display:flex;align-items:center;padding:0 6px;overflow:hidden;white-space:nowrap;min-width:4px">
-              <span style="font-size:.62rem;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.5)">{label}</span>
+                display:flex;align-items:center;padding:0 7px;overflow:hidden;white-space:nowrap;min-width:6px">
+              <span style="font-size:.63rem;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.6)">{label}</span>
             </div>
           </div>
         </div>"""
 
-    # Week-marker ruler
-    n_ticks  = min(8, int(_max_w) + 1)
+    # Week-marker ruler — always spans W0 → W{ceil(_max_w)}
+    n_ticks  = min(9, int(_max_w) + 2)
     tick_gap = _max_w / max(n_ticks - 1, 1)
     ruler    = ""
     for i in range(n_ticks):
-        wk  = round(i * tick_gap, 1)
-        lp  = round(wk / _max_w * 100, 1)
-        ruler += f'<div style="position:absolute;left:{lp}%;font-size:.58rem;color:#475569;transform:translateX(-50%)">W{int(wk)}</div>'
+        wk = round(i * tick_gap, 1)
+        lp = round(wk / _max_w * 100, 1)
+        if lp > 100:
+            break
+        ruler += (f'<div style="position:absolute;left:{lp}%;font-size:.58rem;color:#475569;'
+                  f'transform:translateX(-50%);white-space:nowrap">W{int(wk)}</div>')
 
     # Critical path callout
     crit_html = ""
@@ -1379,7 +1439,7 @@ def _render_delivery_summary(te: dict) -> None:
       <div style="font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;
           letter-spacing:1.2px;margin-bottom:18px">⚡ Delivery Intelligence</div>
       {kpi_html}
-      <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:28px">
+      <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:28px">
         <div>
           <div style="font-size:.62rem;color:#475569;text-transform:uppercase;
               letter-spacing:.7px;margin-bottom:12px">Effort by Work Stream</div>
@@ -1387,8 +1447,8 @@ def _render_delivery_summary(te: dict) -> None:
         </div>
         <div>
           <div style="font-size:.62rem;color:#475569;text-transform:uppercase;
-              letter-spacing:.7px;margin-bottom:8px">Team Delivery Plan — parallel execution</div>
-          <div style="position:relative;margin-left:126px;height:14px;margin-bottom:2px">{ruler}</div>
+              letter-spacing:.7px;margin-bottom:8px">Team Delivery Plan — Parallel Execution</div>
+          <div style="position:relative;margin-left:130px;height:16px;margin-bottom:3px">{ruler}</div>
           {gantt_rows}
         </div>
       </div>

@@ -124,14 +124,18 @@ _RESULT_KEY = {
 # ═══════════════════════════════════════════════════════════════════════
 
 def _get_kpi_snapshot(results: dict) -> dict:
-    se  = safe_dict(results.get("semantic_analysis", {}))
-    te  = safe_dict(results.get("time_estimate",     {}))
-    ri  = safe_dict(results.get("risk_assessment",   {}))
-    ce  = safe_dict(results.get("cost_estimate",     {}))
-    svc = safe_list(ce.get("services", []))
+    se     = safe_dict(results.get("semantic_analysis", {}))
+    te     = safe_dict(results.get("time_estimate",     {}))
+    ri     = safe_dict(results.get("risk_assessment",   {}))
+    ce     = safe_dict(results.get("cost_estimate",     {}))
+    svc    = safe_list(ce.get("services", []))
     monthly = sum(safe_int(s.get("monthly_cost", 0)) for s in svc)
+    # Prefer phase-sum for hours so it always matches what the Time tab displays
+    phases = safe_list(te.get("phases", []))
+    phase_sum = sum(safe_int(safe_dict(p).get("hours", 0)) for p in phases if isinstance(p, dict))
+    hours = phase_sum if phase_sum > 0 else safe_int(te.get("total_hours", 0))
     return {
-        "hours":      safe_int(te.get("total_hours", 0)),
+        "hours":      hours,
         "cost":       monthly,
         "risk":       safe_int(ri.get("overall_score", 0)),
         "risk_level": safe_str(ri.get("overall_level", "")),

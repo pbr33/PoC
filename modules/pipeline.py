@@ -5769,6 +5769,13 @@ def run_pipeline_with_feedback(feedback_items: dict):
 
     # ── Snapshot originals for diff/rollback ──────────────────────────
     r = _copy.deepcopy(st.session_state.processing_results)
+    # Normalise total_hours in snapshot to phase-sum so "before" matches what KPIs displayed
+    _snap_te = r.get("time_estimate") or {}
+    _snap_phases = [p for p in safe_list(_snap_te.get("phases")) if isinstance(p, dict)]
+    if _snap_phases:
+        _snap_h = sum(int(p.get("hours", 0) or 0) for p in _snap_phases)
+        if _snap_h > 0:
+            _snap_te["total_hours"] = _snap_h
     st.session_state["results_before_regen"] = _copy.deepcopy(r)
     st.session_state["regen_sections"]       = list(dirty.keys())
 
@@ -8128,6 +8135,12 @@ def show_results():
     ce = safe_dict(r.get("cost_estimate"))
     ri = safe_dict(r.get("risk_assessment"))
     ar = safe_dict(r.get("architecture"))
+
+    # Keep total_hours in sync with phase sums so KPI matches Time tab and before/after panels
+    _kpi_phases = safe_list(te.get("phases", []))
+    _kpi_phase_sum = sum(safe_int(safe_dict(p).get("hours", 0)) for p in _kpi_phases if isinstance(p, dict))
+    if _kpi_phase_sum > 0:
+        te["total_hours"] = _kpi_phase_sum
 
     # ── Compute live infra total BEFORE KPI cards render ──────────────
     _all_cloud_kpi  = _get_all_cloud_costs(ce)

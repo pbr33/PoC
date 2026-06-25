@@ -158,4 +158,49 @@ def inject_css():
     .cmd-item-label{flex:1}
     .cmd-item-hint{font-size:.72rem;color:#64748b;font-family:'JetBrains Mono',monospace}
     #cmdpal-footer{padding:8px 20px;border-top:1px solid #1e2a4a;display:flex;gap:16px;font-size:.72rem;color:#64748b;font-family:'JetBrains Mono',monospace}
+
+    /* ── Custom RUNNING indicator — replaces Streamlit's default stick figure ── */
+    @keyframes eci-spin{to{transform:rotate(360deg)}}
+    @keyframes eci-pulse{0%,100%{opacity:.5;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+    @keyframes eci-dot{0%,80%,100%{opacity:0;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+
+    /* Hide native running person SVG and default text */
+    [data-testid="stStatusWidget"] svg{display:none!important}
+    [data-testid="stStatusWidget"] span{display:none!important}
+
+    /* Restyle the whole status pill */
+    [data-testid="stStatusWidget"]{
+        background:linear-gradient(135deg,rgba(123,97,255,.18),rgba(0,180,216,.12))!important;
+        border:1px solid rgba(123,97,255,.45)!important;
+        border-radius:24px!important;
+        padding:5px 14px 5px 10px!important;
+        backdrop-filter:blur(10px)!important;
+        box-shadow:0 0 18px rgba(123,97,255,.2),0 2px 8px rgba(0,0,0,.4)!important;
+        display:flex!important;align-items:center!important;gap:8px!important;
+        min-width:0!important;
+    }
+
+    /* Spinning ring icon */
+    [data-testid="stStatusWidget"]::before{
+        content:'';
+        display:inline-block;
+        flex-shrink:0;
+        width:16px;height:16px;
+        border:2px solid rgba(123,97,255,.3);
+        border-top-color:#7b61ff;
+        border-right-color:#00d4aa;
+        border-radius:50%;
+        animation:eci-spin .75s linear infinite;
+    }
+
+    /* "AI Processing" label */
+    [data-testid="stStatusWidget"]::after{
+        content:'AI Processing\2026';
+        font-family:'DM Sans','Space Grotesk',sans-serif!important;
+        font-size:.72rem!important;
+        font-weight:600!important;
+        letter-spacing:.04em!important;
+        color:#c4b5fd!important;
+        white-space:nowrap;
+    }
     </style>""", unsafe_allow_html=True)

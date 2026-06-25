@@ -6919,12 +6919,15 @@ def _render_project_explainer(se: dict, r: dict, fn_list: list, nf_list: list, i
         pain_html += (
             f'<div class="pi" style="border-left-color:{sc}">'
             f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">'
-            f'<div class="ptitle">{_esc(pp.get("issue",""))}</div>'
+            f'<div class="ptitle" style="min-width:0;flex:1;white-space:normal;word-break:break-word">'
+            f'{_esc(pp.get("issue",""))}</div>'
             f'<span style="font-size:.56rem;padding:2px 7px;border-radius:5px;font-weight:700;'
-            f'white-space:nowrap;background:rgba(239,68,68,.1);color:{sc}">{sev}</span>'
+            f'white-space:nowrap;flex-shrink:0;background:rgba(239,68,68,.1);color:{sc}">{sev}</span>'
             f'</div>'
-            + (f'<div style="font-size:.64rem;color:#64748b;margin-top:3px;line-height:1.4">'
-               f'{_esc(pp.get("quote",""))[:95]}</div>' if pp.get("quote") else "")
+            + (f'<div style="font-size:.64rem;color:#64748b;margin-top:3px;line-height:1.5;'
+               f'white-space:normal;word-break:break-word;overflow-wrap:break-word">'
+               f'{_esc(pp.get("quote","") or pp.get("description",""))}</div>'
+               if (pp.get("quote") or pp.get("description")) else "")
             + '</div>'
         )
     if not pain_html:
@@ -7169,7 +7172,7 @@ html,body{{width:100%;height:760px;overflow:hidden;
 .ptitle{{font-size:.7rem;font-weight:700;color:#fca5a5;margin-bottom:2px}}
 
 /* ═══ BOTTOM ROW ═══ */
-.bot{{display:grid;grid-template-columns:1fr 1fr 1.35fr;gap:7px;flex-shrink:0;height:210px}}
+.bot{{display:grid;grid-template-columns:1fr 1fr 1.35fr;gap:7px;flex-shrink:0;min-height:210px}}
 .bc{{background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.07);
   border-radius:14px;padding:9px 12px;overflow:hidden;display:flex;flex-direction:column}}
 

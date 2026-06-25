@@ -1850,14 +1850,17 @@ class AzureAI:
                         "justification": t_just,
                     })
             phase_hours = sum(tk["hours"] for tk in clean_tasks)
+            phase_weeks = round(phase_hours / 40, 1) if phase_hours else 0
             clean_ph.append({
-                "name": safe_str(p.get("name", "Phase")),
-                "hours": phase_hours,
-                "low_hours": int(phase_hours * 0.8),
-                "high_hours": int(phase_hours * 1.35),
-                "percentage": safe_str(p.get("percentage", "0%")),
-                "week_label": safe_str(p.get("week_label", "")),
-                "tasks": clean_tasks,
+                "name":           safe_str(p.get("name", "Phase")),
+                "domain":         safe_str(p.get("domain", "")),
+                "hours":          phase_hours,
+                "low_hours":      int(phase_hours * 0.8),
+                "high_hours":     int(phase_hours * 1.35),
+                "percentage":     safe_str(p.get("percentage", "0%")),
+                "duration_weeks": phase_weeks,
+                "week_label":     f"{phase_weeks:.0f}w",
+                "tasks":          clean_tasks,
             })
         data["phases"] = clean_ph
         recalc_total = sum(p["hours"] for p in clean_ph)

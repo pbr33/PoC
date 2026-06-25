@@ -128,12 +128,21 @@ def _get_kpi_snapshot(results: dict) -> dict:
     te     = safe_dict(results.get("time_estimate",     {}))
     ri     = safe_dict(results.get("risk_assessment",   {}))
     ce     = safe_dict(results.get("cost_estimate",     {}))
-    svc    = safe_list(ce.get("services", []))
-    monthly = sum(safe_int(s.get("monthly_cost", 0)) for s in svc)
     # Prefer phase-sum for hours so it always matches what the Time tab displays
-    phases = safe_list(te.get("phases", []))
+    phases    = safe_list(te.get("phases", []))
     phase_sum = sum(safe_int(safe_dict(p).get("hours", 0)) for p in phases if isinstance(p, dict))
-    hours = phase_sum if phase_sum > 0 else safe_int(te.get("total_hours", 0))
+    hours     = phase_sum if phase_sum > 0 else safe_int(te.get("total_hours", 0))
+    # Read monthly cost from any key the AI may have used (azure_costs, aws_costs, services, …)
+    monthly = 0
+    for _ck in ("azure_costs", "aws_costs", "gcp_costs", "cloud_costs",
+                "services", "infrastructure_costs", "cost_breakdown",
+                "monthly_breakdown", "cloud_services"):
+        for _svc in safe_list(ce.get(_ck, [])):
+            monthly += safe_int(safe_dict(_svc).get("monthly_cost", 0))
+    monthly += sum(safe_int(safe_dict(t).get("monthly_cost", 0))
+                   for t in safe_list(ce.get("third_party_costs", [])))
+    if monthly == 0:
+        monthly = safe_int(ce.get("total_monthly_cost", 0))
     return {
         "hours":      hours,
         "cost":       monthly,
@@ -344,9 +353,9 @@ def _bump_version(feedback_summary: str, feedback_ids: list):
         )
 
 def _apply_pending_post_rerun():
-    if st.session_state.get("_rfb_pending_version_bump"):
-        bump = st.session_state.pop("_rfb_pending_version_bump")
-        _bump_version(bump.get("feedback_summary",""), bump.get("feedback_ids",[]))
+    # Version bump is intentionally NOT processed here —
+    # it must fire AFTER the pipeline runs so the snapshot captures the new state.
+    # It is consumed inside _render_rfb_inner after run_pipeline_with_feedback().
     if st.session_state.get("_rfb_pending_status"):
         fb_id, status, ai_sum = st.session_state.pop("_rfb_pending_status")
         update_feedback_status(fb_id, status, ai_sum)
@@ -827,6 +836,10 @@ def _render_rfb_inner(r, se, te, ce, ri, ar, ai_client=None):
             )
             from .pipeline import run_pipeline_with_feedback
             run_pipeline_with_feedback(pending.get("feedback_items", {}))
+            # Version bump here — AFTER pipeline — so snapshot captures new processing_results
+            _vbump = st.session_state.pop("_rfb_pending_version_bump", None)
+            if _vbump:
+                _bump_version(_vbump.get("feedback_summary", ""), _vbump.get("feedback_ids", []))
             _sw.update(
                 label=f"✅  {n_sections} section{'s' if n_sections != 1 else ''} recalibrated — review changes below",
                 state="complete",

@@ -5835,9 +5835,13 @@ def run_pipeline_with_feedback(feedback_items: dict):
 
         revised = ai.regenerate_section(key, original, fb, ctx)
 
-        # Apply time sanitizer to keep numeric types clean
+        # Apply time sanitizer then recompute all derived fields (duration_weeks, week_label, etc.)
         if key == "time" and isinstance(revised, dict):
             revised = ai._sanitize_time(revised)
+            _rev_phases = safe_list(revised.get("phases", []))
+            if _rev_phases:
+                _rev_rc = _recalc_estimate([dict(p) for p in _rev_phases if isinstance(p, dict)])
+                revised.update(_rev_rc)
 
         r[rkey] = revised
 

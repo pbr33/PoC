@@ -316,42 +316,45 @@ def generate_drawio_xml(ar: dict, se: dict = None) -> str:
 
 # ═══════════════════════════════════════════════════════════════════════
 #  AI VISION ARCHITECTURE — DRAW.IO EXPORT (Lucidchart-compatible)
-#  Rules:
-#    1. All cell IDs are plain integers
-#    2. NO HTML labels — plain text only (Lucidchart rejects html=1)
-#    3. Multi-line text via &#xa; (XML newline entity)
-#    4. No emoji anywhere in XML
-#    5. All text XML-attribute-escaped (&amp; &lt; &gt; &quot;)
+#  Format: flat structure (all parent="1") + zlib-compressed + base64
+#  Verified working in Lucidchart via File → Import → diagrams.net
 # ═══════════════════════════════════════════════════════════════════════
 
 def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> str:
-    """Generate a Lucidchart-compatible draw.io export of the AI Vision Architecture."""
+    """Generate a Lucidchart-compatible draw.io export of the AI Vision Architecture.
+    Uses flat cell structure (all parent=1, absolute coords) and zlib compression.
+    """
+    import zlib as _zlib, base64 as _b64
     se = se or {}
     ce = ce or {}
 
     def _x(s):
-        """Escape raw text for XML attribute value."""
         return (str(s) if s else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
-    def _plain_label(name: str, svc: str, cost: str) -> str:
-        """Build a plain-text multi-line label using &#xa; line breaks.
-        No HTML tags — safe for Lucidchart import."""
+    def _label(name, svc, cost=""):
         parts = [_x(name)]
-        if svc:
-            parts.append(_x(svc))
-        if cost:
-            parts.append(_x(cost))
+        if svc:  parts.append(_x(svc))
+        if cost: parts.append(_x(cost))
         return "&#xa;".join(parts)
+
+    def _cell(id_, val, style, x, y, w, h):
+        return (f'<mxCell id="{id_}" value="{val}" style="{style}" vertex="1" parent="1">'
+                f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>')
+
+    def _edge(id_, src, tgt, color):
+        return (f'<mxCell id="{id_}" value="" style="endArrow=block;endFill=1;'
+                f'strokeColor={color};strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;'
+                f'entryX=0;entryY=0.5;entryDx=0;entryDy=0;" '
+                f'edge="1" source="{src}" target="{tgt}" parent="1">'
+                f'<mxGeometry relative="1" as="geometry"/></mxCell>')
 
     # ── provider + AI detection ──────────────────────────────────────────
     def _provider(se_d):
         txt = (" ".join(str(t) for t in (se_d.get("technology_stack") or []))
                + " " + str(se_d.get("project_type", ""))).lower()
-        scores = {
-            "aws":   sum(1 for k in ["aws","amazon","s3","ec2","lambda","rds","bedrock","eks"] if k in txt),
-            "gcp":   sum(1 for k in ["gcp","google","bigquery","cloud run","vertex","firebase"] if k in txt),
-            "azure": sum(1 for k in ["azure","cosmos","entra","app service","azure openai"] if k in txt),
-        }
+        scores = {"aws": sum(1 for k in ["aws","amazon","s3","ec2","lambda","rds","bedrock","eks"] if k in txt),
+                  "gcp": sum(1 for k in ["gcp","google","bigquery","cloud run","vertex","firebase"] if k in txt),
+                  "azure": sum(1 for k in ["azure","cosmos","entra","app service","azure openai"] if k in txt)}
         best = max(scores, key=scores.get)
         return best if scores[best] >= 1 else "azure"
 
@@ -367,28 +370,23 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     provider = _provider(se)
     has_ai   = _has_ai(se, ar)
 
-    # ── per-tier colors (dark neon — no emoji, no unsafe chars) ─────────
-    _pres_stroke = {"aws": "#FF9900", "gcp": "#4285F4", "azure": "#00B4D8"}.get(provider, "#00B4D8")
+    # ── tier colors ──────────────────────────────────────────────────────
+    _ps = {"aws": "#FF9900", "gcp": "#4285F4", "azure": "#00B4D8"}.get(provider, "#00B4D8")
     DARK = {
-        "presentation": {"fill": "#0A1825", "stroke": _pres_stroke,  "font": "#DBEAFE", "comp": "#0F2235"},
-        "application":  {"fill": "#0A1A25", "stroke": "#06B6D4",      "font": "#CFFAFE", "comp": "#0F2030"},
-        "ai":           {"fill": "#1A0D2E", "stroke": "#7B61FF",      "font": "#EDE9FE", "comp": "#221040"},
-        "data":         {"fill": "#091A14", "stroke": "#00D4AA",      "font": "#D1FAE5", "comp": "#0E2A20"},
-        "security":     {"fill": "#1A0808", "stroke": "#F87171",      "font": "#FEE2E2", "comp": "#2A0F0F"},
-        "operations":   {"fill": "#1A1200", "stroke": "#FFD166",      "font": "#FEF3C7", "comp": "#2A1E00"},
+        "presentation": {"fill": "#0A1825", "stroke": _ps,       "font": "#DBEAFE", "comp": "#0F2235"},
+        "application":  {"fill": "#0A1A25", "stroke": "#06B6D4", "font": "#CFFAFE", "comp": "#0F2030"},
+        "ai":           {"fill": "#1A0D2E", "stroke": "#7B61FF", "font": "#EDE9FE", "comp": "#221040"},
+        "data":         {"fill": "#091A14", "stroke": "#00D4AA", "font": "#D1FAE5", "comp": "#0E2A20"},
+        "security":     {"fill": "#1A0808", "stroke": "#F87171", "font": "#FEE2E2", "comp": "#2A0F0F"},
+        "operations":   {"fill": "#1A1200", "stroke": "#FFD166", "font": "#FEF3C7", "comp": "#2A1E00"},
+    }
+    TIER_LABELS = {
+        "presentation": "Presentation & API",  "application": "Application Services",
+        "ai":           "AI & Cognitive",       "data":        "Data & Storage",
+        "security":     "Security & Identity",  "operations":  "Monitoring & Operations",
     }
 
-    # ── tier labels — raw text (escaped by _x() when placed in value="") ─
-    tier_labels = {
-        "presentation": "Presentation & API",
-        "application":  "Application Services",
-        "ai":           "AI & Cognitive",
-        "data":         "Data & Storage",
-        "security":     "Security & Identity",
-        "operations":   "Monitoring & Operations",
-    }
-
-    # ── tier classification ──────────────────────────────────────────────
+    # ── component → tier mapping ─────────────────────────────────────────
     TYPE_MAP = {
         "front door":"presentation","cdn":"presentation","web app":"presentation",
         "react":"presentation","angular":"presentation","api management":"presentation",
@@ -411,191 +409,154 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
         "cloudwatch":"operations","cloudtrail":"operations","cloud logging":"operations",
     }
 
-    def get_tier(c):
-        txt = (str(c.get("name","")) + " " + str(c.get("type",""))
-               + " " + str(c.get("azure_service",""))).lower()
-        for kw, tier in TYPE_MAP.items():
-            if kw in txt:
-                return tier
+    def _tier(c):
+        txt = (str(c.get("name","")) + " " + str(c.get("type","")) + " " + str(c.get("azure_service",""))).lower()
+        for kw, t in TYPE_MAP.items():
+            if kw in txt: return t
         return "application"
 
-    FLOW_TIERS  = ["presentation", "application", "ai", "data"] if has_ai else \
-                  ["presentation", "application", "data"]
+    FLOW_TIERS  = ["presentation", "application", "ai", "data"] if has_ai else ["presentation", "application", "data"]
     INFRA_TIERS = ["security", "operations"]
     ALL_TIERS   = FLOW_TIERS + INFRA_TIERS
 
     tier_comps: dict = {k: [] for k in ALL_TIERS}
     for c in comps:
-        t = get_tier(c)
+        t = _tier(c)
         tier_comps[t if t in tier_comps else "application"].append(c)
 
-    # ── monthly cost lookup ──────────────────────────────────────────────
+    # ── cost lookup ──────────────────────────────────────────────────────
     _cost_map: dict = {}
-    for _ck in ("azure_costs","aws_costs","gcp_costs","cloud_costs","services",
-                "infrastructure_costs","cost_breakdown","cloud_services"):
+    for _ck in ("azure_costs","aws_costs","gcp_costs","cloud_costs","services","infrastructure_costs","cost_breakdown","cloud_services"):
         for _sv in (ce.get(_ck) or []):
             if isinstance(_sv, dict):
                 _sn = str(_sv.get("service","") or _sv.get("name","")).lower()
                 _mc = int(_sv.get("monthly_cost", 0) or 0)
-                if _sn and _mc:
-                    _cost_map[_sn] = _mc
+                if _sn and _mc: _cost_map[_sn] = _mc
 
-    def _cost(name: str) -> str:
+    def _cost(name):
         n = name.lower()
         for k, v in _cost_map.items():
-            if k[:10] in n or n[:10] in k:
-                return f"${v}/mo"
+            if k[:10] in n or n[:10] in k: return f"${v}/mo"
         return ""
 
-    # ── layout ───────────────────────────────────────────────────────────
-    PAGE_W       = 1700
-    MARGIN       = 44
-    HEADER_H     = 60
-    COMP_W       = 200
-    COMP_H       = 70
-    COMP_GAP     = 14
-    SWIMLANE_HDR = 38
-    SWIMLANE_PAD = 16
-    FLOW_Y       = MARGIN + HEADER_H + 20
-    n_flow       = len(FLOW_TIERS)
-    TIER_W       = (PAGE_W - 2 * MARGIN - (n_flow - 1) * 20) // n_flow
+    # ── layout constants ─────────────────────────────────────────────────
+    MARGIN   = 30
+    HDR_H    = 54   # title banner height
+    TIER_GAP = 14   # gap between flow columns
+    COMP_W   = 240  # component box width
+    COMP_H   = 64   # component box height
+    COMP_GAP = 12   # gap between components vertically
+    TIER_PAD = 16   # padding inside tier box (top after header)
+    TIER_HDR = 40   # tier header area height
+    n_flow   = len(FLOW_TIERS)
 
-    def _sh(key):
+    # Dynamic tier width — fits all columns in 1700px
+    PAGE_W = 1700
+    TIER_W = (PAGE_W - 2 * MARGIN - (n_flow - 1) * TIER_GAP) // n_flow
+
+    def _tier_h(key):
         n = max(len(tier_comps[key]), 1)
-        return SWIMLANE_HDR + SWIMLANE_PAD + n * (COMP_H + COMP_GAP) + SWIMLANE_PAD
+        return TIER_HDR + TIER_PAD + n * (COMP_H + COMP_GAP) + TIER_PAD
 
-    max_flow_h = max(_sh(t) for t in FLOW_TIERS)
-    INFRA_Y    = FLOW_Y + max_flow_h + 30
+    FLOW_Y     = MARGIN + HDR_H + 16
+    max_flow_h = max(_tier_h(t) for t in FLOW_TIERS)
+
+    INFRA_Y    = FLOW_Y + max_flow_h + 20
     INFRA_W    = PAGE_W - 2 * MARGIN
-    INFRA_H    = 40 + 3 * (COMP_H + COMP_GAP)
-    PAGE_H     = INFRA_Y + len(INFRA_TIERS) * (INFRA_H + 16) + MARGIN
+    INFRA_H    = TIER_HDR + TIER_PAD + (COMP_H + COMP_GAP) + TIER_PAD
+    PAGE_H     = INFRA_Y + len(INFRA_TIERS) * (INFRA_H + 10) + MARGIN
 
-    # ── assemble cells as raw XML strings ───────────────────────────────
-    # All IDs are plain integers starting from 2.
-    # Swimlane IDs are integers stored in tier_cell_ids[tier_key].
-    cells      = []
-    _id        = 2   # monotonic counter
-    tier_cell_ids: dict = {}   # tier_key -> integer id
+    # ── build cells ──────────────────────────────────────────────────────
+    cells = []
+    _id   = 2
+    tier_box_ids: dict = {}
 
-    def _cell(id_, value_attr, style, x, y, w, h, parent, vertex="1"):
-        # value_attr must already be fully XML-attribute-safe:
-        #   plain text  → call _x(raw_text) before passing here
-        #   HTML label  → call _xa(_label(...)) before passing here
-        return (
-            f'<mxCell id="{id_}" value="{value_attr}" style="{style}" '
-            f'vertex="{vertex}" parent="{parent}">'
-            f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/>'
-            f'</mxCell>'
-        )
-
-    def _edge(id_, style, src, tgt, parent="1"):
-        return (
-            f'<mxCell id="{id_}" value="" style="{style}" '
-            f'edge="1" source="{src}" target="{tgt}" parent="{parent}">'
-            f'<mxGeometry relative="1" as="geometry"/>'
-            f'</mxCell>'
-        )
-
-    # title banner
-    client = str(se.get("client_name", "") or "")
-    ptype  = str(se.get("project_type", "") or "AI Vision Architecture")
-    title_val = _x((client + " - " if client else "") + ptype + " - AI Vision Architecture")
-    cells.append(_cell(
-        _id, title_val,
-        "text;strokeColor=#7B61FF;fillColor=#1A0D2E;fontColor=#C4B5FD;"
-        "align=center;verticalAlign=middle;fontSize=15;fontStyle=1;",
-        MARGIN, MARGIN, PAGE_W - 2 * MARGIN, HEADER_H, parent="1"
-    ))
+    # Title banner
+    client    = str(se.get("client_name", "") or "")
+    ptype     = str(se.get("project_type", "") or "AI Vision Architecture")
+    title_txt = _x((client + " - " if client else "") + ptype)
+    cells.append(_cell(_id, title_txt,
+        "rounded=1;arcSize=4;fillColor=#1A0D2E;strokeColor=#7B61FF;fontColor=#C4B5FD;"
+        "align=center;verticalAlign=middle;fontSize=16;fontStyle=1;",
+        MARGIN, MARGIN, PAGE_W - 2 * MARGIN, HDR_H))
     _id += 1
 
-    # flow tier swimlanes + their components
-    for i, tier_key in enumerate(FLOW_TIERS):
-        tc   = DARK[tier_key]
-        sx   = MARGIN + i * (TIER_W + 20)
-        sw_id = _id
-        tier_cell_ids[tier_key] = sw_id
-        cells.append(_cell(
-            sw_id, _x(tier_labels[tier_key]),        # plain text → _x()
-            f"swimlane;startSize={SWIMLANE_HDR};fillColor={tc['fill']};"
-            f"strokeColor={tc['stroke']};fontColor={tc['font']};fontStyle=1;fontSize=11;",
-            sx, FLOW_Y, TIER_W, max_flow_h, parent="1"
-        ))
+    # Flow tier boxes (all parent="1", absolute coords)
+    for i, tk in enumerate(FLOW_TIERS):
+        tc  = DARK[tk]
+        tx  = MARGIN + i * (TIER_W + TIER_GAP)
+        tid = _id
+        tier_box_ids[tk] = tid
+        # Tier container box
+        cells.append(_cell(_id, _x(TIER_LABELS[tk]),
+            f"rounded=1;arcSize=4;fillColor={tc['fill']};strokeColor={tc['stroke']};"
+            f"fontColor={tc['font']};fontStyle=1;fontSize=12;verticalAlign=top;",
+            tx, FLOW_Y, TIER_W, max_flow_h))
         _id += 1
-        cx = (TIER_W - COMP_W) // 2
-        cy = SWIMLANE_HDR + SWIMLANE_PAD
-        for comp in tier_comps[tier_key]:
-            nm  = str(comp.get("name", "Component"))[:34]
-            svc = str(comp.get("azure_service", ""))[:40]
-            cells.append(_cell(
-                _id, _plain_label(nm, svc, _cost(nm)),
-                f"rounded=1;whiteSpace=wrap;arcSize=12;"
-                f"fillColor={tc['comp']};strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
-                cx, cy, COMP_W, COMP_H, parent=str(sw_id)
-            ))
+        # Component boxes (absolute y positions)
+        cx = tx + (TIER_W - COMP_W) // 2
+        cy = FLOW_Y + TIER_HDR + TIER_PAD
+        for comp in tier_comps[tk]:
+            nm  = str(comp.get("name", "Component"))[:36]
+            svc = str(comp.get("azure_service", ""))[:44]
+            cells.append(_cell(_id, _label(nm, svc, _cost(nm)),
+                f"rounded=1;arcSize=12;whiteSpace=wrap;fillColor={tc['comp']};"
+                f"strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
+                cx, cy, COMP_W, COMP_H))
             _id += 1
             cy += COMP_H + COMP_GAP
 
-    # arrows between flow tiers
+    # Arrows between tier boxes (thick, prominent)
     for i in range(len(FLOW_TIERS) - 1):
-        src = tier_cell_ids[FLOW_TIERS[i]]
-        tgt = tier_cell_ids[FLOW_TIERS[i + 1]]
-        ac  = DARK[FLOW_TIERS[i]]["stroke"]
-        cells.append(_edge(
-            _id,
-            f"endArrow=block;endFill=1;strokeColor={ac};strokeWidth=2;"
-            "exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;",
-            str(src), str(tgt)
-        ))
+        cells.append(_edge(_id,
+            tier_box_ids[FLOW_TIERS[i]],
+            tier_box_ids[FLOW_TIERS[i + 1]],
+            DARK[FLOW_TIERS[i]]["stroke"]))
         _id += 1
 
-    # infra bands
-    for j, tier_key in enumerate(INFRA_TIERS):
-        tc    = DARK[tier_key]
-        iy    = INFRA_Y + j * (INFRA_H + 16)
-        sw_id = _id
-        tier_cell_ids[tier_key] = sw_id
-        cells.append(_cell(
-            sw_id, _x(tier_labels[tier_key]),        # plain text → _x()
-            f"swimlane;startSize={SWIMLANE_HDR};fillColor={tc['fill']};"
-            f"strokeColor={tc['stroke']};fontColor={tc['font']};fontStyle=1;fontSize=11;",
-            MARGIN, iy, INFRA_W, INFRA_H, parent="1"
-        ))
+    # Infra bands (Security + Operations) — full width, absolute coords
+    for j, tk in enumerate(INFRA_TIERS):
+        tc  = DARK[tk]
+        iy  = INFRA_Y + j * (INFRA_H + 10)
+        tid = _id
+        tier_box_ids[tk] = tid
+        cells.append(_cell(_id, _x(TIER_LABELS[tk]),
+            f"rounded=1;arcSize=3;fillColor={tc['fill']};strokeColor={tc['stroke']};"
+            f"fontColor={tc['font']};fontStyle=1;fontSize=12;verticalAlign=top;",
+            MARGIN, iy, INFRA_W, INFRA_H))
         _id += 1
-        n_c = len(tier_comps[tier_key])
+        n_c = len(tier_comps[tk])
         if n_c:
-            gap     = 20
-            cw      = min(COMP_W + 20, max(80, (INFRA_W - gap * 2) // n_c - gap))
+            gap     = 24
+            cw      = min(COMP_W + 40, max(100, (INFRA_W - 2 * gap) // n_c - gap))
             total_w = n_c * cw + (n_c - 1) * gap
-            start_x = (INFRA_W - total_w) // 2
-            for k, comp in enumerate(tier_comps[tier_key]):
-                nm  = str(comp.get("name", "Component"))[:34]
-                svc = str(comp.get("azure_service", ""))[:40]
-                cx  = start_x + k * (cw + gap)
-                cells.append(_cell(
-                    _id, _plain_label(nm, svc, _cost(nm)),
-                    f"rounded=1;whiteSpace=wrap;arcSize=12;"
-                    f"fillColor={tc['comp']};strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
-                    cx, SWIMLANE_HDR + 12, cw, COMP_H, parent=str(sw_id)
-                ))
+            sx      = MARGIN + (INFRA_W - total_w) // 2
+            for k, comp in enumerate(tier_comps[tk]):
+                nm  = str(comp.get("name", "Component"))[:36]
+                svc = str(comp.get("azure_service", ""))[:44]
+                cells.append(_cell(_id, _label(nm, svc, _cost(nm)),
+                    f"rounded=1;arcSize=12;whiteSpace=wrap;fillColor={tc['comp']};"
+                    f"strokeColor={tc['stroke']};fontColor={tc['font']};fontSize=10;",
+                    sx + k * (cw + gap), iy + TIER_HDR + TIER_PAD, cw, COMP_H))
                 _id += 1
 
-    # ── assemble final XML ───────────────────────────────────────────────
-    cells_xml = "\n        ".join(cells)
+    # ── compress and return ──────────────────────────────────────────────
+    inner = (
+        f'<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" page="0" '
+        f'pageWidth="{PAGE_W}" pageHeight="{PAGE_H}" math="0" shadow="0">'
+        '<root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+        + "".join(cells) +
+        '</root></mxGraphModel>'
+    )
+    # Raw deflate (strip 2-byte zlib header + 4-byte Adler32 checksum)
+    compressed = _zlib.compress(inner.encode("utf-8"), level=9)[2:-4]
+    encoded    = _b64.b64encode(compressed).decode("ascii")
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<mxfile host="app.diagrams.net" version="21.0.0">'
         '<diagram id="eci_ai_vision" name="AI Vision Architecture">'
-        f'<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" '
-        f'tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" '
-        f'pageWidth="{PAGE_W}" pageHeight="{PAGE_H}" math="0" shadow="0">'
-        '<root>'
-        '<mxCell id="0"/>'
-        '<mxCell id="1" parent="0"/>'
-        f'{cells_xml}'
-        '</root>'
-        '</mxGraphModel>'
-        '</diagram>'
-        '</mxfile>'
+        + encoded +
+        '</diagram></mxfile>'
     )
 
 

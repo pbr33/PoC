@@ -324,6 +324,8 @@ div[data-testid="stTextInput"] input:focus{border-color:rgba(0,170,220,.45) !imp
     box-shadow:0 0 0 3px rgba(0,170,220,.1),0 2px 12px rgba(0,170,220,.07) !important;
     background:rgba(0,170,220,.03) !important;outline:none !important}
 div[data-testid="stTextInput"] input::placeholder{color:rgba(255,255,255,.17) !important}
+div[data-testid="InputInstructions"]{display:none !important}
+small[data-testid="InputInstructions"]{display:none !important}
 
 /* Sign In submit button */
 div[data-testid="stFormSubmitButton"] button{

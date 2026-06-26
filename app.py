@@ -1495,16 +1495,34 @@ def _build_dynamic_time(semantic, text=""):
     phases = []
     week_counter = 1
 
-    # Phase 1: Discovery & Design — granular sub-tasks
+    # Phase 1: Discovery & Design — complexity-scaled granular sub-tasks
+    # Simpler projects need less discovery ceremony; complex ones need full rigour
+    _disc_scale = 0.65 if complexity <= 4 else 0.85 if complexity <= 6 else 1.0
     disc_tasks = [
-        {"name": "Stakeholder kickoff meeting", "role": "PM", "hours": 4, "justification": "Initial alignment meeting with key stakeholders and sponsors"},
-        {"name": "Requirements elicitation workshops", "role": "BA", "hours": max(4, min(8, n_total)), "justification": str(n_total) + " requirements — structured workshops to capture needs"},
-        {"name": "Requirements documentation and traceability matrix", "role": "BA", "hours": max(4, min(8, n_func)), "justification": "Document " + str(n_func) + " functional requirements with acceptance criteria"},
-        {"name": "Scope document review and gap analysis", "role": "BA", "hours": max(4, min(6, n_total // 2 + 2)), "justification": "Analyze uploaded scope documents, identify gaps"},
-        {"name": "Solution architecture design", "role": "Architect", "hours": max(4, min(8, len(tech) + 1)), "justification": str(len(tech)) + " technologies — design component interactions and data flows"},
-        {"name": "Architecture review and sign-off", "role": "Architect", "hours": 4, "justification": "Peer review, stakeholder walkthrough, and formal sign-off"},
-        {"name": "Security and compliance assessment", "role": "Security", "hours": max(4, min(8, n_nf * 2)), "justification": str(n_nf) + " non-functional requirements — security controls mapping"},
-        {"name": "Risk identification and mitigation planning", "role": "PM", "hours": 4, "justification": "Initial risk register creation and response strategies"},
+        {"name": "Stakeholder kickoff meeting", "role": "PM",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Initial alignment meeting with key stakeholders and sponsors"},
+        {"name": "Requirements elicitation workshops", "role": "BA",
+         "hours": max(3, int(min(8, n_total) * _disc_scale)),
+         "justification": str(n_total) + " requirements — structured workshops to capture needs"},
+        {"name": "Requirements documentation and traceability matrix", "role": "BA",
+         "hours": max(3, int(min(8, n_func) * _disc_scale)),
+         "justification": "Document " + str(n_func) + " functional requirements with acceptance criteria"},
+        {"name": "Scope document review and gap analysis", "role": "BA",
+         "hours": max(2, int(min(6, n_total // 2 + 2) * _disc_scale)),
+         "justification": "Analyze uploaded scope documents, identify gaps and ambiguities"},
+        {"name": "Solution architecture design", "role": "Architect",
+         "hours": max(3, int(min(8, len(tech) + 1) * _disc_scale)),
+         "justification": str(len(tech)) + " technologies — design component interactions and data flows"},
+        {"name": "Architecture review and sign-off", "role": "Architect",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Peer review, stakeholder walkthrough, and formal sign-off"},
+        {"name": "Security and compliance assessment", "role": "Security",
+         "hours": max(2, int(min(8, n_nf * 2) * _disc_scale)),
+         "justification": str(n_nf) + " non-functional requirements — security controls mapping"},
+        {"name": "Risk identification and mitigation planning", "role": "PM",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Initial risk register creation and response strategies"},
     ]
     disc_total = sum(t["hours"] for t in disc_tasks)
     for t in disc_tasks:
@@ -1637,6 +1655,12 @@ def _build_dynamic_time(semantic, text=""):
             dev_tasks.append({"name": sname, "role": srole, "hours": shrs,
                               "low_hours": int(shrs * 0.8), "high_hours": int(shrs * 1.35),
                               "justification": sjust})
+    # Bug fixes sub-task — ~10% of dev effort, covers defects and edge-case polish
+    _pre_dev = sum(t["hours"] for t in dev_tasks)
+    _bug_hrs = max(8, min(24, int(_pre_dev * 0.10)))
+    dev_tasks.append({"name": "Bug fixes and stabilization", "role": "Developer",
+                      "hours": _bug_hrs, "low_hours": int(_bug_hrs * 0.8), "high_hours": int(_bug_hrs * 1.35),
+                      "justification": "Resolve defects found during development, edge-case handling and code quality improvements"})
     dev_total = sum(t["hours"] for t in dev_tasks)
     dev_weeks = max(2, dev_total // 40)
     phases.append({"name": "Core Development", "week_label": "Week " + str(week_counter) + "-" + str(week_counter + dev_weeks - 1),
@@ -1689,52 +1713,8 @@ def _build_dynamic_time(semantic, text=""):
                        "percentage": "", "tasks": int_tasks})
         week_counter += int_weeks
 
-    # Phase 5: Testing & QA — granular sub-tasks capped at 8h each
-    test_base = max(40, dev_total // 3)
-    test_tasks = [
-        {"name": "Test strategy and plan creation", "role": "QA Lead", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Define test approach, entry/exit criteria, environment needs"},
-        {"name": "Test case design and documentation", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Write test cases for " + str(n_func) + " functional requirements"},
-        {"name": "Test environment setup and data prep", "role": "QA", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Configure test env, seed test data, mock services"},
-        {"name": "Unit test execution and defect logging", "role": "QA", "hours": min(8, max(4, int(test_base * 0.12))),
-         "low_hours": min(6, max(3, int(test_base * 0.10))), "high_hours": min(8, max(5, int(test_base * 0.16))),
-         "justification": "Execute unit tests across " + str(n_func) + " features, log defects"},
-        {"name": "Integration test execution", "role": "QA", "hours": min(8, max(4, int(test_base * 0.15))),
-         "low_hours": min(6, max(3, int(test_base * 0.12))), "high_hours": min(8, max(5, int(test_base * 0.20))),
-         "justification": "End-to-end workflow validation across " + str(len(tech)) + " components"},
-        {"name": "API and contract testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Validate API contracts, request/response schemas, error codes"},
-        {"name": "Performance and load testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Response time benchmarks, concurrent user load, stress testing"},
-        {"name": "Security and penetration testing", "role": "Security", "hours": min(8, max(4, int(test_base * 0.08))),
-         "low_hours": min(6, max(3, int(test_base * 0.06))), "high_hours": min(8, max(5, int(test_base * 0.11))),
-         "justification": "OWASP top 10, auth bypass, injection testing, vulnerability scan"},
-        {"name": "Regression testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Verify existing functionality after changes and bug fixes"},
-        {"name": "UAT test case preparation", "role": "BA", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Create UAT scripts, acceptance criteria checklist for stakeholders"},
-        {"name": "UAT execution and feedback coordination", "role": "BA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Facilitate UAT sessions, collect sign-offs, track feedback"},
-        {"name": "Defect triage and resolution support", "role": "QA", "hours": min(8, max(4, int(test_base * 0.05))),
-         "low_hours": min(6, max(3, int(test_base * 0.04))), "high_hours": min(8, max(5, int(test_base * 0.07))),
-         "justification": "Prioritize defects, verify fixes, update test results"},
-    ]
-    test_total = sum(t["hours"] for t in test_tasks)
-    test_weeks = max(1, test_total // 40)
-    phases.append({"name": "Testing & QA", "week_label": "Week " + str(week_counter) + ("-" + str(week_counter + test_weeks - 1) if test_weeks > 1 else ""),
-                   "hours": test_total, "low_hours": int(test_total * 0.8), "high_hours": int(test_total * 1.35),
-                   "percentage": "", "tasks": test_tasks})
-    week_counter += test_weeks
+    # QA & Testing is NOT a separate estimated phase at ECI — it runs as a parallel
+    # activity (30% of dev effort) shown in the Gantt chart only, not in hour totals.
 
     # Phase 6: Deployment & Go-Live — granular sub-tasks capped at 8h
     deploy_tasks = [
@@ -1773,30 +1753,38 @@ def _build_dynamic_time(semantic, text=""):
                    "percentage": "", "tasks": deploy_tasks})
     week_counter += deploy_weeks
 
-    # Phase 7: Documentation & Training — granular sub-tasks capped at 8h
-    doc_tasks = [
-        {"name": "Architecture and design documentation", "role": "Architect", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Technical design doc, component diagrams for " + str(len(tech)) + " technologies"},
-        {"name": "API documentation and developer guide", "role": "Developer", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "OpenAPI specs, code samples, integration guide"},
-        {"name": "Operations and runbook documentation", "role": "DevOps", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "Incident procedures, scaling guide, troubleshooting"},
-        {"name": "End-user guide creation", "role": "Writer", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "User manual with screenshots, FAQ, quick-start guide"},
-        {"name": "Admin guide and configuration docs", "role": "Writer", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "System admin procedures, configuration reference"},
-        {"name": "Knowledge transfer session (technical)", "role": "Architect", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "Technical deep-dive with client development team"},
-        {"name": "Knowledge transfer session (end users)", "role": "BA", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "End-user training workshop with hands-on exercises"},
-    ]
+    # Phase 7: Documentation & Training — complexity-scaled, scope-aware
+    # Simple projects don't need full enterprise documentation suites
+    _doc_scale = 0.55 if complexity <= 4 else 0.75 if complexity <= 6 else 1.0
+    doc_tasks = []
+    doc_tasks.append({"name": "Architecture and design documentation", "role": "Architect",
+        "hours": max(3, int(6 * _doc_scale)),
+        "justification": "Technical design doc, component diagrams for " + str(len(tech)) + " technologies"})
+    doc_tasks.append({"name": "API documentation and developer guide", "role": "Developer",
+        "hours": max(2, int(6 * _doc_scale)),
+        "justification": "OpenAPI specs, code samples, integration guide"})
+    if complexity >= 4:
+        doc_tasks.append({"name": "Operations and runbook documentation", "role": "DevOps",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "Incident procedures, scaling guide, troubleshooting"})
+    if has_frontend:
+        doc_tasks.append({"name": "End-user guide creation", "role": "Writer",
+            "hours": max(2, int(6 * _doc_scale)),
+            "justification": "User manual with screenshots, FAQ, quick-start guide"})
+    if complexity >= 5:
+        doc_tasks.append({"name": "Admin guide and configuration docs", "role": "Writer",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "System admin procedures, configuration reference"})
+    doc_tasks.append({"name": "Knowledge transfer session (technical)", "role": "Architect",
+        "hours": max(2, int(4 * _doc_scale)),
+        "justification": "Technical deep-dive with client development team"})
+    if complexity >= 5 or has_frontend:
+        doc_tasks.append({"name": "Knowledge transfer session (end users)", "role": "BA",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "End-user training workshop with hands-on exercises"})
+    for t in doc_tasks:
+        t["low_hours"] = int(t["hours"] * 0.8)
+        t["high_hours"] = int(t["hours"] * 1.35)
     doc_total = sum(t["hours"] for t in doc_tasks)
     doc_weeks = max(1, doc_total // 40)
     phases.append({"name": "Documentation & Training", "week_label": "Week " + str(week_counter),
@@ -5958,16 +5946,34 @@ def _build_dynamic_time(semantic, text=""):
     phases = []
     week_counter = 1
 
-    # Phase 1: Discovery & Design — granular sub-tasks
+    # Phase 1: Discovery & Design — complexity-scaled granular sub-tasks
+    # Simpler projects need less discovery ceremony; complex ones need full rigour
+    _disc_scale = 0.65 if complexity <= 4 else 0.85 if complexity <= 6 else 1.0
     disc_tasks = [
-        {"name": "Stakeholder kickoff meeting", "role": "PM", "hours": 4, "justification": "Initial alignment meeting with key stakeholders and sponsors"},
-        {"name": "Requirements elicitation workshops", "role": "BA", "hours": max(4, min(8, n_total)), "justification": str(n_total) + " requirements — structured workshops to capture needs"},
-        {"name": "Requirements documentation and traceability matrix", "role": "BA", "hours": max(4, min(8, n_func)), "justification": "Document " + str(n_func) + " functional requirements with acceptance criteria"},
-        {"name": "Scope document review and gap analysis", "role": "BA", "hours": max(4, min(6, n_total // 2 + 2)), "justification": "Analyze uploaded scope documents, identify gaps"},
-        {"name": "Solution architecture design", "role": "Architect", "hours": max(4, min(8, len(tech) + 1)), "justification": str(len(tech)) + " technologies — design component interactions and data flows"},
-        {"name": "Architecture review and sign-off", "role": "Architect", "hours": 4, "justification": "Peer review, stakeholder walkthrough, and formal sign-off"},
-        {"name": "Security and compliance assessment", "role": "Security", "hours": max(4, min(8, n_nf * 2)), "justification": str(n_nf) + " non-functional requirements — security controls mapping"},
-        {"name": "Risk identification and mitigation planning", "role": "PM", "hours": 4, "justification": "Initial risk register creation and response strategies"},
+        {"name": "Stakeholder kickoff meeting", "role": "PM",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Initial alignment meeting with key stakeholders and sponsors"},
+        {"name": "Requirements elicitation workshops", "role": "BA",
+         "hours": max(3, int(min(8, n_total) * _disc_scale)),
+         "justification": str(n_total) + " requirements — structured workshops to capture needs"},
+        {"name": "Requirements documentation and traceability matrix", "role": "BA",
+         "hours": max(3, int(min(8, n_func) * _disc_scale)),
+         "justification": "Document " + str(n_func) + " functional requirements with acceptance criteria"},
+        {"name": "Scope document review and gap analysis", "role": "BA",
+         "hours": max(2, int(min(6, n_total // 2 + 2) * _disc_scale)),
+         "justification": "Analyze uploaded scope documents, identify gaps and ambiguities"},
+        {"name": "Solution architecture design", "role": "Architect",
+         "hours": max(3, int(min(8, len(tech) + 1) * _disc_scale)),
+         "justification": str(len(tech)) + " technologies — design component interactions and data flows"},
+        {"name": "Architecture review and sign-off", "role": "Architect",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Peer review, stakeholder walkthrough, and formal sign-off"},
+        {"name": "Security and compliance assessment", "role": "Security",
+         "hours": max(2, int(min(8, n_nf * 2) * _disc_scale)),
+         "justification": str(n_nf) + " non-functional requirements — security controls mapping"},
+        {"name": "Risk identification and mitigation planning", "role": "PM",
+         "hours": max(2, int(4 * _disc_scale)),
+         "justification": "Initial risk register creation and response strategies"},
     ]
     disc_total = sum(t["hours"] for t in disc_tasks)
     for t in disc_tasks:
@@ -6100,6 +6106,12 @@ def _build_dynamic_time(semantic, text=""):
             dev_tasks.append({"name": sname, "role": srole, "hours": shrs,
                               "low_hours": int(shrs * 0.8), "high_hours": int(shrs * 1.35),
                               "justification": sjust})
+    # Bug fixes sub-task — ~10% of dev effort, covers defects and edge-case polish
+    _pre_dev = sum(t["hours"] for t in dev_tasks)
+    _bug_hrs = max(8, min(24, int(_pre_dev * 0.10)))
+    dev_tasks.append({"name": "Bug fixes and stabilization", "role": "Developer",
+                      "hours": _bug_hrs, "low_hours": int(_bug_hrs * 0.8), "high_hours": int(_bug_hrs * 1.35),
+                      "justification": "Resolve defects found during development, edge-case handling and code quality improvements"})
     dev_total = sum(t["hours"] for t in dev_tasks)
     dev_weeks = max(2, dev_total // 40)
     phases.append({"name": "Core Development", "week_label": "Week " + str(week_counter) + "-" + str(week_counter + dev_weeks - 1),
@@ -6152,52 +6164,8 @@ def _build_dynamic_time(semantic, text=""):
                        "percentage": "", "tasks": int_tasks})
         week_counter += int_weeks
 
-    # Phase 5: Testing & QA — granular sub-tasks capped at 8h each
-    test_base = max(40, dev_total // 3)
-    test_tasks = [
-        {"name": "Test strategy and plan creation", "role": "QA Lead", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Define test approach, entry/exit criteria, environment needs"},
-        {"name": "Test case design and documentation", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Write test cases for " + str(n_func) + " functional requirements"},
-        {"name": "Test environment setup and data prep", "role": "QA", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Configure test env, seed test data, mock services"},
-        {"name": "Unit test execution and defect logging", "role": "QA", "hours": min(8, max(4, int(test_base * 0.12))),
-         "low_hours": min(6, max(3, int(test_base * 0.10))), "high_hours": min(8, max(5, int(test_base * 0.16))),
-         "justification": "Execute unit tests across " + str(n_func) + " features, log defects"},
-        {"name": "Integration test execution", "role": "QA", "hours": min(8, max(4, int(test_base * 0.15))),
-         "low_hours": min(6, max(3, int(test_base * 0.12))), "high_hours": min(8, max(5, int(test_base * 0.20))),
-         "justification": "End-to-end workflow validation across " + str(len(tech)) + " components"},
-        {"name": "API and contract testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Validate API contracts, request/response schemas, error codes"},
-        {"name": "Performance and load testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Response time benchmarks, concurrent user load, stress testing"},
-        {"name": "Security and penetration testing", "role": "Security", "hours": min(8, max(4, int(test_base * 0.08))),
-         "low_hours": min(6, max(3, int(test_base * 0.06))), "high_hours": min(8, max(5, int(test_base * 0.11))),
-         "justification": "OWASP top 10, auth bypass, injection testing, vulnerability scan"},
-        {"name": "Regression testing", "role": "QA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Verify existing functionality after changes and bug fixes"},
-        {"name": "UAT test case preparation", "role": "BA", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Create UAT scripts, acceptance criteria checklist for stakeholders"},
-        {"name": "UAT execution and feedback coordination", "role": "BA", "hours": min(8, max(4, int(test_base * 0.10))),
-         "low_hours": min(6, max(3, int(test_base * 0.08))), "high_hours": min(8, max(5, int(test_base * 0.14))),
-         "justification": "Facilitate UAT sessions, collect sign-offs, track feedback"},
-        {"name": "Defect triage and resolution support", "role": "QA", "hours": min(8, max(4, int(test_base * 0.05))),
-         "low_hours": min(6, max(3, int(test_base * 0.04))), "high_hours": min(8, max(5, int(test_base * 0.07))),
-         "justification": "Prioritize defects, verify fixes, update test results"},
-    ]
-    test_total = sum(t["hours"] for t in test_tasks)
-    test_weeks = max(1, test_total // 40)
-    phases.append({"name": "Testing & QA", "week_label": "Week " + str(week_counter) + ("-" + str(week_counter + test_weeks - 1) if test_weeks > 1 else ""),
-                   "hours": test_total, "low_hours": int(test_total * 0.8), "high_hours": int(test_total * 1.35),
-                   "percentage": "", "tasks": test_tasks})
-    week_counter += test_weeks
+    # QA & Testing is NOT a separate estimated phase at ECI — it runs as a parallel
+    # activity (30% of dev effort) shown in the Gantt chart only, not in hour totals.
 
     # Phase 6: Deployment & Go-Live — granular sub-tasks capped at 8h
     deploy_tasks = [
@@ -6236,30 +6204,38 @@ def _build_dynamic_time(semantic, text=""):
                    "percentage": "", "tasks": deploy_tasks})
     week_counter += deploy_weeks
 
-    # Phase 7: Documentation & Training — granular sub-tasks capped at 8h
-    doc_tasks = [
-        {"name": "Architecture and design documentation", "role": "Architect", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "Technical design doc, component diagrams for " + str(len(tech)) + " technologies"},
-        {"name": "API documentation and developer guide", "role": "Developer", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "OpenAPI specs, code samples, integration guide"},
-        {"name": "Operations and runbook documentation", "role": "DevOps", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "Incident procedures, scaling guide, troubleshooting"},
-        {"name": "End-user guide creation", "role": "Writer", "hours": 6,
-         "low_hours": 5, "high_hours": 8,
-         "justification": "User manual with screenshots, FAQ, quick-start guide"},
-        {"name": "Admin guide and configuration docs", "role": "Writer", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "System admin procedures, configuration reference"},
-        {"name": "Knowledge transfer session (technical)", "role": "Architect", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "Technical deep-dive with client development team"},
-        {"name": "Knowledge transfer session (end users)", "role": "BA", "hours": 4,
-         "low_hours": 3, "high_hours": 5,
-         "justification": "End-user training workshop with hands-on exercises"},
-    ]
+    # Phase 7: Documentation & Training — complexity-scaled, scope-aware
+    # Simple projects don't need full enterprise documentation suites
+    _doc_scale = 0.55 if complexity <= 4 else 0.75 if complexity <= 6 else 1.0
+    doc_tasks = []
+    doc_tasks.append({"name": "Architecture and design documentation", "role": "Architect",
+        "hours": max(3, int(6 * _doc_scale)),
+        "justification": "Technical design doc, component diagrams for " + str(len(tech)) + " technologies"})
+    doc_tasks.append({"name": "API documentation and developer guide", "role": "Developer",
+        "hours": max(2, int(6 * _doc_scale)),
+        "justification": "OpenAPI specs, code samples, integration guide"})
+    if complexity >= 4:
+        doc_tasks.append({"name": "Operations and runbook documentation", "role": "DevOps",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "Incident procedures, scaling guide, troubleshooting"})
+    if has_frontend:
+        doc_tasks.append({"name": "End-user guide creation", "role": "Writer",
+            "hours": max(2, int(6 * _doc_scale)),
+            "justification": "User manual with screenshots, FAQ, quick-start guide"})
+    if complexity >= 5:
+        doc_tasks.append({"name": "Admin guide and configuration docs", "role": "Writer",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "System admin procedures, configuration reference"})
+    doc_tasks.append({"name": "Knowledge transfer session (technical)", "role": "Architect",
+        "hours": max(2, int(4 * _doc_scale)),
+        "justification": "Technical deep-dive with client development team"})
+    if complexity >= 5 or has_frontend:
+        doc_tasks.append({"name": "Knowledge transfer session (end users)", "role": "BA",
+            "hours": max(2, int(4 * _doc_scale)),
+            "justification": "End-user training workshop with hands-on exercises"})
+    for t in doc_tasks:
+        t["low_hours"] = int(t["hours"] * 0.8)
+        t["high_hours"] = int(t["hours"] * 1.35)
     doc_total = sum(t["hours"] for t in doc_tasks)
     doc_weeks = max(1, doc_total // 40)
     phases.append({"name": "Documentation & Training", "week_label": "Week " + str(week_counter),

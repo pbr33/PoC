@@ -8508,8 +8508,42 @@ def show_results():
 
             _max_week = max(g["end"] for g in _gantt_phases) if _gantt_phases else _total_weeks
 
+            # QA parallel band — starts at Design phase, runs through last Dev/Integration phase
+            # Not in hour totals; shown as a parallel overlay only
+            _qa_start = 1
+            _qa_end   = _max_week
+            for g in _gantt_phases:
+                gn = g["name"].lower()
+                if any(k in gn for k in ["discovery","design"]):
+                    _qa_start = g["start"]
+                if any(k in gn for k in ["development","integration"]):
+                    _qa_end = g["end"]
+
             import plotly.graph_objects as _go2
             fig_gantt = _go2.Figure()
+
+            # QA parallel band rendered first (behind other bars)
+            fig_gantt.add_trace(_go2.Bar(
+                name="QA & Testing (parallel)",
+                x=[_qa_end - _qa_start + 1],
+                y=["🔍 QA & Testing"],
+                base=[_qa_start - 1],
+                orientation="h",
+                marker=dict(
+                    color="rgba(0,212,170,0.18)",
+                    line=dict(color="#00D4AA", width=2),
+                ),
+                text="  QA & Testing  ← parallel activity, starts at Design",
+                textposition="inside",
+                insidetextanchor="start",
+                hovertemplate=(
+                    "<b>QA & Testing</b><br>"
+                    f"Weeks {_qa_start}–{_qa_end} (parallel)<br>"
+                    "Runs alongside Design → Development<br>"
+                    "Included in ECI delivery — not billed separately<extra></extra>"
+                ),
+            ))
+
             for i, g in enumerate(_gantt_phases):
                 fig_gantt.add_trace(_go2.Bar(
                     name=g["name"],
@@ -8553,7 +8587,7 @@ def show_results():
                 template="plotly_dark",
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 barmode="overlay",
-                height=max(200, len(_gantt_phases) * 52 + 80),
+                height=max(200, (len(_gantt_phases) + 1) * 52 + 80),
                 xaxis=dict(
                     title="Week", tickmode="linear", tick0=1, dtick=1,
                     range=[0, _max_week + 1],

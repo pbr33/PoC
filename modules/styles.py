@@ -161,46 +161,54 @@ def inject_css():
 
     /* ── Custom RUNNING indicator — replaces Streamlit's default stick figure ── */
     @keyframes eci-spin{to{transform:rotate(360deg)}}
-    @keyframes eci-pulse{0%,100%{opacity:.5;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
-    @keyframes eci-dot{0%,80%,100%{opacity:0;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
 
-    /* Hide native running person SVG and default text */
-    [data-testid="stStatusWidget"] svg{display:none!important}
-    [data-testid="stStatusWidget"] span{display:none!important}
-
-    /* Restyle the whole status pill */
+    /* Pill container */
     [data-testid="stStatusWidget"]{
+        position:relative!important;
         background:linear-gradient(135deg,rgba(123,97,255,.18),rgba(0,180,216,.12))!important;
         border:1px solid rgba(123,97,255,.45)!important;
         border-radius:24px!important;
-        padding:5px 14px 5px 10px!important;
+        padding:6px 14px 6px 36px!important;
         backdrop-filter:blur(10px)!important;
         box-shadow:0 0 18px rgba(123,97,255,.2),0 2px 8px rgba(0,0,0,.4)!important;
-        display:flex!important;align-items:center!important;gap:8px!important;
-        min-width:0!important;
+        min-width:148px!important;
+        overflow:hidden!important;
+        display:block!important;
     }
 
-    /* Spinning ring icon */
+    /* Hide ALL native content (SVG person, "RUNNING..." text, any buttons) */
+    [data-testid="stStatusWidget"] *{
+        display:none!important;
+        visibility:hidden!important;
+    }
+
+    /* Spinning ring — absolutely positioned at left */
     [data-testid="stStatusWidget"]::before{
         content:'';
-        display:inline-block;
-        flex-shrink:0;
+        position:absolute;
+        left:10px;top:50%;
+        transform:translateY(-50%);
         width:16px;height:16px;
-        border:2px solid rgba(123,97,255,.3);
+        border:2.5px solid rgba(123,97,255,.25);
         border-top-color:#7b61ff;
         border-right-color:#00d4aa;
         border-radius:50%;
         animation:eci-spin .75s linear infinite;
+        display:block!important;
+        visibility:visible!important;
     }
 
-    /* "AI Processing" label */
+    /* "AI Processing..." label */
     [data-testid="stStatusWidget"]::after{
-        content:'AI Processing\2026';
+        content:'AI Processing...';
+        display:block!important;
+        visibility:visible!important;
         font-family:'DM Sans','Space Grotesk',sans-serif!important;
         font-size:.72rem!important;
         font-weight:600!important;
         letter-spacing:.04em!important;
         color:#c4b5fd!important;
         white-space:nowrap;
+        line-height:1;
     }
     </style>""", unsafe_allow_html=True)

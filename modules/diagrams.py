@@ -321,26 +321,34 @@ def generate_drawio_xml(ar: dict, se: dict = None) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 
 def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> str:
-    """Generate a Lucidchart-compatible draw.io export matching the in-app HTML diagram.
+    """Generate a Lucidchart-compatible draw.io export — uncompressed XML format.
     Light theme, three-column layout (Sources | Flow Tiers | Consumers), infra bands.
-    All cells parent=1 (flat), absolute coords, zlib compressed.
+    All cells parent=1 (flat), absolute coords, html=1 labels, no compression.
     """
-    import zlib as _zlib, base64 as _b64
     se = se or {}; ce = ce or {}
 
     # ── XML helpers ──────────────────────────────────────────────────────
-    def _x(s):
+    def _xe(s):
+        """XML-escape plain text for use in an attribute value."""
         return (str(s) if s else "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 
+    # Keep _x as alias so existing call-sites don't break
+    _x = _xe
+
+    def _hv(*parts):
+        """Build an html=1 cell value with line breaks between non-empty parts.
+        Returns XML-attribute-safe string where &lt;br&gt; renders as <br> in html=1 mode."""
+        return "&lt;br&gt;".join(_xe(str(p)) for p in parts if p)
+
     def _cell(id_, val, style, x, y, w, h):
-        return (f'<mxCell id="{id_}" value="{val}" style="{style}" vertex="1" parent="1">'
+        return (f'<mxCell id="{id_}" value="{val}" style="{style}html=1;" vertex="1" parent="1">'
                 f'<mxGeometry x="{x}" y="{y}" width="{w}" height="{h}" as="geometry"/></mxCell>')
 
     def _arrow(id_, x1, y1, x2, y2, color, sw=2, dashed=False):
         dash = "dashed=1;dashPattern=6 3;" if dashed else ""
         return (f'<mxCell id="{id_}" value="" style="endArrow=block;endFill=1;{dash}'
-                f'strokeColor={color};strokeWidth={sw};" edge="1" parent="1">'
-                f'<mxGeometry relative="0" as="geometry">'
+                f'strokeColor={color};strokeWidth={sw};html=1;" edge="1" parent="1">'
+                f'<mxGeometry relative="1" as="geometry">'
                 f'<mxPoint x="{x1}" y="{y1}" as="sourcePoint"/>'
                 f'<mxPoint x="{x2}" y="{y2}" as="targetPoint"/>'
                 f'</mxGeometry></mxCell>')
@@ -689,7 +697,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     total_cost = sum(_cost_map.values())
     sub_info = f"{n_comps} Components" if n_comps else ""
     if total_cost: sub_info += f"  |  ${total_cost:,}/mo"
-    if sub_info:   ttxt += "&#xa;" + _x(sub_info)
+    if sub_info:   ttxt += "&lt;br&gt;" + _xe(sub_info)
     cells.append(_cell(_id, ttxt,
         "fillColor=#1A0D2E;strokeColor=#7B61FF;strokeWidth=2;"
         "fontColor=#C4B5FD;align=center;verticalAlign=middle;"
@@ -698,7 +706,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     _id += 1
 
     # Provider subscription outline
-    cells.append(_cell(_id, "☁  "+_x(pc["lbl"]),
+    cells.append(_cell(_id, "[Cloud] "+_xe(pc["lbl"]),
         f"fillColor={pc['bg']};strokeColor={pc['clr']};strokeWidth=2;"
         f"fontColor={pc['clr']};fontStyle=1;fontSize=11;"
         "verticalAlign=top;align=left;spacingLeft=12;spacingTop=7;"
@@ -707,7 +715,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     _id += 1
 
     # DATA SOURCES label
-    cells.append(_cell(_id, "DATA&#xa;SOURCES",
+    cells.append(_cell(_id, "DATA SOURCES",
         "fillColor=none;strokeColor=none;fontColor=#4B5563;"
         "fontStyle=1;fontSize=10;align=center;verticalAlign=bottom;",
         SRC_X, CONTENT_Y, SRC_W, 28))
@@ -717,11 +725,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     src_ids = []
     for si, src in enumerate(src_labels):
         ey = src_y0 + si*(SC_H+SC_GAP)
-        ic = ("👤" if any(k in src.lower() for k in ["user","client","person"])
-              else "📁" if any(k in src.lower() for k in ["share","file","excel","doc"])
-              else "🏢" if any(k in src.lower() for k in ["erp","crm","system","3rd","third"])
-              else "🌐")
-        lbl = ic+" "+_x(src)+"&#xa;External Source"
+        lbl = _hv(src, "External Source")
         cells.append(_cell(_id, lbl,
             "fillColor=#F8FAFC;strokeColor=#9CA3AF;strokeWidth=1.5;"
             "fontColor=#374151;fontSize=10;fontStyle=0;"
@@ -731,7 +735,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
         src_ids.append(_id); _id += 1
 
     # CONSUMERS label
-    cells.append(_cell(_id, "CONSUMERS&#xa;& CLIENTS",
+    cells.append(_cell(_id, "CONSUMERS &amp; CLIENTS",
         f"fillColor=none;strokeColor=none;fontColor={pc['clr']};"
         "fontStyle=1;fontSize=10;align=center;verticalAlign=bottom;",
         CONS_X, CONTENT_Y, CONS_W, 28))
@@ -741,12 +745,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     cons_ids = []
     for ci2, cons in enumerate(cons_labels):
         cy2 = cons_y0 + ci2*(SC_H+SC_GAP)
-        c_ic = ("💬" if "teams" in cons.lower()
-                else "🤖" if "copilot" in cons.lower()
-                else "📊" if any(k in cons.lower() for k in ["bi","dashboard","report"])
-                else "📱" if "mobile" in cons.lower()
-                else "👤")
-        lbl = c_ic+" "+_x(cons)+"&#xa;Consumer"
+        lbl = _hv(cons, "Consumer")
         cells.append(_cell(_id, lbl,
             f"fillColor={pc['bg']};strokeColor={pc['clr']};strokeWidth=1.5;"
             "fontColor=#1E3A5F;fontSize=10;fontStyle=0;"
@@ -781,11 +780,8 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
             if shown >= MAX_CARDS: break
             nm   = str(comp.get("name","Component"))
             svc  = str(comp.get("azure_service","") or "")
-            ic   = _icon(nm, svc)
             cost = _cost(nm)
-            lbl  = ic+" "+_x(nm)
-            if svc:  lbl += "&#xa;"+_x(svc)
-            if cost: lbl += "&#xa;"+_x(cost)
+            lbl  = _hv(nm, svc, cost) if (svc or cost) else _xe(nm)
             cells.append(_cell(_id, lbl,
                 f"fillColor=#FFFFFF;strokeColor={border};strokeWidth=1.5;"
                 "fontColor=#1E293B;fontSize=10;align=left;verticalAlign=middle;"
@@ -840,11 +836,8 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
                 row = ki // per_row; col = ki % per_row
                 nm   = str(comp.get("name","Component"))
                 svc  = str(comp.get("azure_service","") or "")
-                ic   = _icon(nm, svc)
                 cost = _cost(nm)
-                lbl  = ic+" "+_x(nm)
-                if svc:  lbl += "&#xa;"+_x(svc)
-                if cost: lbl += "&#xa;"+_x(cost)
+                lbl  = _hv(nm, svc, cost) if (svc or cost) else _xe(nm)
                 cells.append(_cell(_id, lbl,
                     f"fillColor=#FFFFFF;strokeColor={border};strokeWidth=1.5;"
                     "fontColor=#1E293B;fontSize=10;align=left;verticalAlign=middle;"
@@ -866,7 +859,7 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
         ]
 
     # Header bar
-    cells.append(_cell(_id, "► DATA FLOW SEQUENCE",
+    cells.append(_cell(_id, "DATA FLOW SEQUENCE",
         "fillColor=#1E2A4A;strokeColor=#3B4A6B;"
         "fontColor=#94A3B8;fontStyle=1;fontSize=10;"
         "align=left;spacingLeft=16;verticalAlign=middle;rounded=1;arcSize=3;",
@@ -878,12 +871,12 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
     sw       = (avail_sw - (n_steps-1)*10) // n_steps
     step_y   = FLOW_SEQ_Y + 38
     step_h   = FLOW_SEQ_H - 40
-    circles  = "①②③④⑤⑥"
+    step_nums = ["1.", "2.", "3.", "4.", "5.", "6."]
 
     for si2, step in enumerate(df_items):
         sx2 = MARGIN + si2*(sw+10)
         # Step box
-        cells.append(_cell(_id, circles[si2]+" "+_x(step),
+        cells.append(_cell(_id, _xe(step_nums[si2]+" "+step),
             f"fillColor=#1E2A4A;strokeColor={pc['clr']};strokeWidth=1.5;"
             "fontColor=#E2E8F0;fontSize=10;align=left;verticalAlign=middle;"
             "spacingLeft=10;rounded=1;arcSize=8;whiteSpace=wrap;",
@@ -897,21 +890,22 @@ def generate_vision_drawio_xml(ar: dict, se: dict = None, ce: dict = None) -> st
                 pc["clr"], sw=2))
             _id += 1
 
-    # ── Compress and return ──────────────────────────────────────────────
-    inner = (
-        f'<mxGraphModel dx="1422" dy="762" grid="0" gridSize="10" page="0" '
+    # ── Assemble uncompressed XML (most compatible with Lucidchart) ──────
+    graph_model = (
+        f'<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" page="1" '
         f'pageWidth="{PAGE_W}" pageHeight="{PAGE_H}" math="0" shadow="0">'
-        '<root><mxCell id="0"/><mxCell id="1" parent="0"/>'
+        '<root>'
+        '<mxCell id="0"/>'
+        '<mxCell id="1" value="" parent="0" style=""/>'
         + "".join(cells) +
         '</root></mxGraphModel>'
     )
-    compressed = _zlib.compress(inner.encode("utf-8"), level=9)[2:-4]
-    encoded    = _b64.b64encode(compressed).decode("ascii")
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        '<mxfile host="app.diagrams.net" version="21.0.0">'
+        '<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" '
+        'agent="ECI Presale Intelligence" version="21.0.0" type="device">'
         '<diagram id="eci_ai_vision" name="AI Vision Architecture">'
-        + encoded +
+        + graph_model +
         '</diagram></mxfile>'
     )
 

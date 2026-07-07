@@ -16,22 +16,51 @@ from .dynamic_builders import (
 from .text_analysis import _analyze_text_dynamic, _INFRA_COST_CATALOG, _fetch_live_azure_pricing
 from .diagrams import _sanitize_mermaid
 
-try:
-    from openai import AzureOpenAI
-    from openai import OpenAI as _OpenAI
-except ImportError:
-    AzureOpenAI = None
-    _OpenAI = None
+# openai and azure.ai.inference are NOT imported at module level.
+# Both take 13-14 s on cold start (Pydantic model compilation).
+# They are lazy-loaded on first use so the login page stays instant.
 
-try:
-    from azure.ai.inference import ChatCompletionsClient as _InferenceClient
-    from azure.ai.inference.models import SystemMessage as _InfSysMsg, UserMessage as _InfUsrMsg
-    from azure.core.credentials import AzureKeyCredential as _AzureKey
-    HAS_INFERENCE_SDK = True
-except ImportError:
-    _InferenceClient = None
-    _InfSysMsg = _InfUsrMsg = _AzureKey = None
-    HAS_INFERENCE_SDK = False
+_openai_AzureOpenAI = None
+_openai_OpenAI      = None
+_openai_loaded      = False
+
+def _ensure_openai():
+    global _openai_AzureOpenAI, _openai_OpenAI, _openai_loaded
+    if _openai_loaded:
+        return
+    _openai_loaded = True
+    try:
+        from openai import AzureOpenAI as _az, OpenAI as _oi
+        _openai_AzureOpenAI = _az
+        _openai_OpenAI      = _oi
+    except ImportError:
+        pass
+
+def _get_AzureOpenAI():
+    _ensure_openai(); return _openai_AzureOpenAI
+
+def _get_OpenAI():
+    _ensure_openai(); return _openai_OpenAI
+
+_InferenceClient = None
+_InfSysMsg = _InfUsrMsg = _AzureKey = None
+HAS_INFERENCE_SDK = False
+_inference_loaded = False
+
+def _ensure_inference():
+    global _InferenceClient, _InfSysMsg, _InfUsrMsg, _AzureKey, HAS_INFERENCE_SDK, _inference_loaded
+    if _inference_loaded:
+        return
+    _inference_loaded = True
+    try:
+        from azure.ai.inference import ChatCompletionsClient as _ic
+        from azure.ai.inference.models import SystemMessage as _sm, UserMessage as _um
+        from azure.core.credentials import AzureKeyCredential as _ak
+        _InferenceClient = _ic
+        _InfSysMsg = _sm; _InfUsrMsg = _um; _AzureKey = _ak
+        HAS_INFERENCE_SDK = True
+    except ImportError:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1242,11 +1271,13 @@ class AzureAI:
         self.deployment = deployment
         self.endpoint   = endpoint
         self._client = None
-        if key and endpoint and AzureOpenAI:
-            try:
-                self._client = AzureOpenAI(api_key=key, api_version=version, azure_endpoint=endpoint)
-            except Exception:
-                pass
+        if key and endpoint:
+            _cls = _get_AzureOpenAI()
+            if _cls:
+                try:
+                    self._client = _cls(api_key=key, api_version=version, azure_endpoint=endpoint)
+                except Exception:
+                    pass
 
     @classmethod
     def from_session(cls):
@@ -2115,6 +2146,59 @@ class AzureAI:
             "what_is_clear": ["Document uploaded and text extracted successfully"],
         }
 
+    def scan_scope_template(self, scope_text: str) -> dict:
+        """
+        Scans the scope document against the standard ECI template and flags
+        every section that is incomplete, uses placeholder text, is too vague,
+        or is missing entirely.
+
+        Returns JSON:
+        {
+          "overall_score": int (0-100),
+          "issues": [
+            {
+              "section":    str,   # e.g. "Business Objective"
+              "excerpt":    str,   # exact text from the doc that is problematic (≤120 chars)
+              "problem":    str,   # what is wrong
+              "suggestion": str,   # what the section should contain
+              "severity":   "critical" | "warning"
+            }
+          ],
+          "good_sections": [str]   # sections that are well-filled
+        }
+        """
+        _TEMPLATE_SECTIONS = (
+            "Business Objective, Functional Requirements, Non-Functional Requirements, "
+            "Constraints, Meeting Summary, Transcript Link, Presales Analysis & Recommendations "
+            "(Option A and Option B), Assumptions, Open Questions"
+        )
+        r = self._call(
+            "You are a strict ECI presales quality reviewer checking a scope document against the standard template. "
+            "The standard template has these required sections: " + _TEMPLATE_SECTIONS + ".\n\n"
+            "For EVERY section that is: (a) missing, (b) still has placeholder text like <...> or TBD, "
+            "(c) has only one word/line where multiple are expected, (d) is too vague to drive an estimate, "
+            "or (e) has generic/template wording not replaced with project-specific content — "
+            "report an issue.\n\n"
+            "For each issue, provide an 'excerpt' field with a SHORT verbatim snippet (≤120 characters) "
+            "from the document that exemplifies the problem. This will be used to highlight the text in red. "
+            "If the section is entirely missing, set excerpt to the section heading or a nearby line.\n\n"
+            "Return ONLY valid JSON:\n"
+            "{\n"
+            '  "overall_score": <int 0-100 reflecting overall quality>,\n'
+            '  "issues": [\n'
+            '    {"section": str, "excerpt": str, "problem": str, "suggestion": str, '
+            '"severity": "critical" or "warning"}\n'
+            "  ],\n"
+            '  "good_sections": [str]\n'
+            "}\n\n"
+            "Be specific — quote actual text from the document for every excerpt. "
+            "critical = blocks estimation; warning = reduces accuracy.",
+            "Scope document to review:\n\n" + scope_text[:14000],
+        )
+        if r and isinstance(r, dict) and "issues" in r:
+            return r
+        return {"overall_score": 0, "issues": [], "good_sections": []}
+
     def analyze_transcript(self, transcript_text):
         r = self._call(
             "You are an expert ECI presales analyst. Analyze this meeting/discovery call transcript thoroughly. "
@@ -2749,6 +2833,7 @@ class QwenAI(AzureAI):
         _detected_mode = mode or st.session_state.get("qwen_mode", "")
 
         # ── azure.ai.inference mode (ChatCompletionsClient) ────────────────
+        _ensure_inference()
         if _detected_mode == "inference" and self.key and endpoint and deployment and HAS_INFERENCE_SDK:
             self._mode      = "inference"
             self.model      = deployment
@@ -2765,33 +2850,37 @@ class QwenAI(AzureAI):
                 pass
 
         # ── Azure AI Foundry / OpenAI-compatible /models path ─────────────
-        elif self.key and endpoint and deployment and _OpenAI:
-            self._mode      = "foundry"
-            self.model      = deployment
-            self.deployment = deployment
-            _base = endpoint.rstrip("/")
-            if not _base.endswith("/models"):
-                _base = _base + "/models"
-            try:
-                self._client = _OpenAI(
-                    api_key=self.key,
-                    base_url=_base,
-                )
-            except Exception:
-                pass
+        elif self.key and endpoint and deployment:
+            _oi_cls = _get_OpenAI()
+            if _oi_cls:
+                self._mode      = "foundry"
+                self.model      = deployment
+                self.deployment = deployment
+                _base = endpoint.rstrip("/")
+                if not _base.endswith("/models"):
+                    _base = _base + "/models"
+                try:
+                    self._client = _oi_cls(
+                        api_key=self.key,
+                        base_url=_base,
+                    )
+                except Exception:
+                    pass
 
         # ── DashScope mode ─────────────────────────────────────────────────
-        elif self.key and _OpenAI:
-            self._mode      = "dashscope"
-            self.model      = model or "qwen-plus"
-            self.deployment = self.model
-            try:
-                self._client = _OpenAI(
-                    api_key=self.key,
-                    base_url=self._DASHSCOPE_BASE,
-                )
-            except Exception:
-                pass
+        elif self.key:
+            _oi_cls = _get_OpenAI()
+            if _oi_cls:
+                self._mode      = "dashscope"
+                self.model      = model or "qwen-plus"
+                self.deployment = self.model
+                try:
+                    self._client = _oi_cls(
+                        api_key=self.key,
+                        base_url=self._DASHSCOPE_BASE,
+                    )
+                except Exception:
+                    pass
         else:
             self.model      = model or "qwen-plus"
             self.deployment = self.model
@@ -3187,14 +3276,16 @@ class DeepSeekAI(QwenAI):
         self.deployment   = self.model
 
         endpoint = (endpoint or "").strip().rstrip("/") + "/"
-        if self.key and endpoint and _OpenAI:
-            try:
-                self._client = _OpenAI(
-                    api_key=self.key,
-                    base_url=endpoint,
-                )
-            except Exception:
-                pass
+        if self.key and endpoint:
+            _oi_cls = _get_OpenAI()
+            if _oi_cls:
+                try:
+                    self._client = _oi_cls(
+                        api_key=self.key,
+                        base_url=endpoint,
+                    )
+                except Exception:
+                    pass
 
     @classmethod
     def from_session(cls):

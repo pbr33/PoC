@@ -3,6 +3,27 @@ ECI Business Estimation — modular entry point.
 Run with:  streamlit run main.py
 """
 import os
+import sys as _sys
+import threading as _th
+
+# ── Background module pre-warmer ───────────────────────────────────────
+# Starts immediately on every page load (before auth, before any UI).
+# Imports all heavy modules in a background thread so they are cached in
+# sys.modules by the time the user clicks Sign In.
+def _prewarm_modules():
+    try:
+        import modules.pipeline          # plotly, reportlab, pptx, openpyxl
+        import modules.ai_clients        # openai, anthropic, msal
+        import modules.external_services
+        import modules.command_palette
+        import modules.notifications
+        import modules.config_loader
+    except Exception:
+        pass
+
+if "modules.pipeline" not in _sys.modules:
+    _th.Thread(target=_prewarm_modules, daemon=True).start()
+
 import streamlit as st
 
 st.set_page_config(
@@ -24,17 +45,20 @@ st.markdown(
 
 from datetime import datetime
 
+# Auth and styles load first — lightweight, needed for login page
 from modules.auth import check_auth
 from modules.styles import inject_css, ECI_LOGO_BLUE_B64
+
+# ── Auth gate ──────────────────────────────────────────────────────────
+check_auth()
+
+# Remaining imports — only reached by authenticated users
 from modules.command_palette import inject_command_palette
 from modules.ai_clients import AnthropicAI, AzureAI, GeminiAI, QwenAI, VertexAnthropicAI
 from modules.external_services import SP
 from modules.pipeline import tab_presale, tab_run_library, tab_admin, tab_dashboard
 from modules.notifications import render_notification_bell
 from modules.config_loader import apply_config_to_session, is_any_ai_configured
-
-# ── Auth gate ──────────────────────────────────────────────────────────
-check_auth()
 
 # ═══════════════════════════════════════════════════════════════════════
 #  SESSION STATE DEFAULTS

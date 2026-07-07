@@ -52,8 +52,8 @@ def _split_large_task(name, hours, role, justification):
         ]
     else:
         splits = [
-            ("Technical design: " + name_short, 0.20, role, "Detailed design and approach — " + justification[:40]),
-            ("Development: " + name_short, 0.35, role, "Core implementation — " + justification[:40]),
+            ("Technical design: " + name_short, 0.20, role, "Detailed design and approach — " + justification),
+            ("Development: " + name_short, 0.35, role, "Core implementation — " + justification),
             ("Unit tests: " + name_short, 0.20, role, "Automated test coverage"),
             ("Code review and refactor: " + name_short, 0.15, role, "Peer review and address feedback"),
             ("Integration validation: " + name_short, 0.10, role, "Verify integration with other components"),
@@ -138,12 +138,14 @@ def _stream(name, domain, tasks, mult=1.0, parallel_with=None):
 
 def _build_dynamic_time(semantic, text="", rag=None):
     """Domain-aware parallel-stream time estimator with per-tech complexity multipliers."""
-    reqs       = safe_list(semantic.get("requirements"))
-    mandated   = safe_list(semantic.get("mandated_technologies", []))
-    all_tech   = safe_list(semantic.get("technology_stack", []))
-    source_sys = set(safe_list(semantic.get("source_systems", [])))
-    domains    = safe_list(semantic.get("project_domains", []))
-    complexity = safe_int(semantic.get("complexity_score", 5))
+    reqs            = safe_list(semantic.get("requirements"))
+    mandated        = safe_list(semantic.get("mandated_technologies", []))
+    all_tech        = safe_list(semantic.get("technology_stack", []))
+    source_sys      = set(safe_list(semantic.get("source_systems", [])))
+    domains         = safe_list(semantic.get("project_domains", []))
+    complexity      = safe_int(semantic.get("complexity_score", 5))
+    engagement_type = safe_str(semantic.get("engagement_type", "Implementation"))
+    _discovery_only = (engagement_type == "Discovery")
 
     # ── Domain and tech detection ─────────────────────────────────────────
     tech_lower = " ".join(mandated + all_tech).lower()
@@ -179,16 +181,18 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # ── PARALLEL WORK STREAMS ────────────────────────────────────────────
     streams: list[dict] = []
 
-    # ── Stream 0: Discovery & Design (sequential gate at project start) ──
+    # ── Stream 0: Discovery & Design — complexity-scaled ────────────────
+    # Simpler projects skip ceremony overhead; complex ones get full rigour
+    _disc_scale = 0.65 if complexity <= 4 else 0.85 if complexity <= 6 else 1.0
     disc_tasks = [
-        _task("Stakeholder kickoff meeting",              "PM",        4,  "Initial alignment with sponsors and team"),
-        _task("Requirements elicitation workshops",       "BA",        max(4, min(16, n_total)),    str(n_total) + " requirements"),
-        _task("Requirements documentation",               "BA",        max(4, min(12, n_func)),     str(n_func) + " functional reqs"),
-        _task("Scope and gap analysis",                   "BA",        max(4, min(8,  n_total // 2 + 2)), "Identify gaps vs scope"),
-        _task("Solution architecture design",             "Architect", max(8, min(16, len(all_tech) + 2)), str(len(all_tech)) + " technologies"),
-        _task("Architecture review and sign-off",         "Architect", 8,  "Peer review, stakeholder walkthrough, formal sign-off"),
-        _task("Security and compliance assessment",       "Security",  max(4, min(12, n_nf * 2)),   str(n_nf) + " non-func reqs"),
-        _task("Risk identification and mitigation plan",  "PM",        6,  "Risk register, response strategies"),
+        _task("Stakeholder kickoff meeting",              "PM",        max(2, int(4  * _disc_scale)), "Initial alignment with sponsors and team"),
+        _task("Requirements elicitation workshops",       "BA",        max(3, int(min(10, n_total)   * _disc_scale)), str(n_total) + " requirements"),
+        _task("Requirements documentation",               "BA",        max(2, int(min(8,  n_func)    * _disc_scale)), str(n_func) + " functional reqs"),
+        _task("Scope and gap analysis",                   "BA",        max(2, int(min(6,  n_total // 2 + 1) * _disc_scale)), "Identify gaps vs scope"),
+        _task("Solution architecture design",             "Architect", max(4, int(min(12, len(all_tech) + 2) * _disc_scale)), str(len(all_tech)) + " technologies"),
+        _task("Architecture review and sign-off",         "Architect", max(2, int(4  * _disc_scale)), "Peer review, stakeholder walkthrough, formal sign-off"),
+        _task("Security and compliance assessment",       "Security",  max(2, int(min(8,  n_nf)      * _disc_scale)), str(n_nf) + " non-func reqs"),
+        _task("Risk identification and mitigation plan",  "PM",        max(2, int(3  * _disc_scale)), "Risk register, response strategies"),
     ]
     streams.append(_stream("Discovery & Design", "Discovery", disc_tasks, mult=1.0))
 
@@ -201,19 +205,19 @@ def _build_dynamic_time(semantic, text="", rag=None):
             de_tasks += [
                 _task("Microsoft Fabric capacity and workspace provisioning", "Data Engineer", 8,  "Capacity SKU, workspace config, admin settings"),
                 _task("OneLake setup — container hierarchy and RBAC",         "Data Engineer", 6,  "Folder structure, managed identity, workspace roles"),
-                _task("Network security — Managed VNET and private endpoints","Data Engineer", 8,  "Fabric managed VNET, private links to source systems"),
+                _task("Network security — Managed VNET and private endpoints","Data Engineer", 4,  "Fabric managed VNET, private links to source systems"),
             ]
             for i in range(min(n_src, 6)):
                 lbl = f"Source {i + 1}"
                 de_tasks += [
-                    _task(f"Pipeline design and schema mapping — {lbl}",    "Data Engineer", 8,  "Schema analysis, data mapping, ingestion strategy"),
-                    _task(f"Fabric Data Factory pipeline — {lbl}",          "Data Engineer", 12, "Copy activities, incremental load, scheduling, error handling"),
-                    _task(f"Bronze layer validation — {lbl}",               "Data Engineer", 6,  "Raw data quality checks, schema validation"),
+                    _task(f"Pipeline design and schema mapping — {lbl}",    "Data Engineer", 5,  "Schema analysis, data mapping, ingestion strategy"),
+                    _task(f"Fabric Data Factory pipeline — {lbl}",          "Data Engineer", 7,  "Copy activities, incremental load, scheduling, error handling"),
+                    _task(f"Bronze layer validation — {lbl}",               "Data Engineer", 3,  "Raw data quality checks, schema validation"),
                 ]
             de_tasks += [
-                _task("Silver layer: data cleansing and standardisation",   "Data Engineer", 12, "Business rules, deduplication, type casting"),
-                _task("Silver layer: entity resolution and key mapping",    "Data Engineer", 8,  "Surrogate keys, reference data linking"),
-                _task("Gold layer: aggregations and KPI calculations",      "Data Engineer", 12, "Metrics, rollups, partitioning strategy"),
+                _task("Silver layer: data cleansing and standardisation",   "Data Engineer", 8,  "Business rules, deduplication, type casting"),
+                _task("Silver layer: entity resolution and key mapping",    "Data Engineer", 6,  "Surrogate keys, reference data linking"),
+                _task("Gold layer: aggregations and KPI calculations",      "Data Engineer", 8,  "Metrics, rollups, partitioning strategy"),
                 _task("Gold layer: business entity models",                 "Data Engineer", 8,  "Dimensional model, conformed dimensions"),
                 _task("Fabric Semantic Model — measures and hierarchies",   "Data Engineer", 10, "DAX measures, hierarchies, KPIs"),
                 _task("Power BI report development",                        "Data Engineer", 8,  "Dashboard design, visualisations, drillthrough"),
@@ -228,9 +232,9 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("Auto Loader / ADF ingestion pipeline design",           "Data Engineer", 12, "Streaming ingestion, schema inference, checkpoints"),
             ]
             for i in range(min(n_src, 4)):
-                de_tasks.append(_task(f"Source pipeline — source {i + 1}", "Data Engineer", 10, "End-to-end ingestion pipeline per source"))
+                de_tasks.append(_task(f"Source pipeline — source {i + 1}", "Data Engineer", 6, "End-to-end ingestion pipeline per source"))
             de_tasks += [
-                _task("Delta Lake Bronze-to-Silver transforms (PySpark)",   "Data Engineer", 12, "Business rules, deduplication, normalisation"),
+                _task("Delta Lake Bronze-to-Silver transforms (PySpark)",   "Data Engineer", 8,  "Business rules, deduplication, normalisation"),
                 _task("Delta Lake Silver-to-Gold aggregations",             "Data Engineer", 10, "KPI calcs, analytical aggregations"),
                 _task("Delta Live Tables DQ expectations",                  "Data Engineer", 8,  "Data quality rules, monitoring"),
                 _task("Feature store and ML-ready datasets",                "Data Engineer", 8,  "Feature engineering, train/test splits"),
@@ -243,10 +247,10 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("Synapse Pipeline design and implementation",         "Data Engineer", 12, "Copy activities, mapping dataflows, triggers"),
             ]
             for i in range(min(n_src, 4)):
-                de_tasks.append(_task(f"Source integration — source {i + 1}", "Data Engineer", 10, "End-to-end integration"))
+                de_tasks.append(_task(f"Source integration — source {i + 1}", "Data Engineer", 6, "End-to-end integration"))
             de_tasks += [
-                _task("SQL pool schema design and DDL",                     "Data Engineer", 8,  "Distributions, indexing, partition strategy"),
-                _task("Data transformation stored procedures",              "Data Engineer", 12, "Business logic, ETL procedures"),
+                _task("SQL pool schema design and DDL",                     "Data Engineer", 6,  "Distributions, indexing, partition strategy"),
+                _task("Data transformation stored procedures",              "Data Engineer", 8,  "Business logic, ETL procedures"),
                 _task("Reporting layer and external tables",                "Data Engineer", 8,  "Power BI connectivity, external table setup"),
                 _task("End-to-end testing and reconciliation",              "Data Engineer", 8,  "Data validation, row counts, business logic"),
             ]
@@ -256,23 +260,28 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("ADF linked services and datasets",                   "Data Engineer", 6,  "Source/sink connectors, parameterised datasets"),
             ]
             for i in range(min(n_src, 4)):
-                de_tasks.append(_task(f"ADF pipeline — source {i + 1}", "Data Engineer", 10, "Copy + transform pipeline per source"))
+                de_tasks.append(_task(f"ADF pipeline — source {i + 1}", "Data Engineer", 6, "Copy + transform pipeline per source"))
             de_tasks += [
                 _task("Mapping Dataflows for data transformation",          "Data Engineer", 10, "Data cleansing, joins, aggregations"),
                 _task("Pipeline triggers, monitoring, and alerting",        "Data Engineer", 6,  "Scheduled triggers, ADF monitor, email alerts"),
                 _task("End-to-end testing and data validation",             "Data Engineer", 8,  "Pipeline tests, row count reconciliation"),
             ]
-        # ── Per-requirement feature tasks (belong inside DE stream) ──────
-        for r in reqs:
-            r_dict = safe_dict(r)
-            if r_dict.get("type") != "functional":
-                continue
-            title = safe_str(r_dict.get("title"))[:45]
-            cplx  = safe_str(r_dict.get("complexity", "Medium"))
-            desc  = safe_str(r_dict.get("description", title))[:80]
-            base  = 14 if cplx == "High" else 10 if cplx == "Medium" else 6
-            de_tasks.append(_task(f"Feature: {title} — data model & transform", "Data Engineer", base, desc))
-            de_tasks.append(_task(f"Feature: {title} — report / output layer",  "Data Engineer", 4,    desc))
+        # Per-req feature tasks: skip for Fabric/Databricks/Synapse — their comprehensive
+        # Bronze→Silver→Gold templates already cover all functional requirements.
+        # For ADF/ADLS only: add High/Medium reqs (Low are covered by the base pipeline tasks).
+        if not (is_fabric or is_databricks or is_synapse):
+            for r in reqs:
+                r_dict = safe_dict(r)
+                if r_dict.get("type") != "functional":
+                    continue
+                cplx = safe_str(r_dict.get("complexity", "Medium"))
+                if cplx == "Low":
+                    continue
+                title = safe_str(r_dict.get("title"))
+                desc  = safe_str(r_dict.get("description", title))
+                base  = 8 if cplx == "High" else 5
+                de_tasks.append(_task(f"Feature: {title} — data pipeline",  "Data Engineer", base, desc))
+                de_tasks.append(_task(f"Feature: {title} — output layer",   "Data Engineer", 2,   desc))
 
         streams.append(_stream("Data Engineering", "Data Engineering", de_tasks, mult=1.0,
                                parallel_with=["AI / ML Stream"] if is_ai else []))
@@ -308,18 +317,21 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("Teams Bot conversational flows and Adaptive Cards",  "ML Engineer", 12, "Waterfalls, Adaptive Cards, proactive messages, SSO"),
                 _task("Teams Bot — edge cases and error handling",          "ML Engineer", 6,  "Retry, rate limit, fallback, error card responses"),
             ]
-        # ── Per-requirement AI feature tasks (only when no DE stream handles them) ──
+        # Per-req AI tasks: only when DE doesn't handle them (avoids double-count).
+        # Only High/Medium complexity — Low reqs are covered by the base AI framework tasks.
         if not is_data_eng:
             for r in reqs:
                 r_dict = safe_dict(r)
                 if r_dict.get("type") != "functional":
                     continue
-                title = safe_str(r_dict.get("title"))[:45]
-                cplx  = safe_str(r_dict.get("complexity", "Medium"))
-                desc  = safe_str(r_dict.get("description", title))[:80]
-                base  = 12 if cplx == "High" else 8 if cplx == "Medium" else 5
-                ai_tasks.append(_task(f"Feature: {title} — AI implementation", "ML Engineer", base, desc))
-                ai_tasks.append(_task(f"Feature: {title} — evaluation & testing", "ML Engineer", 4, desc))
+                cplx = safe_str(r_dict.get("complexity", "Medium"))
+                if cplx == "Low":
+                    continue
+                title = safe_str(r_dict.get("title"))
+                desc  = safe_str(r_dict.get("description", title))
+                base  = 10 if cplx == "High" else 6
+                ai_tasks.append(_task(f"Feature: {title} — AI implementation",    "ML Engineer", base, desc))
+                ai_tasks.append(_task(f"Feature: {title} — evaluation & testing", "ML Engineer", 3,    desc))
 
         streams.append(_stream("AI / ML Stream", "AI / ML", ai_tasks, mult=1.0,
                                parallel_with=["Data Engineering"] if is_data_eng else []))
@@ -357,10 +369,10 @@ def _build_dynamic_time(semantic, text="", rag=None):
         for r in reqs:
             r = safe_dict(r)
             if r.get("type") == "functional":
-                title = safe_str(r.get("title"))[:40]
+                title = safe_str(r.get("title"))
                 cplx  = safe_str(r.get("complexity"))
-                base  = 14 if cplx == "High" else 10 if cplx == "Medium" else 6
-                be_tasks.append(_task("Backend: " + title, "Senior Dev", base, safe_str(r.get("description"))[:60]))
+                base  = 10 if cplx == "High" else 7 if cplx == "Medium" else 4
+                be_tasks.append(_task("Backend: " + title, "Senior Dev", base, safe_str(r.get("description"))))
         if not be_tasks:
             be_tasks = [
                 _task("Core backend services and business logic",           "Senior Dev", 16, "Primary domain logic and service layer"),
@@ -377,19 +389,19 @@ def _build_dynamic_time(semantic, text="", rag=None):
         for r in reqs:
             r = safe_dict(r)
             if r.get("type") == "integration":
-                title = safe_str(r.get("title"))[:40]
+                title = safe_str(r.get("title"))
                 cplx  = safe_str(r.get("complexity"))
-                desc  = safe_str(r.get("description"))[:60]
+                desc  = safe_str(r.get("description"))
                 if cplx == "High":
                     int_tasks += [
-                        _task("Integration design: " + title,      "Architect", 8,  "API contracts, data mapping, auth flow for " + desc),
+                        _task("Integration design: " + title,      "Architect", 8,  "API contracts, data mapping, auth flow — " + desc),
                         _task("Connector development: " + title,    "Developer", 12, "Adapter, data mapping, transformation"),
                         _task("Auth and security: " + title,        "Developer", 8,  "OAuth/API key, token management"),
                         _task("Integration testing: " + title,      "QA",        8,  "E2E flow validation, edge cases"),
                     ]
                 elif cplx == "Medium":
                     int_tasks += [
-                        _task("Integration design: " + title,      "Architect", 6,  "API contract for " + desc),
+                        _task("Integration design: " + title,      "Architect", 6,  "API contract — " + desc),
                         _task("Connector development: " + title,    "Developer", 10, "Adapter and request handling"),
                         _task("Integration testing: " + title,      "QA",        8,  "E2E validation"),
                     ]
@@ -404,72 +416,99 @@ def _build_dynamic_time(semantic, text="", rag=None):
                                    parallel_with=["Custom Application"]))
 
     # ── Stream 6: DevOps & Platform (runs throughout in parallel) ────────
-    devops_tasks = [
-        _task("CI/CD pipeline design — branch strategy and gates",          "DevOps", 8,  "GitHub Actions / Azure DevOps pipelines, PR gates, approvals"),
-        _task("Infrastructure as Code — Bicep/Terraform templates",        "DevOps", 12, "IaC for all Azure resources, parameterised environments"),
-        _task("Dev environment provisioning and configuration",             "DevOps", 6,  "Resource deployment, config, managed identities"),
-        _task("Test / UAT environment provisioning",                        "DevOps", 6,  "Staging env, config parity, data masking"),
-        _task("Production environment provisioning",                        "DevOps", 8,  "Prod resources, DNS, SSL/TLS, firewall rules"),
-        _task("Azure Key Vault and secrets management setup",               "DevOps", 6,  "Secret rotation, managed identity bindings, access policies"),
-        _task("Azure Monitor, Log Analytics and Application Insights",      "DevOps", 8,  "Workbooks, alert rules, dashboards, log queries"),
-        _task("Network security — Private Endpoints and NSG rules",        "DevOps", 8,  "Private endpoints, VNET integration, NSG, Defender"),
-        _task("Backup, DR and business continuity setup",                   "DevOps", 6,  "Backup policies, RTO/RPO validation, DR runbook"),
-        _task("Production deployment runbook and go-live checklist",        "DevOps", 4,  "Step-by-step guide, rollback procedures, smoke tests"),
-        _task("Go-live cutover and post-deployment verification",           "DevOps", 6,  "Traffic switch, smoke test, hypercare monitoring"),
-    ]
-    if is_devops or is_data_eng:
-        devops_tasks.append(_task("Advanced CI/CD — environment-specific pipelines", "DevOps", 8, "Multi-stage YAML, environment approvals, slot swap"))
+    # Lite mode for simple SharePoint/M365-only or small custom-app projects
+    # that don't need the full data-platform DevOps runbook.
+    _devops_lite = not is_data_eng and not is_ai and not is_devops and not is_databricks
+    if _devops_lite:
+        devops_tasks = [
+            _task("Azure resource provisioning and configuration",           "DevOps", 6,  "Resource deployment, managed identities, app registration"),
+            _task("CI/CD pipeline setup",                                    "DevOps", 6,  "GitHub Actions / Azure DevOps build+deploy pipeline"),
+            _task("Azure Key Vault and secrets management",                  "DevOps", 3,  "Secret bindings, managed identity access policies"),
+            _task("Azure Monitor and alerting basics",                       "DevOps", 4,  "Alert rules, basic dashboards, log queries"),
+            _task("Go-live deployment and verification",                     "DevOps", 4,  "Production deployment, smoke tests, rollback runbook"),
+        ]
+    else:
+        devops_tasks = [
+            _task("CI/CD pipeline design — branch strategy and gates",       "DevOps", 6,  "GitHub Actions / Azure DevOps pipelines, PR gates, approvals"),
+            _task("Infrastructure as Code — Bicep/Terraform templates",      "DevOps", 8,  "IaC for all Azure resources, parameterised environments"),
+            _task("Dev environment provisioning and configuration",           "DevOps", 4,  "Resource deployment, config, managed identities"),
+            _task("Test / UAT environment provisioning",                      "DevOps", 3,  "Staging env, config parity, data masking"),
+            _task("Production environment provisioning",                      "DevOps", 5,  "Prod resources, DNS, SSL/TLS, firewall rules"),
+            _task("Azure Key Vault and secrets management setup",             "DevOps", 4,  "Secret rotation, managed identity bindings, access policies"),
+            _task("Azure Monitor, Log Analytics and Application Insights",    "DevOps", 6,  "Workbooks, alert rules, dashboards, log queries"),
+            _task("Network security — Private Endpoints and NSG rules",      "DevOps", 5,  "Private endpoints, VNET integration, NSG, Defender"),
+            _task("Backup, DR and business continuity setup",                 "DevOps", 4,  "Backup policies, RTO/RPO validation, DR runbook"),
+            _task("Production deployment runbook and go-live checklist",      "DevOps", 3,  "Step-by-step guide, rollback procedures, smoke tests"),
+            _task("Go-live cutover and post-deployment verification",         "DevOps", 4,  "Traffic switch, smoke test, hypercare monitoring"),
+        ]
+    if is_devops:   # only for dedicated DevOps projects, not every data project
+        devops_tasks.append(_task("Advanced CI/CD — environment-specific pipelines", "DevOps", 6, "Multi-stage YAML, environment approvals, slot swap"))
     # Small infra multiplier: private endpoints and multi-env add real overhead
     devops_mult = round(min(1.0 * (1.10 if has_multi_env else 1.0) * (1.10 if _h("private endpoint") or _h("kubernetes") else 1.0), 1.30), 2)
     streams.append(_stream("DevOps & Platform", "DevOps", devops_tasks, mult=devops_mult,
                            parallel_with=["Data Engineering", "AI / ML Stream", "Custom Application", "SharePoint / M365"]))
 
-    # ── Stream 7: QA & Testing ────────────────────────────────────────────
-    dev_hrs_for_qa = sum(s["hours"] for s in streams if s["domain"] not in ("Discovery", "DevOps", "PM"))
-    qa_base = max(50, round(dev_hrs_for_qa * 0.22))
-    qa_tasks = [
-        _task("Test strategy and master test plan",                "QA Lead",  8,  "Test approach, entry/exit criteria, environment plan"),
-        _task("Test case design — functional requirements",        "QA",       min(16, max(6, int(qa_base * 0.10))), str(n_func) + " functional requirements"),
-        _task("Test environment setup and test data preparation",  "QA",       8,  "Configure env, seed data, mock services"),
-        _task("Functional test execution and defect logging",      "QA",       min(16, max(8, int(qa_base * 0.16))), "Feature-by-feature validation"),
-        _task("Integration and E2E test execution",                "QA",       min(16, max(8, int(qa_base * 0.14))), "Cross-component workflow validation"),
-        _task("API and contract testing",                          "QA",       min(12, max(6, int(qa_base * 0.10))), "Request/response, schema, error codes"),
-        _task("Performance and load testing",                      "QA",       min(12, max(6, int(qa_base * 0.10))), "Throughput, concurrent users, latency p95"),
-        _task("Security testing — OWASP top 10 and pentest",       "Security", min(12, max(6, int(qa_base * 0.08))), "Auth bypass, injection, CSRF, vulnerability scan"),
-        _task("Regression testing",                                "QA",       min(12, max(6, int(qa_base * 0.10))), "Verify baseline after changes"),
-        _task("UAT preparation and execution support",             "BA",       min(12, max(8, int(qa_base * 0.12))), "UAT scripts, stakeholder facilitation, sign-off"),
-        _task("Defect triage, root cause and resolution tracking", "QA",       min(8,  max(4, int(qa_base * 0.06))), "Prioritise, verify fixes, update test results"),
-    ]
-    streams.append(_stream("QA & Testing", "QA", qa_tasks, mult=1.0,
-                           parallel_with=["Data Engineering", "AI / ML Stream", "Custom Application"]))
+    # ── QA & Testing — NOT a separately estimated phase at ECI ──────────
+    # QA is treated as 30% of total dev effort (built into delivery cost).
+    # We derive its duration for Gantt visualisation only — NOT added to streams.
+    _dev_hrs_for_qa = sum(s["hours"] for s in streams if s["domain"] not in ("Discovery", "DevOps", "PM"))
+    _qa_hours_ref   = max(40, round(_dev_hrs_for_qa * 0.30))
+    _qa_weeks_ref   = round(_qa_hours_ref / 40, 1)
 
-    # ── Stream 8: Documentation & Training ───────────────────────────────
+    # ── Bug fixes and stabilisation: sub-task injected into the largest dev stream ──
+    _dev_streams = [s for s in streams if s["domain"] not in ("Discovery", "DevOps", "PM", "Documentation")]
+    if _dev_streams:
+        _biggest_dev = max(_dev_streams, key=lambda s: s["hours"])
+        _pre_dev_hrs = _biggest_dev["hours"]
+        _bug_hrs     = max(4, min(12, int(_pre_dev_hrs * 0.07)))
+        _bug_task    = _task(
+            "Bug fixes and stabilisation", "Developer", _bug_hrs,
+            "Resolve defects found during development, edge-case handling and code quality improvements",
+        )
+        _biggest_dev["tasks"].append(_bug_task)
+        _biggest_dev["hours"]      += _bug_hrs
+        _biggest_dev["low_hours"]  += int(_bug_hrs * 0.8)
+        _biggest_dev["high_hours"] += int(_bug_hrs * 1.35)
+        _biggest_dev["duration_weeks"] = round(_biggest_dev["hours"] / 40, 1)
+
+    # ── Stream 8: Documentation & Training — complexity-scaled ───────────
+    # Simpler projects need lighter handover docs; complex ones require the full suite
+    _doc_scale  = 0.55 if complexity <= 4 else 0.75 if complexity <= 6 else 1.0
+    has_frontend = is_custom_app or is_sharepoint or is_teams
     doc_tasks = [
-        _task("Architecture and design documentation",             "Architect", 8,  "Technical design doc, ADRs, component diagrams"),
-        _task("API documentation and developer integration guide", "Developer", 8,  "OpenAPI specs, code samples, error catalogue"),
-        _task("Operations runbook and incident response guide",    "DevOps",    6,  "SOP, escalation paths, runbook, troubleshooting"),
-        _task("End-user guide and help documentation",             "Writer",    8,  "User manual, annotated screenshots, FAQ"),
-        _task("Admin and configuration reference guide",           "Writer",    6,  "System admin procedures, config reference"),
-        _task("Knowledge transfer session — technical team",       "Architect", 6,  "Deep-dive with client engineering team"),
-        _task("Knowledge transfer session — end users",            "BA",        6,  "End-user training workshop, hands-on exercises"),
+        _task("Architecture and design documentation",             "Architect", max(3, int(8 * _doc_scale)), "Technical design doc, ADRs, component diagrams"),
+        _task("Operations runbook and incident response guide",    "DevOps",    max(2, int(6 * _doc_scale)), "SOP, escalation paths, runbook, troubleshooting"),
+        _task("Knowledge transfer session — technical team",       "Architect", max(2, int(6 * _doc_scale)), "Deep-dive with client engineering team"),
     ]
+    if has_frontend or complexity >= 5:
+        doc_tasks.append(_task("End-user guide and help documentation", "Writer", max(3, int(8 * _doc_scale)), "User manual, annotated screenshots, FAQ"))
+        doc_tasks.append(_task("Knowledge transfer session — end users", "BA",    max(2, int(6 * _doc_scale)), "End-user training workshop, hands-on exercises"))
+    if (is_custom_app or n_int > 0) and complexity >= 5:
+        doc_tasks.append(_task("API documentation and developer integration guide", "Developer", max(3, int(8 * _doc_scale)), "OpenAPI specs, code samples, error catalogue"))
+    if complexity >= 6:
+        doc_tasks.append(_task("Admin and configuration reference guide", "Writer", max(2, int(6 * _doc_scale)), "System admin procedures, config reference"))
     streams.append(_stream("Documentation & Training", "Documentation", doc_tasks, mult=1.0))
 
     # ── Project Management (ongoing overhead) ─────────────────────────────
-    total_dev_hours = sum(s["hours"] for s in streams)
-    pm_hrs = int(total_dev_hours * 0.10)
+    # PM based on pure delivery hours (dev + devops); documentation and PM itself excluded.
+    _pm_base = sum(s["hours"] for s in streams if s["domain"] not in ("PM", "Documentation"))
+    pm_hrs = max(16, int(_pm_base * 0.08))
     pm_tasks = [
         _task("Sprint planning and backlog grooming",              "PM", min(12, max(4, pm_hrs // 4)), "Bi-weekly sprints, story sizing, prioritisation"),
         _task("Status reporting and stakeholder updates",          "PM", min(12, max(4, pm_hrs // 4)), "Weekly status reports, steering committee deck"),
         _task("Risk and issue management",                         "PM", min(8,  max(4, pm_hrs // 5)), "Risk register updates, issue resolution tracking"),
         _task("Resource coordination and dependency management",   "PM", min(8,  max(4, pm_hrs // 6)), "Team allocation, cross-stream dependencies"),
-        _task("Change request evaluation and approval management", "PM", 6, "Impact analysis, scope change approval workflows"),
+        _task("Change request evaluation and approval management", "PM", min(6, max(3, pm_hrs // 8)), "Impact analysis, scope change approval workflows"),
     ]
     pm_actual = sum(t["hours"] for t in pm_tasks)
     for t in pm_tasks:
         t["low_hours"] = int(t["hours"] * 0.8)
         t["high_hours"] = int(t["hours"] * 1.35)
     streams.append(_stream("Project Management", "PM", pm_tasks, mult=1.0))
+
+    # ── Discovery-only engagement: strip all dev streams ──────────────────
+    if _discovery_only:
+        streams = [s for s in streams if s["domain"] in ("Discovery", "PM")]
 
     # ── Totals and critical-path duration ─────────────────────────────────
     total      = sum(s["hours"]     for s in streams)
@@ -524,13 +563,13 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # ─────────────────────────────────────────────────────────────────────────
 
     disc_w     = streams[0]["duration_weeks"]
-    par_strs   = [s for s in streams if s["domain"] not in ("Discovery", "Documentation", "PM", "QA")]
+    par_strs   = [s for s in streams if s["domain"] not in ("Discovery", "Documentation", "PM")]
     critical_w = max((s["duration_weeks"] for s in par_strs), default=4.0)
-    qa_w       = next((s["duration_weeks"] for s in streams if s["domain"] == "QA"), 2.0)
     doc_w      = next((s["duration_weeks"] for s in streams if s["domain"] == "Documentation"), 1.0)
-    # QA overlaps ~50% with dev; doc/deploy run at end (+1w buffer)
-    total_weeks = round(disc_w + critical_w + (qa_w * 0.5) + doc_w + 1.0)
-    total_weeks = max(total_weeks, 8)
+    # QA runs fully parallel with dev (not a sequential phase), so it doesn't extend the timeline.
+    total_weeks = round(disc_w + critical_w + doc_w + 0.5)
+    _min_weeks  = 2 if _discovery_only else max(2, round(critical_w + disc_w))
+    total_weeks = max(total_weeks, _min_weeks)
 
     buffer_pct = 18 if complexity >= 7 else 15 if complexity >= 5 else 12
     conf       = "Medium (" + str(max(60, 90 - complexity * 3)) + "%)"
@@ -585,6 +624,7 @@ def _build_dynamic_time(semantic, text="", rag=None):
         "three_point":      {"optimistic": total_low, "most_likely": total, "pessimistic": total_high},
         "roles":            roles,
         "rag_calibration":  rag_calibration,
+        "qa_weeks":         _qa_weeks_ref,
     }
 
 

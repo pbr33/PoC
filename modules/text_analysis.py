@@ -3,9 +3,14 @@
 # ═══════════════════════════════════════════════════════════════════════
 import re
 import json
+import time as _tm
+import concurrent.futures as _cf
 import urllib.request
 import urllib.error
 import urllib.parse
+
+_AZURE_PRICING_CACHE: dict = {"ts": 0.0, "data": {}}
+_AZURE_PRICING_TTL   = 1800  # 30-minute module-level cache
 
 _TECH_CATALOG = {
     # ── App Hosting ──────────────────────────────────────────────────────────
@@ -218,10 +223,15 @@ def _detect_source_systems(text_lower: str, detected_tech: list) -> list:
 def _fetch_live_azure_pricing() -> dict:
     """Fetch live monthly cost estimates (USD) from the Azure Retail Prices API.
 
-    Azure Retail Prices API is public and requires no authentication.
-    Returns a dict mapping catalog service names to live monthly cost ints.
+    Requests fire in parallel (ThreadPoolExecutor) so all 15 services resolve
+    in ~one RTT instead of 15 sequential round-trips.  Results are cached for
+    30 minutes at module level so repeated calls within the same process are free.
     Falls back to empty dict on network error.
     """
+    global _AZURE_PRICING_CACHE
+    if _tm.time() - _AZURE_PRICING_CACHE["ts"] < _AZURE_PRICING_TTL and _AZURE_PRICING_CACHE["data"]:
+        return _AZURE_PRICING_CACHE["data"]
+
     _SEARCH_TERMS = {
         "Azure App Service":    "App Service Premium",
         "Azure Functions":      "Azure Functions",
@@ -240,8 +250,8 @@ def _fetch_live_azure_pricing() -> dict:
         "Azure Event Grid":     "Event Grid",
     }
 
-    live_prices = {}
-    for svc, search in _SEARCH_TERMS.items():
+    def _fetch_one(svc_search):
+        svc, search = svc_search
         try:
             qs = urllib.parse.urlencode({
                 "api-version": "2023-01-01",
@@ -254,11 +264,11 @@ def _fetch_live_azure_pricing() -> dict:
             })
             url = "https://prices.azure.com/api/retail/prices?" + qs
             req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
-            with urllib.request.urlopen(req, timeout=6) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 data  = json.loads(resp.read().decode("utf-8"))
                 items = data.get("Items") or []
                 if not items:
-                    continue
+                    return svc, None
                 hourly = [
                     it["retailPrice"]
                     for it in items
@@ -270,12 +280,23 @@ def _fetch_live_azure_pricing() -> dict:
                     if "month" in it.get("unitOfMeasure", "").lower() and it.get("retailPrice", 0) > 0
                 ]
                 if hourly:
-                    live_prices[svc] = int(min(hourly[:3]) * 730)
+                    return svc, int(min(hourly[:3]) * 730)
                 elif monthly:
-                    live_prices[svc] = int(min(monthly[:3]))
+                    return svc, int(min(monthly[:3]))
+                return svc, None
         except Exception:
-            continue
+            return svc, None
 
+    live_prices = {}
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=8) as ex:
+            for svc, price in ex.map(_fetch_one, _SEARCH_TERMS.items(), timeout=12):
+                if price is not None:
+                    live_prices[svc] = price
+    except Exception:
+        pass
+
+    _AZURE_PRICING_CACHE = {"ts": _tm.time(), "data": live_prices}
     return live_prices
 
 

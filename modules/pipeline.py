@@ -11,7 +11,10 @@ import copy as _copy
 import hashlib
 import zipfile
 import sqlite3
+import concurrent.futures as _cf
 from datetime import datetime, timedelta
+
+_AZURE_PRICING_CACHE: dict = {"ts": 0.0, "data": {}, "region": ""}
 
 import streamlit as st
 
@@ -369,16 +372,21 @@ _GCP_REGIONS = {
 def _fetch_live_azure_pricing(region: str = "eastus") -> dict:
     """Fetch live monthly cost estimates (USD) from the Azure Retail Prices API.
 
-    Root-cause of previous failure: urllib.parse.urlencode encoded '$filter' as
-    '%24filter', causing HTTP 400.  Fix: URL-encode only the filter VALUE, keep
-    the '$filter' key literal in the URL string.
-
-    Falls back to a researched static catalog when a service has no API results.
+    All 15 service requests fire in parallel via ThreadPoolExecutor — reducing
+    wall-clock time from ~15×RTT to ~1×RTT.  Results are cached for 30 minutes
+    at module level; region changes flush the cache automatically.
+    Falls back to static catalog prices on any network failure.
     """
     import urllib.request, urllib.parse
 
+    global _AZURE_PRICING_CACHE
+    _TTL = 1800
+    if (time.time() - _AZURE_PRICING_CACHE["ts"] < _TTL
+            and _AZURE_PRICING_CACHE["data"]
+            and _AZURE_PRICING_CACHE.get("region") == region):
+        return _AZURE_PRICING_CACHE["data"]
+
     # (catalog_name, azure_serviceName, preferred_sku_keywords)
-    # serviceName values verified against live API 2025-03.
     _SERVICES = [
         ("Azure App Service",    "Azure App Service",      ["Standard", "S2", "S1"]),
         ("Azure Functions",      "Azure Functions",        ["Consumption", "Execution"]),
@@ -397,32 +405,29 @@ def _fetch_live_azure_pricing(region: str = "eastus") -> dict:
         ("Azure Event Grid",     "Event Grid",             ["Standard"]),
     ]
 
-    # Static fallback prices (USD/month, researched Mar-2025, East US region).
-    # Used when the API returns nothing for a particular service.
     _STATIC_FALLBACK = {
-        "Azure App Service":    73,    # S2 standard
-        "Azure Functions":      20,    # consumption plan typical
-        "Azure SQL Database":   185,   # GP 2 vCore
-        "Cosmos DB":            25,    # 400 RU/s serverless approx
-        "Azure Blob Storage":   20,    # ~1 TB hot LRS
-        "Azure Key Vault":      5,     # low ops volume
-        "Azure AI Search":      75,    # Basic tier
-        "Azure Monitor":        30,    # ~10 GB/day ingestion
-        "Azure Redis Cache":    55,    # C1 Basic
-        "Azure Service Bus":    10,    # Standard
-        "API Management":       48,    # Developer tier
-        "Azure Container Apps": 40,    # typical workload
-        "Azure DevOps":         30,    # 5 users basic
-        "SignalR":              50,    # Standard 1 unit
-        "Azure Event Grid":     5,     # low volume
+        "Azure App Service":    73,
+        "Azure Functions":      20,
+        "Azure SQL Database":   185,
+        "Cosmos DB":            25,
+        "Azure Blob Storage":   20,
+        "Azure Key Vault":      5,
+        "Azure AI Search":      75,
+        "Azure Monitor":        30,
+        "Azure Redis Cache":    55,
+        "Azure Service Bus":    10,
+        "API Management":       48,
+        "Azure Container Apps": 40,
+        "Azure DevOps":         30,
+        "SignalR":              50,
+        "Azure Event Grid":     5,
     }
 
-    live_prices = {}
+    _SKIP = ("Spot", "Low Priority", "Dev/Test", "Managed HSM", " HSM")
 
-    for catalog_name, svc_name, sku_keywords in _SERVICES:
+    def _fetch_one(svc_tuple):
+        catalog_name, svc_name, sku_keywords = svc_tuple
         try:
-            # KEY FIX: encode only the filter value — NOT the $filter key.
-            # urlencode would encode '$' → '%24' causing HTTP 400.
             filt = (
                 f"serviceName eq '{svc_name}' "
                 "and currencyCode eq 'USD' "
@@ -431,53 +436,52 @@ def _fetch_live_azure_pricing(region: str = "eastus") -> dict:
             filt_enc = urllib.parse.quote(filt)
             url = f"https://prices.azure.com/api/retail/prices?$filter={filt_enc}&$top=50"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 items = json.loads(resp.read().decode("utf-8")).get("Items") or []
 
-            # Drop Spot / Low Priority / Dev-Test / HSM (very expensive managed hardware)
-            _SKIP = ("Spot", "Low Priority", "Dev/Test", "Managed HSM", " HSM")
             items = [
                 i for i in items
                 if not any(x in (i.get("skuName", "") + " " + i.get("productName", "")) for x in _SKIP)
                 and i.get("retailPrice", 0) > 0
             ]
-
             if not items:
-                live_prices[catalog_name] = _STATIC_FALLBACK.get(catalog_name, 0)
-                continue
+                return catalog_name, _STATIC_FALLBACK.get(catalog_name, 0)
 
-            # Score items — prefer those whose skuName matches a keyword
             def _score(item):
                 sku = (item.get("skuName", "") + " " + item.get("productName", "")).lower()
                 for idx, kw in enumerate(sku_keywords):
                     if kw.lower() in sku:
-                        return idx           # lower index = better match
-                return len(sku_keywords)     # no match → deprioritise
+                        return idx
+                return len(sku_keywords)
 
             items.sort(key=_score)
             best = items[:5]
-
             hourly  = [i["retailPrice"] for i in best if "Hour"  in i.get("unitOfMeasure", "")]
             monthly = [i["retailPrice"] for i in best if "Month" in i.get("unitOfMeasure", "")]
-
             static_ref = _STATIC_FALLBACK.get(catalog_name, 500)
+
             if hourly:
                 computed = int(min(hourly) * 730)
-                # Sanity cap: if API price is >5× the static reference, use static
-                # (guards against picking an enterprise/HSM tier by mistake)
-                if computed > static_ref * 5:
-                    live_prices[catalog_name] = static_ref
-                else:
-                    live_prices[catalog_name] = max(5, computed)
+                return catalog_name, static_ref if computed > static_ref * 5 else max(5, computed)
             elif monthly:
-                live_prices[catalog_name] = max(1, int(min(monthly)))
-            else:
-                # Per-unit pricing (storage GB, operations) — use static fallback
-                live_prices[catalog_name] = static_ref
+                return catalog_name, max(1, int(min(monthly)))
+            return catalog_name, static_ref
 
         except Exception:
-            live_prices[catalog_name] = _STATIC_FALLBACK.get(catalog_name, 0)
+            return catalog_name, _STATIC_FALLBACK.get(catalog_name, 0)
 
+    live_prices = {}
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=8) as ex:
+            for name, price in ex.map(_fetch_one, _SERVICES, timeout=15):
+                if price:
+                    live_prices[name] = price
+    except Exception:
+        live_prices = {k: v for k, (_, v, _d) in zip(
+            [s[0] for s in _SERVICES], _SERVICES) if v}
+        live_prices = {n: _STATIC_FALLBACK.get(n, 0) for n, _, _ in _SERVICES}
+
+    _AZURE_PRICING_CACHE = {"ts": time.time(), "data": live_prices, "region": region}
     return {k: v for k, v in live_prices.items() if v > 0}
 
 
@@ -1265,15 +1269,16 @@ def _render_delivery_summary(te: dict) -> None:
     if not total_h:
         return
 
-    dur_str = safe_str(te.get("duration_weeks", ""))
-    try:
-        total_weeks = float(dur_str.split()[0])
-    except Exception:
-        total_weeks = 0.0
-    if total_weeks <= 0:
-        total_weeks = max((float(safe_dict(p).get("duration_weeks", 0)) for p in phases), default=8.0)
-    if total_weeks <= 0:
-        total_weeks = round(total_h / 40 / 0.6, 1)  # rough: 60% utilisation parallel
+    # Always recompute from phases — AI-generated duration_weeks is often stale/wrong
+    _OVERHEAD_D = {"Discovery", "PM", "Documentation", "QA"}
+    _par_ph   = [p for p in _ph_list if safe_str(p.get("domain","")) not in _OVERHEAD_D and safe_int(p.get("hours",0)) > 0]
+    def _pw(p):  # phase weeks: prefer stored, fallback to hours/40
+        return float(p.get("duration_weeks") or 0) or round(safe_int(p.get("hours",0)) / 40, 1)
+    _disc_w_d = next((_pw(p) for p in _ph_list if p.get("domain") == "Discovery"), 0.0)
+    _doc_w_d  = next((_pw(p) for p in _ph_list if p.get("domain") == "Documentation"), 0.0)
+    _crit_w_d = max((_pw(p) for p in _par_ph), default=0.0) or round(total_h / 40, 1)
+    total_weeks = max(1.0, round(_disc_w_d + _crit_w_d + _doc_w_d + 0.5))
+    dur_str = f"{int(total_weeks)} weeks"
 
     # Build stream list — infer domain when field is empty
     streams = []
@@ -1381,8 +1386,8 @@ def _render_delivery_summary(te: dict) -> None:
             end   = _max_w
             start = max(dev_end, _max_w - w)
         elif dom == "Documentation":
-            end   = _max_w - 0.2
-            start = max(dev_end * 0.5, end - w)
+            start = dev_end
+            end   = min(_max_w, dev_end + w)
         else:
             # Parallel dev stream: starts after discovery window
             start = disc_weeks
@@ -1520,11 +1525,14 @@ def _render_completeness_checker(files):
     # ── Run completeness check ──────────────────────────────────────────
     if do_check:
         st.session_state["_az_err_shown"] = False   # reset per call
-        with st.spinner("🔍 Agent 0 analysing scope document for gaps…"):
+        with st.spinner("🔍 Agent analysing scope document for gaps…"):
             dp = DocProcessor()
             text = ""
             for f in files:
                 text += dp.extract(f) + "\n\n"
+            st.session_state["_completeness_text"] = text   # saved for Scope Validator
+            st.session_state.pop("scope_validation_result", None)  # force fresh scope scan
+            st.session_state.pop("scope_template_scan_result", None)  # force fresh template scan
             ai = _pick_ai_for("completeness")
             result = ai.check_requirements_completeness(text)
             st.session_state["_completeness_check"] = result
@@ -1539,105 +1547,410 @@ def _render_completeness_checker(files):
 
     # ── Display completeness results ────────────────────────────────────
     if cc:
-        confidence = cc.get("confidence", "Medium")
-        meta = _CONFIDENCE_META.get(confidence, _CONFIDENCE_META["Medium"])
-        total_q = sum(len(cat.get("questions", [])) for cat in cc.get("categories", []))
-        acked: set = st.session_state.get("_completeness_acked", set())
+        _cc_tab1, _cc_tab2, _cc_tab3 = st.tabs(["📋 Completeness Check", "🔍 Scope Validator", "📄 Template Scan"])
 
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        st.markdown(
-            f'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);'
-            f'border-radius:14px;padding:18px 22px;margin-bottom:14px">'
-            f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
-            f'<span style="font-size:1.5rem">{meta["icon"]}</span>'
-            f'<span style="font-weight:700;font-size:1.05rem;color:#e2e8f0">Requirements Completeness Check</span>'
-            f'<span style="background:{meta["color"]}22;color:{meta["color"]};border:1px solid {meta["color"]}44;'
-            f'border-radius:20px;padding:2px 12px;font-size:.75rem;font-weight:700">{meta["label"]}</span>'
-            f'</div>'
-            f'<div style="color:#94a3b8;font-size:.85rem;line-height:1.6">{cc.get("summary", "")}</div>'
-            f'<div style="margin-top:10px;font-size:.78rem;color:#64748b">'
-            f'{len(acked)} of {total_q} questions acknowledged</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        # ── TAB 2: Scope Validator ──────────────────────────────────────
+        with _cc_tab2:
+            _sv_doc_text = safe_str(st.session_state.get("_completeness_text", "")
+                                    or st.session_state.get("_extracted_text", ""))
+            _sv2_key = "scope_validation_result"
+            _sv2_col1, _sv2_col2 = st.columns([4, 1])
+            with _sv2_col2:
+                if st.button("🔄 Re-analyse", key="btn_sv2_rerun", use_container_width=True):
+                    st.session_state.pop(_sv2_key, None)
+                    st.rerun()
+            with _sv2_col1:
+                st.markdown(
+                    '<div style="font-size:.8rem;color:#64748b;padding-top:8px">'
+                    'AI reviews the scope document for critical gaps, assumptions and missing '
+                    'information — generates a client-ready clarification email.</div>',
+                    unsafe_allow_html=True,
+                )
 
-        # ── What IS clear ───────────────────────────────────────────────
-        clear_items = cc.get("what_is_clear", [])
-        if clear_items:
-            with st.expander("✅ What the document makes clear", expanded=False):
-                for item in clear_items:
+            if not st.session_state.get(_sv2_key):
+                with st.spinner("Analysing scope for gaps and assumptions…"):
+                    _sv2_result = _run_scope_validation({}, _sv_doc_text)
+            else:
+                _sv2_result = st.session_state[_sv2_key]
+
+            _sv2_score     = safe_int(_sv2_result.get("completeness_score", 0))
+            _sv2_summary   = safe_str(_sv2_result.get("summary", ""))
+            _sv2_blockers  = safe_list(_sv2_result.get("blockers", []))
+            _sv2_assumes   = safe_list(_sv2_result.get("assumptions", []))
+            _sv2_confirmed = safe_list(_sv2_result.get("confirmed", []))
+            _sv2_email_sub = safe_str(_sv2_result.get("email_subject", ""))
+            _sv2_email_bod = safe_str(_sv2_result.get("email_body", ""))
+            _sv2_clr = "#06d6a0" if _sv2_score >= 75 else "#ffd166" if _sv2_score >= 50 else "#f87171"
+
+            # Score banner
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,rgba(15,23,42,.9),rgba(30,42,68,.8));'
+                f'border:1px solid {_sv2_clr}44;border-radius:16px;padding:20px 24px;margin:14px 0 20px">'
+                f'<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
+                f'<div style="text-align:center;min-width:90px">'
+                f'<div style="font-size:2.4rem;font-weight:900;color:{_sv2_clr};line-height:1">{_sv2_score}</div>'
+                f'<div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px">Score / 100</div>'
+                f'</div>'
+                f'<div style="flex:1;min-width:200px">'
+                f'<div style="background:rgba(255,255,255,.07);border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px">'
+                f'<div style="height:100%;width:{min(100,_sv2_score)}%;border-radius:8px;'
+                f'background:linear-gradient(90deg,{_sv2_clr},{_sv2_clr}99);box-shadow:0 0 10px {_sv2_clr}66"></div>'
+                f'</div>'
+                f'<div style="font-size:.85rem;color:#e2e8f0;font-weight:500">{_sv2_summary}</div>'
+                f'</div>'
+                f'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+                f'<div style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#f87171">{len(_sv2_blockers)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Blockers</div></div>'
+                f'<div style="background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#ffd166">{len(_sv2_assumes)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Assumptions</div></div>'
+                f'<div style="background:rgba(6,214,160,.1);border:1px solid rgba(6,214,160,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#06d6a0">{len(_sv2_confirmed)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Confirmed</div></div>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # Blockers
+            if _sv2_blockers:
+                st.markdown('<div style="font-size:.78rem;font-weight:700;color:#f87171;text-transform:uppercase;letter-spacing:.8px;margin:4px 0 10px">🔴 Blockers — Resolve Before Committing</div>', unsafe_allow_html=True)
+                for _b in _sv2_blockers:
+                    if not isinstance(_b, dict): continue
                     st.markdown(
-                        f'<div style="display:flex;align-items:flex-start;gap:8px;'
-                        f'padding:5px 0;color:#86efac;font-size:.84rem">'
-                        f'<span style="flex-shrink:0">✓</span><span>{item}</span></div>',
-                        unsafe_allow_html=True,
+                        f'<div style="background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25);'
+                        f'border-left:4px solid #f87171;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                        f'<span style="background:rgba(248,113,113,.2);color:#f87171;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">{safe_str(_b.get("category",""))}</span>'
+                        f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">{safe_str(_b.get("issue",""))}</span></div>'
+                        f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:8px">⚠ Impact: {safe_str(_b.get("impact",""))}</div>'
+                        + (f'<div style="background:rgba(248,113,113,.08);border-radius:6px;padding:8px 12px;font-size:.76rem;color:#fca5a5;font-style:italic">💬 "{safe_str(_b.get("question",""))}"</div>' if _b.get("question") else "")
+                        + '</div>', unsafe_allow_html=True,
                     )
 
-        # ── Questions by category ───────────────────────────────────────
-        st.markdown(
-            '<div style="font-weight:700;color:#e2e8f0;font-size:.9rem;'
-            'margin:16px 0 10px">📋 Clarification Questions for the Presales Team</div>',
-            unsafe_allow_html=True,
-        )
+            # Assumptions
+            if _sv2_assumes:
+                st.markdown('<div style="font-size:.78rem;font-weight:700;color:#ffd166;text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px">🟡 Assumptions Made — Affect Estimate Accuracy</div>', unsafe_allow_html=True)
+                for _a in _sv2_assumes:
+                    if not isinstance(_a, dict): continue
+                    st.markdown(
+                        f'<div style="background:rgba(255,209,102,.05);border:1px solid rgba(255,209,102,.22);'
+                        f'border-left:4px solid #ffd166;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                        f'<span style="background:rgba(255,209,102,.18);color:#ffd166;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">{safe_str(_a.get("category",""))}</span>'
+                        f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">{safe_str(_a.get("assumption",""))}</span></div>'
+                        f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:8px">📊 Impact: {safe_str(_a.get("impact",""))}</div>'
+                        + (f'<div style="background:rgba(255,209,102,.07);border-radius:6px;padding:8px 12px;font-size:.76rem;color:#fde68a;font-style:italic">💬 "{safe_str(_a.get("question",""))}"</div>' if _a.get("question") else "")
+                        + '</div>', unsafe_allow_html=True,
+                    )
 
-        for cat in cc.get("categories", []):
-            cat_name = cat.get("name", "General")
-            cat_icon = cat.get("icon", "❓")
-            questions = cat.get("questions", [])
-            if not questions:
-                continue
+            # Confirmed
+            if _sv2_confirmed:
+                st.markdown('<div style="font-size:.78rem;font-weight:700;color:#06d6a0;text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px">🟢 Confirmed — Clearly Defined</div>', unsafe_allow_html=True)
+                _conf2_html = "".join(
+                    f'<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+                    f'<span style="background:rgba(6,214,160,.15);color:#06d6a0;font-size:.62rem;font-weight:700;padding:2px 8px;border-radius:8px;white-space:nowrap;margin-top:1px">{safe_str(_c.get("category",""))}</span>'
+                    f'<span style="font-size:.78rem;color:#cbd5e1">{safe_str(_c.get("detail",""))}</span></div>'
+                    for _c in _sv2_confirmed if isinstance(_c, dict)
+                )
+                st.markdown(f'<div style="background:rgba(6,214,160,.04);border:1px solid rgba(6,214,160,.18);border-radius:10px;padding:14px 18px">{_conf2_html}</div>', unsafe_allow_html=True)
 
-            with st.expander(f"{cat_icon} {cat_name}  ({len(questions)})", expanded=True):
-                for qi, q in enumerate(questions):
-                    q_id = f"{cat_name}::{qi}"
-                    is_acked = q_id in acked
-                    ck_col, txt_col = st.columns([0.5, 9.5])
-                    with ck_col:
-                        checked = st.checkbox(
-                            "",
-                            value=is_acked,
-                            key=f"cc_{cat_name}_{qi}",
-                            label_visibility="collapsed",
+            # Client Q&A email
+            if _sv2_email_bod:
+                st.markdown('<div style="font-size:.78rem;font-weight:700;color:#7b61ff;text-transform:uppercase;letter-spacing:.8px;margin:22px 0 10px">📧 Client Clarification Email — Ready to Send</div>', unsafe_allow_html=True)
+                _email2_full = f"Subject: {_sv2_email_sub}\n\n{_sv2_email_bod}"
+                st.text_area("", value=_email2_full, height=260, key="sv2_email_area", label_visibility="collapsed")
+                st.download_button(
+                    "📋 Download Q&A as .txt",
+                    data=_email2_full.encode("utf-8"),
+                    file_name="Scope_Clarification.txt",
+                    mime="text/plain",
+                    key="sv2_email_dl",
+                )
+
+        # ── TAB 3: Template Scan ─────────────────────────────────────────
+        with _cc_tab3:
+            import html as _html_mod
+
+            _ts_doc = safe_str(st.session_state.get("_completeness_text", "")
+                               or st.session_state.get("_extracted_text", ""))
+            _ts_key = "scope_template_scan_result"
+
+            _ts_c1, _ts_c2 = st.columns([4, 1])
+            with _ts_c1:
+                st.markdown(
+                    '<div style="font-size:.8rem;color:#64748b;padding-top:8px">'
+                    'AI scans your scope document against the standard ECI template and flags every '
+                    'section that is missing, incomplete, or still contains placeholder text — '
+                    'highlighted in red directly in the document.</div>',
+                    unsafe_allow_html=True,
+                )
+            with _ts_c2:
+                if st.button("🔄 Re-scan", key="btn_ts_rerun", use_container_width=True):
+                    st.session_state.pop(_ts_key, None)
+                    st.rerun()
+
+            if not _ts_doc.strip():
+                st.info("Upload a scope document and run the completeness check first.")
+            else:
+                if not st.session_state.get(_ts_key):
+                    with st.spinner("Scanning scope document against ECI template…"):
+                        _ts_ai = _pick_ai_for("completeness")
+                        _ts_result = _ts_ai.scan_scope_template(_ts_doc)
+                        st.session_state[_ts_key] = _ts_result
+                else:
+                    _ts_result = st.session_state[_ts_key]
+
+                _ts_score   = safe_int(_ts_result.get("overall_score", 0))
+                _ts_issues  = [i for i in safe_list(_ts_result.get("issues", [])) if isinstance(i, dict)]
+                _ts_good    = safe_list(_ts_result.get("good_sections", []))
+                _ts_crits   = [i for i in _ts_issues if safe_str(i.get("severity")) == "critical"]
+                _ts_warns   = [i for i in _ts_issues if safe_str(i.get("severity")) != "critical"]
+                _ts_col     = "#f87171" if _ts_score < 50 else "#ffd166" if _ts_score < 75 else "#06d6a0"
+
+                # Score banner
+                st.markdown(
+                    f'<div style="background:linear-gradient(135deg,rgba(15,23,42,.9),rgba(30,42,68,.8));'
+                    f'border:1px solid {_ts_col}44;border-radius:16px;padding:18px 22px;margin:12px 0 18px;'
+                    f'display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+                    f'<div style="text-align:center;min-width:80px">'
+                    f'<div style="font-size:2.4rem;font-weight:900;color:{_ts_col};line-height:1">{_ts_score}</div>'
+                    f'<div style="font-size:.6rem;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:3px">Quality Score</div>'
+                    f'</div>'
+                    f'<div style="flex:1;min-width:180px">'
+                    f'<div style="background:rgba(255,255,255,.07);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px">'
+                    f'<div style="height:100%;width:{min(100,_ts_score)}%;background:linear-gradient(90deg,{_ts_col},{_ts_col}99);border-radius:6px"></div>'
+                    f'</div>'
+                    f'<div style="font-size:.82rem;color:#94a3b8">'
+                    f'{len(_ts_crits)} critical issue{"s" if len(_ts_crits)!=1 else ""}  ·  '
+                    f'{len(_ts_warns)} warning{"s" if len(_ts_warns)!=1 else ""}  ·  '
+                    f'{len(_ts_good)} section{"s" if len(_ts_good)!=1 else ""} look good</div>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # ── Annotated document view ───────────────────────────
+                st.markdown(
+                    '<div style="font-size:.78rem;font-weight:700;color:#e2e8f0;'
+                    'text-transform:uppercase;letter-spacing:.8px;margin:4px 0 10px">'
+                    '📄 Scope Document — Issues Highlighted</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Build highlighted HTML from the raw document text
+                _ts_escaped = _html_mod.escape(_ts_doc)
+                for _iss in sorted(_ts_issues, key=lambda x: len(safe_str(x.get("excerpt",""))), reverse=True):
+                    _exc = safe_str(_iss.get("excerpt", "")).strip()
+                    if not _exc:
+                        continue
+                    _exc_esc = _html_mod.escape(_exc)
+                    if _exc_esc not in _ts_escaped:
+                        continue
+                    _sev = safe_str(_iss.get("severity", "warning"))
+                    if _sev == "critical":
+                        _mark = (
+                            f'<mark style="background:rgba(248,113,113,0.28);'
+                            f'border-bottom:2px solid #f87171;border-radius:3px;'
+                            f'padding:1px 2px;color:#fca5a5;font-weight:600" '
+                            f'title="🔴 {_html_mod.escape(safe_str(_iss.get("problem","")))}">'
+                            f'{_exc_esc}</mark>'
                         )
-                        if checked and q_id not in acked:
-                            acked.add(q_id)
-                            st.session_state["_completeness_acked"] = acked
-                        elif not checked and q_id in acked:
-                            acked.discard(q_id)
-                            st.session_state["_completeness_acked"] = acked
-                    with txt_col:
-                        opacity = ".45" if is_acked else "1"
+                    else:
+                        _mark = (
+                            f'<mark style="background:rgba(252,211,77,0.20);'
+                            f'border-bottom:2px solid #fcd34d;border-radius:3px;'
+                            f'padding:1px 2px;color:#fde68a;font-weight:500" '
+                            f'title="⚠️ {_html_mod.escape(safe_str(_iss.get("problem","")))}">'
+                            f'{_exc_esc}</mark>'
+                        )
+                    _ts_escaped = _ts_escaped.replace(_exc_esc, _mark, 1)
+
+                st.markdown(
+                    f'<div style="background:#0a0e1a;border:1px solid rgba(255,255,255,.08);'
+                    f'border-radius:12px;padding:20px 24px;font-family:monospace;'
+                    f'font-size:.78rem;line-height:1.75;color:#cbd5e1;'
+                    f'white-space:pre-wrap;max-height:480px;overflow-y:auto">'
+                    f'{_ts_escaped}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    '<div style="font-size:.68rem;color:#475569;margin-top:6px">'
+                    '🔴 red = critical (blocks estimation) &nbsp;·&nbsp; '
+                    '🟡 amber = warning (reduces accuracy) &nbsp;·&nbsp; '
+                    'Hover highlighted text to see the issue.</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # ── Issue list ────────────────────────────────────────
+                if _ts_crits:
+                    st.markdown(
+                        '<div style="font-size:.78rem;font-weight:700;color:#f87171;'
+                        'text-transform:uppercase;letter-spacing:.8px;margin:22px 0 10px">'
+                        '🔴 Critical Issues — Must Fix Before Estimating</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _iss in _ts_crits:
                         st.markdown(
-                            f'<div style="opacity:{opacity};padding:4px 0">'
-                            f'<div style="font-size:.84rem;color:#e2e8f0;font-weight:500">'
-                            f'{q.get("question", "")}</div>'
-                            f'<div style="font-size:.74rem;color:#64748b;margin-top:2px">'
-                            f'Why: {q.get("why", "")}</div>'
+                            f'<div style="background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25);'
+                            f'border-left:4px solid #f87171;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                            f'<span style="background:rgba(248,113,113,.2);color:#f87171;font-size:.62rem;'
+                            f'font-weight:700;padding:2px 8px;border-radius:8px">'
+                            f'{safe_str(_iss.get("section",""))}</span>'
+                            f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">'
+                            f'{safe_str(_iss.get("problem",""))}</span></div>'
+                            f'<div style="background:rgba(248,113,113,.08);border-radius:6px;'
+                            f'padding:7px 12px;font-size:.75rem;color:#fca5a5;font-style:italic;margin-bottom:8px">'
+                            f'"{safe_str(_iss.get("excerpt",""))}"</div>'
+                            f'<div style="font-size:.75rem;color:#94a3b8">'
+                            f'✏️ {safe_str(_iss.get("suggestion",""))}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-        # ── Proceed banner ──────────────────────────────────────────────
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        all_acked = len(acked) == total_q
-        pct = int(len(acked) / total_q * 100) if total_q else 100
-        st.progress(pct / 100, text=f"{pct}% questions reviewed")
+                if _ts_warns:
+                    st.markdown(
+                        '<div style="font-size:.78rem;font-weight:700;color:#fcd34d;'
+                        'text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px">'
+                        '⚠️ Warnings — Will Reduce Estimate Accuracy</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _iss in _ts_warns:
+                        st.markdown(
+                            f'<div style="background:rgba(252,211,77,.05);border:1px solid rgba(252,211,77,.22);'
+                            f'border-left:4px solid #fcd34d;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                            f'<span style="background:rgba(252,211,77,.18);color:#fcd34d;font-size:.62rem;'
+                            f'font-weight:700;padding:2px 8px;border-radius:8px">'
+                            f'{safe_str(_iss.get("section",""))}</span>'
+                            f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">'
+                            f'{safe_str(_iss.get("problem",""))}</span></div>'
+                            f'<div style="background:rgba(252,211,77,.07);border-radius:6px;'
+                            f'padding:7px 12px;font-size:.75rem;color:#fde68a;font-style:italic;margin-bottom:8px">'
+                            f'"{safe_str(_iss.get("excerpt",""))}"</div>'
+                            f'<div style="font-size:.75rem;color:#94a3b8">'
+                            f'✏️ {safe_str(_iss.get("suggestion",""))}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
-        prc1, prc2 = st.columns(2)
-        with prc1:
-            if st.button(
-                "⚡ Proceed to Full Analysis",
-                use_container_width=True,
-                type="primary",
-                key="go_after_cc",
-                help="Run the 10-agent pipeline now.",
-            ):
-                run_pipeline(files)
-        with prc2:
-            st.caption(
-                "✅ All questions reviewed — ready to proceed!" if all_acked
-                else f"Tip: tick each question once discussed with the client. ({total_q - len(acked)} remaining)"
+                if _ts_good:
+                    st.markdown(
+                        '<div style="font-size:.78rem;font-weight:700;color:#06d6a0;'
+                        'text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px">'
+                        '✅ Sections That Look Good</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _good_html = "".join(
+                        f'<span style="background:rgba(6,214,160,.12);border:1px solid rgba(6,214,160,.3);'
+                        f'color:#06d6a0;font-size:.75rem;font-weight:600;padding:4px 14px;'
+                        f'border-radius:20px;margin:3px 4px;display:inline-block">{_html_mod.escape(safe_str(g))}</span>'
+                        for g in _ts_good
+                    )
+                    st.markdown(f'<div style="margin:4px 0 8px">{_good_html}</div>', unsafe_allow_html=True)
+
+        # ── TAB 1: Completeness Check (existing content) ────────────────
+        with _cc_tab1:
+            confidence = cc.get("confidence", "Medium")
+            meta = _CONFIDENCE_META.get(confidence, _CONFIDENCE_META["Medium"])
+            total_q = sum(len(cat.get("questions", [])) for cat in cc.get("categories", []))
+            acked: set = st.session_state.get("_completeness_acked", set())
+
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);'
+                f'border-radius:14px;padding:18px 22px;margin-bottom:14px">'
+                f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
+                f'<span style="font-size:1.5rem">{meta["icon"]}</span>'
+                f'<span style="font-weight:700;font-size:1.05rem;color:#e2e8f0">Requirements Completeness Check</span>'
+                f'<span style="background:{meta["color"]}22;color:{meta["color"]};border:1px solid {meta["color"]}44;'
+                f'border-radius:20px;padding:2px 12px;font-size:.75rem;font-weight:700">{meta["label"]}</span>'
+                f'</div>'
+                f'<div style="color:#94a3b8;font-size:.85rem;line-height:1.6">{cc.get("summary", "")}</div>'
+                f'<div style="margin-top:10px;font-size:.78rem;color:#64748b">'
+                f'{len(acked)} of {total_q} questions acknowledged</div>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
+
+            # ── What IS clear ───────────────────────────────────────────
+            clear_items = cc.get("what_is_clear", [])
+            if clear_items:
+                with st.expander("✅ What the document makes clear", expanded=False):
+                    for item in clear_items:
+                        st.markdown(
+                            f'<div style="display:flex;align-items:flex-start;gap:8px;'
+                            f'padding:5px 0;color:#86efac;font-size:.84rem">'
+                            f'<span style="flex-shrink:0">✓</span><span>{item}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
+            # ── Questions by category ────────────────────────────────────
+            st.markdown(
+                '<div style="font-weight:700;color:#e2e8f0;font-size:.9rem;'
+                'margin:16px 0 10px">📋 Clarification Questions for the Presales Team</div>',
+                unsafe_allow_html=True,
+            )
+
+            for cat in cc.get("categories", []):
+                cat_name = cat.get("name", "General")
+                cat_icon = cat.get("icon", "❓")
+                questions = cat.get("questions", [])
+                if not questions:
+                    continue
+
+                with st.expander(f"{cat_icon} {cat_name}  ({len(questions)})", expanded=True):
+                    for qi, q in enumerate(questions):
+                        q_id = f"{cat_name}::{qi}"
+                        is_acked = q_id in acked
+                        ck_col, txt_col = st.columns([0.5, 9.5])
+                        with ck_col:
+                            checked = st.checkbox(
+                                "",
+                                value=is_acked,
+                                key=f"cc_{cat_name}_{qi}",
+                                label_visibility="collapsed",
+                            )
+                            if checked and q_id not in acked:
+                                acked.add(q_id)
+                                st.session_state["_completeness_acked"] = acked
+                            elif not checked and q_id in acked:
+                                acked.discard(q_id)
+                                st.session_state["_completeness_acked"] = acked
+                        with txt_col:
+                            opacity = ".45" if is_acked else "1"
+                            st.markdown(
+                                f'<div style="opacity:{opacity};padding:4px 0">'
+                                f'<div style="font-size:.84rem;color:#e2e8f0;font-weight:500">'
+                                f'{q.get("question", "")}</div>'
+                                f'<div style="font-size:.74rem;color:#64748b;margin-top:2px">'
+                                f'Why: {q.get("why", "")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+            # ── Proceed banner ───────────────────────────────────────────
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            all_acked = len(acked) == total_q
+            pct = int(len(acked) / total_q * 100) if total_q else 100
+            st.progress(pct / 100, text=f"{pct}% questions reviewed")
+
+            prc1, prc2 = st.columns(2)
+            with prc1:
+                if st.button(
+                    "⚡ Proceed to Full Analysis",
+                    use_container_width=True,
+                    type="primary",
+                    key="go_after_cc",
+                    help="Run the 10-agent pipeline now.",
+                ):
+                    run_pipeline(files)
+            with prc2:
+                st.caption(
+                    "✅ All questions reviewed — ready to proceed!" if all_acked
+                    else f"Tip: tick each question once discussed with the client. ({total_q - len(acked)} remaining)"
+                )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2467,8 +2780,8 @@ def tab_presale():
     _shdr_label = "📄 Upload Revised Scope Document" if _rev_parent else "📄 Document Ingestion"
     st.markdown(f'<div class="shdr"><span class="shdr-i">{"✏️" if _rev_parent else "📄"}</span> {_shdr_label.split(" ",1)[1]}</div>', unsafe_allow_html=True)
 
-    # ── Client name — stored in session_state and used across proposal/PDF/email ──
-    _cn_col, _sp_col = st.columns([2, 3])
+    # ── Client name + Engagement Type + Complexity ───────────────────────
+    _cn_col, _et_col, _cx_col = st.columns([1.5, 2, 1.5])
     with _cn_col:
         # Pre-fill from proposal_client_name if already set (e.g. after analysis)
         _cn_default = (
@@ -2485,6 +2798,34 @@ def tab_presale():
         if _client_name:
             st.session_state["client_name"]          = _client_name
             st.session_state["proposal_client_name"] = _client_name
+
+    with _et_col:
+        _et_opts = ["Implementation", "Discovery", "Discovery + Build"]
+        _et_default = st.session_state.get("engagement_type", "Implementation")
+        _et_idx = _et_opts.index(_et_default) if _et_default in _et_opts else 0
+        _engagement = st.radio(
+            "Engagement Type",
+            _et_opts,
+            index=_et_idx,
+            horizontal=True,
+            key="_engagement_type_radio",
+            help="Discovery = workshops + architecture only. Implementation = full build. Discovery + Build = both phases.",
+        )
+        st.session_state["engagement_type"] = _engagement
+
+    with _cx_col:
+        _cx_opts = ["Low", "Medium", "High"]
+        _cx_default = st.session_state.get("complexity_hint", "Medium")
+        _cx_idx = _cx_opts.index(_cx_default) if _cx_default in _cx_opts else 1
+        _complexity_hint = st.radio(
+            "Complexity",
+            _cx_opts,
+            index=_cx_idx,
+            horizontal=True,
+            key="_complexity_hint_radio",
+            help="Low = familiar tech, small scope. Medium = some unknowns. High = new platform or large integration landscape.",
+        )
+        st.session_state["complexity_hint"] = _complexity_hint
 
     uc, tc = st.columns([3, 2])
     with uc:
@@ -3038,6 +3379,77 @@ def _ai_chat(system: str, messages: list) -> str:
     )
 
 
+def _run_scope_validation(se: dict, doc_text: str) -> dict:
+    """Call AI to validate scope completeness. Returns structured gaps report. Cached per run."""
+    _cache_key = "scope_validation_result"
+    if st.session_state.get(_cache_key):
+        return st.session_state[_cache_key]
+
+    ai = _pick_ai_for("default")
+    reqs    = safe_list(se.get("requirements", []))
+    tech    = safe_list(se.get("technology_stack", []))
+    domains = safe_list(se.get("project_domains", []))
+    proj    = safe_str(se.get("project_type", ""))
+    client  = safe_str(se.get("client_name", ""))
+
+    req_summary = "\n".join(
+        f'- [{r.get("type","?")}] {r.get("title","")}: {r.get("description","")[:120]}'
+        for r in reqs[:30] if isinstance(r, dict)
+    )
+    system_prompt = (
+        "You are a senior IT presales consultant at ECI reviewing a client scope document. "
+        "Your job is to identify gaps and ambiguities BEFORE the team commits to an estimate. "
+        "Be specific, practical, and professional. Every question you generate must be ready to send to the client in an email.\n\n"
+        "Return ONLY valid JSON with this exact structure:\n"
+        "{\n"
+        '  "completeness_score": int (0-100, based on how complete and unambiguous the scope is),\n'
+        '  "summary": "one-line summary of the scope quality",\n'
+        '  "blockers": [\n'
+        '    {"category": str, "issue": str, "impact": str, "question": str}\n'
+        '  ],\n'
+        '  "assumptions": [\n'
+        '    {"category": str, "assumption": str, "impact": str, "question": str}\n'
+        '  ],\n'
+        '  "confirmed": [\n'
+        '    {"category": str, "detail": str}\n'
+        '  ],\n'
+        '  "email_subject": str,\n'
+        '  "email_body": str\n'
+        "}\n\n"
+        "BLOCKERS = critical unknowns that create high estimation risk. Must clarify before committing.\n"
+        "ASSUMPTIONS = gaps where you had to assume something. State what you assumed and the cost impact if wrong.\n"
+        "CONFIRMED = things clearly and unambiguously stated in the document.\n"
+        "The email_body should be a professional, ready-to-send client email with all clarification questions numbered."
+    )
+    user_prompt = (
+        f"Project: {proj} | Client: {client}\n"
+        f"Tech stack: {', '.join(tech[:15])}\n"
+        f"Domains: {', '.join(domains)}\n\n"
+        f"Extracted requirements ({len(reqs)} total):\n{req_summary}\n\n"
+        f"Original document excerpt (first 8000 chars):\n{doc_text[:8000]}"
+    )
+    try:
+        result = ai._call(system_prompt, user_prompt)
+        if isinstance(result, dict) and "completeness_score" in result:
+            st.session_state[_cache_key] = result
+            return result
+    except Exception:
+        pass
+
+    # Fallback — minimal structure so UI doesn't crash
+    fallback = {
+        "completeness_score": 60,
+        "summary": "Scope partially defined — some gaps require client clarification.",
+        "blockers": [],
+        "assumptions": [{"category": "General", "assumption": "Scope appears sufficient for initial estimate", "impact": "Low", "question": ""}],
+        "confirmed": [{"category": "Requirements", "detail": f"{len(reqs)} requirements extracted from document"}],
+        "email_subject": f"Clarification Required — {proj or 'Project'} Scope Review",
+        "email_body": "Please review the attached scope document and provide clarification on any open items.",
+    }
+    st.session_state[_cache_key] = fallback
+    return fallback
+
+
 def run_pipeline(files, pre_extracted_text: str = "", source_label: str = ""):
     st.session_state.agent_logs = []
 
@@ -3258,6 +3670,10 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         st.session_state["_extracted_filenames"] = [f.name for f in files]
         log_agent("Ingestion", str(len(files)) + " file(s), " + str(len(text)) + " chars")
     st.session_state["feedback_items"] = {}       # reset feedback on fresh run
+    st.session_state.pop("scope_validation_result", None)  # clear so validator re-runs on new doc
+    # Clear gantt figure cache so new estimates rebuild both charts
+    for _k in [k for k in st.session_state if k.startswith("_gfigs_")]:
+        st.session_state.pop(_k, None)
     _render_live_log(); time.sleep(0.2)
 
     _upd(1, "Analysing document structure…", 10)
@@ -3267,6 +3683,17 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 
     _upd(2, "Semantic analysis…", 20)
     semantic = ai_req.analyze_requirements(text)
+
+    # Apply user-supplied hints to override AI extraction
+    _eng_hint = st.session_state.get("engagement_type", "Implementation")
+    _cx_hint  = st.session_state.get("complexity_hint", "Medium")
+    _ai_score = safe_int(semantic.get("complexity_score", 5))
+    if _cx_hint == "Low":
+        semantic["complexity_score"] = min(_ai_score, 4)
+    elif _cx_hint == "High":
+        semantic["complexity_score"] = max(_ai_score, 7)
+    semantic["engagement_type"] = _eng_hint
+
     st.session_state["_last_semantic"] = semantic
     log_agent("Semantic", str(len(safe_list(semantic.get("requirements")))) + " requirements, " + str(len(safe_list(semantic.get("technology_stack")))) + " technologies detected")
     _render_live_log(); time.sleep(0.2)
@@ -3462,11 +3889,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         if _drawio_key not in st.session_state:
             st.session_state[_drawio_key] = _gen_drawio(arch, semantic).encode("utf-8")
 
-        # Pre-fetch live Azure pricing (saves a network round-trip on Cost tab render)
-        if not st.session_state.get("live_pricing_cache"):
-            _live_p = _fetch_live_azure_pricing()
-            if _live_p:
-                st.session_state["live_pricing_cache"] = _live_p
+        # Azure pricing is fetched lazily on Cost tab open — not here (avoids 12s HTTP block)
 
     except Exception as _fin_ex:
         log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
@@ -6764,9 +7187,10 @@ def _recalc_estimate(phases: list) -> dict:
     # 3. Critical-path duration (same formula as dynamic_builders)
     par_streams = [p for p in phases if safe_str(p.get("domain", "")) not in _OVERHEAD]
     disc_w   = next((p["duration_weeks"] for p in phases if p.get("domain") == "Discovery"), 1.0)
-    qa_w     = next((p["duration_weeks"] for p in phases if p.get("domain") == "QA"),        2.0)
     doc_w    = next((p["duration_weeks"] for p in phases if p.get("domain") == "Documentation"), 1.0)
     crit_w   = max((p["duration_weeks"] for p in par_streams), default=4.0)
+    # QA runs parallel (30% rule) — use 35% of critical-path as duration proxy
+    qa_w     = round(crit_w * 0.35, 1)
     total_weeks = round(disc_w + crit_w + (qa_w * 0.5) + doc_w + 1.0)
 
     # 4. Phase percentages
@@ -8307,10 +8731,189 @@ def show_results():
         proj_type  = safe_str(se.get("project_type", ""))
         cli_name   = safe_str(se.get("client_name", ""))
 
-        _req_sub1, _req_sub2 = st.tabs(["🎬 Project Explainer", "📋 Requirements Detail"])
+        _req_sub1, _req_sub2, _req_sub3 = st.tabs(["🎬 Project Explainer", "📋 Requirements Detail", "🔍 Scope Validator"])
 
         with _req_sub1:
             _render_project_explainer(se, r, fn_list, nf_list, ig_list)
+
+        with _req_sub3:
+            _doc_text = safe_str(st.session_state.get("_extracted_text", ""))
+            _sv_key   = "scope_validation_result"
+
+            # Clear cache when user clicks re-run
+            _sv_col1, _sv_col2 = st.columns([4, 1])
+            with _sv_col2:
+                if st.button("🔄 Re-analyse", key="btn_sv_rerun", use_container_width=True):
+                    st.session_state.pop(_sv_key, None)
+                    st.rerun()
+
+            with _sv_col1:
+                st.markdown(
+                    '<div style="font-size:.8rem;color:#64748b;padding-top:8px">'
+                    'AI reviews your scope document for gaps, ambiguities and missing information '
+                    'before estimates are committed.</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if not st.session_state.get(_sv_key):
+                with st.spinner("Analysing scope for gaps and assumptions…"):
+                    _sv_result = _run_scope_validation(se, _doc_text)
+            else:
+                _sv_result = st.session_state[_sv_key]
+
+            _sv_score    = safe_int(_sv_result.get("completeness_score", 0))
+            _sv_summary  = safe_str(_sv_result.get("summary", ""))
+            _sv_blockers = safe_list(_sv_result.get("blockers", []))
+            _sv_assumes  = safe_list(_sv_result.get("assumptions", []))
+            _sv_confirmed= safe_list(_sv_result.get("confirmed", []))
+            _sv_email_sub= safe_str(_sv_result.get("email_subject", ""))
+            _sv_email_bod= safe_str(_sv_result.get("email_body", ""))
+
+            _sv_score_clr = "#06d6a0" if _sv_score >= 75 else "#ffd166" if _sv_score >= 50 else "#f87171"
+            _sv_score_pct = min(100, _sv_score)
+
+            # ── Score banner ─────────────────────────────────────────────
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,rgba(15,23,42,.9),rgba(30,42,68,.8));'
+                f'border:1px solid {_sv_score_clr}44;border-radius:16px;padding:20px 24px;margin-bottom:20px">'
+                f'<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
+                f'<div style="text-align:center;min-width:90px">'
+                f'<div style="font-size:2.4rem;font-weight:900;color:{_sv_score_clr};line-height:1">{_sv_score}</div>'
+                f'<div style="font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px">Score / 100</div>'
+                f'</div>'
+                f'<div style="flex:1;min-width:200px">'
+                f'<div style="background:rgba(255,255,255,.07);border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px">'
+                f'<div style="height:100%;width:{_sv_score_pct}%;border-radius:8px;'
+                f'background:linear-gradient(90deg,{_sv_score_clr},{_sv_score_clr}99);'
+                f'box-shadow:0 0 10px {_sv_score_clr}66;transition:width .8s ease"></div>'
+                f'</div>'
+                f'<div style="font-size:.85rem;color:#e2e8f0;font-weight:500">{_sv_summary}</div>'
+                f'</div>'
+                f'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+                f'<div style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#f87171">{len(_sv_blockers)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Blockers</div>'
+                f'</div>'
+                f'<div style="background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#ffd166">{len(_sv_assumes)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Assumptions</div>'
+                f'</div>'
+                f'<div style="background:rgba(6,214,160,.1);border:1px solid rgba(6,214,160,.3);border-radius:10px;padding:8px 14px;text-align:center">'
+                f'<div style="font-size:1.3rem;font-weight:800;color:#06d6a0">{len(_sv_confirmed)}</div>'
+                f'<div style="font-size:.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px">Confirmed</div>'
+                f'</div>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── Blockers ─────────────────────────────────────────────────
+            if _sv_blockers:
+                st.markdown(
+                    '<div style="font-size:.78rem;font-weight:700;color:#f87171;'
+                    'text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px;'
+                    'display:flex;align-items:center;gap:8px">'
+                    '🔴 Blockers — Resolve Before Committing to Estimate</div>',
+                    unsafe_allow_html=True,
+                )
+                for _b in _sv_blockers:
+                    if not isinstance(_b, dict): continue
+                    _b_cat  = safe_str(_b.get("category", ""))
+                    _b_iss  = safe_str(_b.get("issue", ""))
+                    _b_imp  = safe_str(_b.get("impact", ""))
+                    _b_q    = safe_str(_b.get("question", ""))
+                    st.markdown(
+                        f'<div style="background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25);'
+                        f'border-left:4px solid #f87171;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                        f'<span style="background:rgba(248,113,113,.2);color:#f87171;font-size:.62rem;'
+                        f'font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">{_b_cat}</span>'
+                        f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">{_b_iss}</span>'
+                        f'</div>'
+                        f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:8px">⚠ Impact: {_b_imp}</div>'
+                        + (f'<div style="background:rgba(248,113,113,.08);border-radius:6px;padding:8px 12px;'
+                           f'font-size:.76rem;color:#fca5a5;font-style:italic">💬 "{_b_q}"</div>' if _b_q else '')
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # ── Assumptions ──────────────────────────────────────────────
+            if _sv_assumes:
+                st.markdown(
+                    '<div style="font-size:.78rem;font-weight:700;color:#ffd166;'
+                    'text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px;'
+                    'display:flex;align-items:center;gap:8px">'
+                    '🟡 Assumptions Made — Affect Estimate Accuracy</div>',
+                    unsafe_allow_html=True,
+                )
+                for _a in _sv_assumes:
+                    if not isinstance(_a, dict): continue
+                    _a_cat  = safe_str(_a.get("category", ""))
+                    _a_ass  = safe_str(_a.get("assumption", ""))
+                    _a_imp  = safe_str(_a.get("impact", ""))
+                    _a_q    = safe_str(_a.get("question", ""))
+                    st.markdown(
+                        f'<div style="background:rgba(255,209,102,.05);border:1px solid rgba(255,209,102,.22);'
+                        f'border-left:4px solid #ffd166;border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                        f'<span style="background:rgba(255,209,102,.18);color:#ffd166;font-size:.62rem;'
+                        f'font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">{_a_cat}</span>'
+                        f'<span style="font-size:.82rem;color:#e2e8f0;font-weight:600">{_a_ass}</span>'
+                        f'</div>'
+                        f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:8px">📊 Impact: {_a_imp}</div>'
+                        + (f'<div style="background:rgba(255,209,102,.07);border-radius:6px;padding:8px 12px;'
+                           f'font-size:.76rem;color:#fde68a;font-style:italic">💬 "{_a_q}"</div>' if _a_q else '')
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # ── Confirmed ────────────────────────────────────────────────
+            if _sv_confirmed:
+                st.markdown(
+                    '<div style="font-size:.78rem;font-weight:700;color:#06d6a0;'
+                    'text-transform:uppercase;letter-spacing:.8px;margin:18px 0 10px">'
+                    '🟢 Confirmed — Clearly Defined</div>',
+                    unsafe_allow_html=True,
+                )
+                _conf_html = "".join(
+                    f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                    f'padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">'
+                    f'<span style="background:rgba(6,214,160,.15);color:#06d6a0;font-size:.62rem;'
+                    f'font-weight:700;padding:2px 8px;border-radius:8px;white-space:nowrap;margin-top:1px">'
+                    f'{safe_str(_c.get("category",""))}</span>'
+                    f'<span style="font-size:.78rem;color:#cbd5e1">{safe_str(_c.get("detail",""))}</span>'
+                    f'</div>'
+                    for _c in _sv_confirmed if isinstance(_c, dict)
+                )
+                st.markdown(
+                    f'<div style="background:rgba(6,214,160,.04);border:1px solid rgba(6,214,160,.18);'
+                    f'border-radius:10px;padding:14px 18px">{_conf_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Client Q&A email ─────────────────────────────────────────
+            if _sv_email_bod:
+                st.markdown(
+                    '<div style="font-size:.78rem;font-weight:700;color:#7b61ff;'
+                    'text-transform:uppercase;letter-spacing:.8px;margin:22px 0 10px">'
+                    '📧 Client Clarification Email — Ready to Send</div>',
+                    unsafe_allow_html=True,
+                )
+                _email_full = f"Subject: {_sv_email_sub}\n\n{_sv_email_bod}"
+                st.text_area(
+                    "Copy and send to client",
+                    value=_email_full,
+                    height=260,
+                    key="sv_email_area",
+                    label_visibility="collapsed",
+                )
+                st.download_button(
+                    "📋 Download Q&A as .txt",
+                    data=_email_full.encode("utf-8"),
+                    file_name=f"Scope_Clarification_{safe_str(se.get('client_name','Client')).replace(' ','_')}.txt",
+                    mime="text/plain",
+                    use_container_width=False,
+                    key="sv_email_dl",
+                )
 
         with _req_sub2:
             # ── Project Brief summary card ─────────────────────────────
@@ -8469,135 +9072,385 @@ def show_results():
                 )
                 st.plotly_chart(fig_bar, use_container_width=True)
 
-            # ── Gantt chart ───────────────────────────────────────────
-            st.markdown(
-                '<div style="font-size:.8rem;font-weight:700;color:#94a3b8;'
-                'border-left:3px solid #14A0B9;padding-left:10px;margin:16px 0 10px">'
-                '📅 Project Timeline — Gantt View</div>',
-                unsafe_allow_html=True,
-            )
+            # ── Gantt charts — @st.fragment for instant toggle ─────────────
+            _qa_ref_wks = safe_int(te.get("qa_weeks", 3))
+            _qa_ref_hrs = max(40, round(_qa_ref_wks * 40 * 0.30))
 
-            # Build week ranges per phase from week_label or distribute evenly
-            _total_weeks = 0
-            try:
-                _dur_str = safe_str(te.get("duration_weeks", "16"))
-                _total_weeks = int("".join(filter(str.isdigit, _dur_str.split()[0]))) if _dur_str else 16
-            except Exception:
-                _total_weeks = 16
-            _total_weeks = max(_total_weeks, len(phases))
+            # Cache key — changes when estimate data changes
+            _gcache_key = f"_gfigs_v5_{safe_int(te.get('total_hours',0))}_{len(phases)}"
 
-            # Distribute phases proportionally by hours
-            _gantt_phases = []
-            _cursor = 1
-            for i, p in enumerate(phases):
-                p = safe_dict(p)
-                ph = safe_int(p.get("hours", 0))
-                _total_h = max(sum(_avg_v), 1)
-                span = max(1, round(ph / _total_h * _total_weeks))
-                if i == len(phases) - 1:
-                    span = max(1, _total_weeks - _cursor + 1)
-                _gantt_phases.append({
-                    "name":  safe_str(p.get("name", f"Phase {i+1}")),
-                    "start": _cursor,
-                    "end":   _cursor + span - 1,
-                    "hours": ph,
-                    "pct":   safe_str(p.get("percentage", "")),
-                    "color": _phase_colors[i % len(_phase_colors)],
-                })
-                _cursor += span
+            if _gcache_key not in st.session_state:
+                import plotly.graph_objects as _go2
 
-            _max_week = max(g["end"] for g in _gantt_phases) if _gantt_phases else _total_weeks
+                # ── Phase positions ───────────────────────────────────────
+                _p_disc = [safe_dict(p) for p in phases if safe_str(safe_dict(p).get("domain")) == "Discovery"]
+                _p_pm   = [safe_dict(p) for p in phases if safe_str(safe_dict(p).get("domain")) == "PM"]
+                _p_doc  = [safe_dict(p) for p in phases if safe_str(safe_dict(p).get("domain")) == "Documentation"]
+                _p_dev  = [safe_dict(p) for p in phases
+                           if safe_str(safe_dict(p).get("domain")) not in ("Discovery", "PM", "Documentation")]
 
-            # QA parallel band — starts at Design phase, runs through last Dev/Integration phase
-            # Not in hour totals; shown as a parallel overlay only
-            _qa_start = 1
-            _qa_end   = _max_week
-            for g in _gantt_phases:
-                gn = g["name"].lower()
-                if any(k in gn for k in ["discovery","design"]):
-                    _qa_start = g["start"]
-                if any(k in gn for k in ["development","integration"]):
-                    _qa_end = g["end"]
+                _disc_dw = max(1, round(float(_p_disc[0].get("duration_weeks", 2)))) if _p_disc else 2
+                _disc_s, _disc_e = 1, _disc_dw
+                _dev_s = _disc_e + 1
 
-            import plotly.graph_objects as _go2
-            fig_gantt = _go2.Figure()
+                _dev_colors = ["#14A0B9","#7b61ff","#9b59b6","#f4845f","#ffd166","#e9c46a","#06d6a0"]
+                _gph_dev = []
+                for idx, p in enumerate(_p_dev):
+                    dw = max(1, round(float(p.get("duration_weeks", 2))))
+                    _gph_dev.append({
+                        "name":   safe_str(p.get("name", f"Stream {idx+1}")),
+                        "start":  _dev_s, "end": _dev_s + dw - 1,
+                        "hours":  safe_int(p.get("hours", 0)),
+                        "pct":    safe_str(p.get("percentage", "")),
+                        "color":  _dev_colors[idx % len(_dev_colors)],
+                        "domain": safe_str(p.get("domain", "")),
+                    })
 
-            # QA parallel band rendered first (behind other bars)
-            fig_gantt.add_trace(_go2.Bar(
-                name="QA & Testing (parallel)",
-                x=[_qa_end - _qa_start + 1],
-                y=["🔍 QA & Testing"],
-                base=[_qa_start - 1],
-                orientation="h",
-                marker=dict(
-                    color="rgba(0,212,170,0.18)",
-                    line=dict(color="#00D4AA", width=2),
-                ),
-                text="  QA & Testing  ← parallel activity, starts at Design",
-                textposition="inside",
-                insidetextanchor="start",
-                hovertemplate=(
-                    "<b>QA & Testing</b><br>"
-                    f"Weeks {_qa_start}–{_qa_end} (parallel)<br>"
-                    "Runs alongside Design → Development<br>"
-                    "Included in ECI delivery — not billed separately<extra></extra>"
-                ),
-            ))
+                _max_dev_e = max((g["end"] for g in _gph_dev), default=_dev_s + 4)
+                _doc_dw  = max(1, round(float(_p_doc[0].get("duration_weeks", 1)))) if _p_doc else 1
+                _doc_s   = _max_dev_e + 1
+                _doc_e   = _doc_s + _doc_dw - 1
+                _proj_end = _doc_e + 1
+                _qa_s_g  = _dev_s
+                _qa_e_g  = _max_dev_e
+                _max_week = _proj_end
 
-            for i, g in enumerate(_gantt_phases):
+                # ── Y-axis order for phase Gantt ──────────────────────────
+                _y_order = []
+                if _p_disc: _y_order.append(safe_str(_p_disc[0].get("name","Discovery & Design")))
+                for g in _gph_dev: _y_order.append(g["name"])
+                _y_order.append("QA & Testing")
+                if _p_doc: _y_order.append(safe_str(_p_doc[0].get("name","Documentation & Training")))
+                if _p_pm:  _y_order.append(safe_str(_p_pm[0].get("name","Project Management")))
+
+                # ── Build Phase Gantt figure ──────────────────────────────
+                fig_gantt = _go2.Figure()
+
+                if _p_disc:
+                    _dn = safe_str(_p_disc[0].get("name","Discovery & Design"))
+                    fig_gantt.add_trace(_go2.Bar(
+                        name=_dn, x=[_disc_e - _disc_s + 1], y=[_dn],
+                        base=[_disc_s - 1], orientation="h",
+                        marker=dict(color="#00d4aa", opacity=0.9,
+                                    line=dict(color="rgba(255,255,255,.2)", width=1)),
+                        text=f"  {_dn}  {safe_int(_p_disc[0].get('hours',0))}h  {safe_str(_p_disc[0].get('percentage',''))}",
+                        textposition="inside", insidetextanchor="start",
+                        hovertemplate=f"<b>{_dn}</b><br>Wk {_disc_s}–{_disc_e}<br>"
+                                      f"{safe_int(_p_disc[0].get('hours',0))}h · {safe_str(_p_disc[0].get('percentage',''))}<extra></extra>",
+                    ))
+
+                for g in _gph_dev:
+                    fig_gantt.add_trace(_go2.Bar(
+                        name=g["name"], x=[g["end"] - g["start"] + 1], y=[g["name"]],
+                        base=[g["start"] - 1], orientation="h",
+                        marker=dict(color=g["color"], opacity=0.88,
+                                    line=dict(color="rgba(255,255,255,.15)", width=1)),
+                        text=f"  {g['name']}  {g['hours']}h  {g['pct']}",
+                        textposition="inside", insidetextanchor="start",
+                        hovertemplate=(
+                            f"<b>{g['name']}</b><br>Wk {g['start']}–{g['end']} (parallel)<br>"
+                            f"{g['hours']}h · {g['pct']}<extra></extra>"
+                        ),
+                    ))
+
                 fig_gantt.add_trace(_go2.Bar(
-                    name=g["name"],
-                    x=[g["end"] - g["start"] + 1],
-                    y=[g["name"]],
-                    base=[g["start"] - 1],
-                    orientation="h",
-                    marker=dict(color=g["color"], opacity=0.85,
-                                line=dict(color="rgba(255,255,255,.15)", width=1)),
-                    text=f'  {g["name"]}  {g["hours"]}h  {g["pct"]}',
-                    textposition="inside",
-                    insidetextanchor="start",
+                    name="QA & Testing", x=[_qa_e_g - _qa_s_g + 1], y=["QA & Testing"],
+                    base=[_qa_s_g - 1], orientation="h",
+                    marker=dict(color="rgba(0,212,170,0.28)", line=dict(color="#00D4AA", width=2)),
+                    text=f"  QA & Testing  Wk {_qa_s_g}–{_qa_e_g}",
+                    textposition="inside", insidetextanchor="start",
+                    textfont=dict(color="#FFFFFF", size=12),
                     hovertemplate=(
-                        f"<b>{g['name']}</b><br>"
-                        f"Weeks {g['start']}–{g['end']}<br>"
-                        f"{g['hours']}h · {g['pct']}<extra></extra>"
+                        "<b>QA & Testing</b><br>"
+                        f"Wk {_qa_s_g}–{_qa_e_g} — runs parallel with development<br>"
+                        "Included in delivery cost (30% of dev effort)<br>"
+                        "Not shown in hour estimates<extra></extra>"
                     ),
                 ))
 
-            # milestone markers
-            for m in milestones:
-                m = safe_dict(m)
-                mw = safe_int(m.get("week", 0))
-                if 0 < mw <= _max_week + 2:
-                    fig_gantt.add_vline(
-                        x=mw - 0.5, line_width=1.5,
-                        line_dash="dot", line_color="rgba(255,209,102,.7)",
-                    )
-                    fig_gantt.add_annotation(
-                        x=mw - 0.5, y=len(_gantt_phases) - 0.5,
-                        text=f"◆ {safe_str(m.get('name',''))}",
-                        showarrow=False,
-                        font=dict(size=9, color="#ffd166"),
-                        bgcolor="rgba(0,0,0,.5)",
-                        bordercolor="rgba(255,209,102,.4)",
-                        borderwidth=1, borderpad=3,
-                        yanchor="bottom",
+                if _p_doc:
+                    _docn = safe_str(_p_doc[0].get("name","Documentation & Training"))
+                    fig_gantt.add_trace(_go2.Bar(
+                        name=_docn, x=[_doc_e - _doc_s + 1], y=[_docn],
+                        base=[_doc_s - 1], orientation="h",
+                        marker=dict(color="#e9c46a", opacity=0.85,
+                                    line=dict(color="rgba(255,255,255,.15)", width=1)),
+                        text=f"  {_docn}  {safe_int(_p_doc[0].get('hours',0))}h  {safe_str(_p_doc[0].get('percentage',''))}",
+                        textposition="inside", insidetextanchor="start",
+                        hovertemplate=(
+                            f"<b>{_docn}</b><br>Wk {_doc_s}–{_doc_e}<br>"
+                            f"{safe_int(_p_doc[0].get('hours',0))}h<extra></extra>"
+                        ),
+                    ))
+
+                if _p_pm:
+                    _pmn = safe_str(_p_pm[0].get("name","Project Management"))
+                    fig_gantt.add_trace(_go2.Bar(
+                        name=_pmn, x=[_proj_end], y=[_pmn],
+                        base=[0], orientation="h",
+                        marker=dict(color="rgba(100,116,139,0.35)",
+                                    line=dict(color="rgba(148,163,184,.7)", width=1.5)),
+                        text=f"  {_pmn}  {safe_int(_p_pm[0].get('hours',0))}h  (ongoing throughout)",
+                        textposition="inside", insidetextanchor="start",
+                        textfont=dict(color="#FFFFFF", size=12),
+                        hovertemplate=(
+                            f"<b>{_pmn}</b><br>Wk 1–{_proj_end} (ongoing)<br>"
+                            f"{safe_int(_p_pm[0].get('hours',0))}h<extra></extra>"
+                        ),
+                    ))
+
+                for m in milestones:
+                    m = safe_dict(m)
+                    mw = safe_int(m.get("week", 0))
+                    if 0 < mw <= _max_week + 2:
+                        fig_gantt.add_vline(x=mw - 0.5, line_width=1.5,
+                                            line_dash="dot", line_color="rgba(255,209,102,.7)")
+                        fig_gantt.add_annotation(
+                            x=mw - 0.5, y=0, text=f"◆ {safe_str(m.get('name',''))}",
+                            showarrow=False, font=dict(size=9, color="#ffd166"),
+                            bgcolor="rgba(0,0,0,.6)", bordercolor="rgba(255,209,102,.4)",
+                            borderwidth=1, borderpad=3, yanchor="top", yref="paper",
+                        )
+
+                fig_gantt.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    barmode="overlay",
+                    height=max(240, len(_y_order) * 48 + 90),
+                    xaxis=dict(title=dict(text="Week", font=dict(size=11, color="#64748b")),
+                               tickmode="linear", tick0=1, dtick=1,
+                               range=[0, _max_week + 1],
+                               gridcolor="rgba(255,255,255,.05)",
+                               tickfont=dict(size=10, color="#64748b")),
+                    yaxis=dict(categoryorder="array",
+                               categoryarray=list(reversed(_y_order)),
+                               gridcolor="rgba(255,255,255,.04)",
+                               tickfont=dict(size=10, color="#94a3b8")),
+                    showlegend=False,
+                    margin=dict(t=10, b=45, l=10, r=10),
+                )
+
+                # ── Build Resource Gantt figure ───────────────────────────
+                _ROLE_NORM = {
+                    "PM": "Project Manager", "BA": "Business Analyst",
+                    "Architect": "Solution Architect", "Security": "Security Consultant",
+                    "Developer": "Developer", "Senior Dev": "Developer",
+                    "Frontend Dev": "Frontend Developer", "DevOps": "DevOps Engineer",
+                    "QA": "QA Engineer", "Writer": "Technical Writer",
+                    "SharePoint Dev": "SharePoint Developer",
+                    "Product Owner": "Product Owner",
+                    "Data Engineer": "Data Engineer", "ML Engineer": "ML Engineer",
+                }
+                _ROLE_ORDER = [
+                    "Project Manager", "Business Analyst", "Solution Architect",
+                    "Security Consultant", "Data Engineer", "ML Engineer",
+                    "Developer", "Frontend Developer", "SharePoint Developer",
+                    "DevOps Engineer", "QA Engineer", "Technical Writer", "Product Owner",
+                ]
+                _DOM_COLOR = {
+                    "Discovery": "#00e5bb", "Data Engineering": "#00c2ff",
+                    "AI / ML": "#a78bfa",  "SharePoint": "#c084fc",
+                    "Custom App": "#fb923c", "Integration": "#fcd34d",
+                    "DevOps": "#86efac",   "Documentation": "#fba94c",
+                    "PM": "#8899aa",       "QA": "#34d399",
+                }
+                _DOM_ABBREV = {
+                    "Discovery": "DISC", "Data Engineering": "DE", "AI / ML": "AI",
+                    "SharePoint": "SP", "Custom App": "APP", "Integration": "INT",
+                    "DevOps": "OPS", "Documentation": "DOC", "PM": "PM", "QA": "QA",
+                }
+                _ph_wmap = {}
+                for _rp in _p_disc:
+                    _ph_wmap[safe_str(_rp.get("name",""))] = (_disc_s, _disc_e, safe_str(_rp.get("domain","Discovery")))
+                for _rg in _gph_dev:
+                    _rph2 = next((safe_dict(p) for p in phases if safe_str(safe_dict(p).get("name")) == _rg["name"]), {})
+                    _ph_wmap[_rg["name"]] = (_rg["start"], _rg["end"], safe_str(_rph2.get("domain", "Dev")))
+                if _p_doc:
+                    _ph_wmap[safe_str(_p_doc[0].get("name",""))] = (_doc_s, _doc_e, "Documentation")
+                if _p_pm:
+                    _ph_wmap[safe_str(_p_pm[0].get("name",""))] = (1, _proj_end, "PM")
+
+                _res = {}
+                for _rphx in phases:
+                    _rphx = safe_dict(_rphx)
+                    _rpn  = safe_str(_rphx.get("name",""))
+                    _rng  = _ph_wmap.get(_rpn)
+                    if not _rng:
+                        continue
+                    _rsw, _rew, _rdom = _rng
+                    for _rt in _rphx.get("tasks", []):
+                        _rt  = safe_dict(_rt)
+                        _rl  = _ROLE_NORM.get(safe_str(_rt.get("role","Developer")), safe_str(_rt.get("role","Developer")))
+                        _rh  = safe_int(_rt.get("hours", 0))
+                        _sk  = (_rsw, _rew, _rpn)
+                        if _rl not in _res: _res[_rl] = {}
+                        if _sk not in _res[_rl]: _res[_rl][_sk] = {"hours": 0, "tasks": [], "domain": _rdom}
+                        _res[_rl][_sk]["hours"] += _rh
+                        _res[_rl][_sk]["tasks"].append(safe_str(_rt.get("name","")))
+
+                _qa_sk = (_qa_s_g, _qa_e_g, "QA & Testing")
+                if "QA Engineer" not in _res: _res["QA Engineer"] = {}
+                _res["QA Engineer"][_qa_sk] = {
+                    "hours": _qa_ref_hrs,
+                    "tasks": ["Test planning & case design", "Test environment setup",
+                              "Parallel test execution", "Defect reporting & retesting", "UAT support"],
+                    "domain": "QA",
+                }
+
+                _active_roles = [r for r in _ROLE_ORDER if r in _res]
+                for _r in _res:
+                    if _r not in _active_roles: _active_roles.append(_r)
+
+                # Compute totals + utilisation % for each role
+                _avail_h   = max(1, _max_week) * 40
+                _role_tot  = {_rl: sum(s["hours"] for s in _res[_rl].values()) for _rl in _active_roles}
+                _role_util = {_rl: round(_role_tot[_rl] / _avail_h * 100) for _rl in _active_roles}
+
+                # Y-axis tick labels: "Role Name  ·  Nh"
+                _ytick_t = [f"{_rl}  ·  {_role_tot[_rl]}h" for _rl in _active_roles]
+                _ytick_v = _active_roles[:]
+
+                # One trace per role — array colors for multi-segment bars
+                fig_res = _go2.Figure()
+                for _rl in _active_roles:
+                    _xs, _ys, _bs, _cs, _ts, _hovs = [], [], [], [], [], []
+                    for (_rsw, _rew, _rpn), _seg in _res[_rl].items():
+                        _dur  = max(1, _rew - _rsw + 1)
+                        _rdom = _seg["domain"]
+                        _rh   = _seg["hours"]
+                        _abbr = _DOM_ABBREV.get(_rdom, _rdom[:4].upper())
+                        _wkly = round(_rh / _dur, 1)
+                        _t5   = _seg["tasks"][:5]
+                        _more = max(0, len(_seg["tasks"]) - 5)
+                        _xs.append(_dur)
+                        _ys.append(_rl)
+                        _bs.append(_rsw - 1)
+                        _cs.append(_DOM_COLOR.get(_rdom, "#7b61ff"))
+                        _ts.append(f"  {_abbr}  ·  {_rh}h")
+                        _hovs.append(
+                            f"<b>{_rl}</b>  ·  <i>{_rpn}</i><br>"
+                            f"Wk {_rsw}–{_rew}  ·  <b>{_rh}h</b>  ·  ~{_wkly}h/wk<br>"
+                            + "".join(f"▸ {t}<br>" for t in _t5)
+                            + (f"…+{_more} more tasks" if _more else "")
+                        )
+                    fig_res.add_trace(_go2.Bar(
+                        name=_rl, x=_xs, y=_ys, base=_bs, orientation="h",
+                        marker=dict(color=_cs, opacity=0.92,
+                                    line=dict(color="rgba(0,0,0,0)", width=0)),
+                        text=_ts, textposition="inside", insidetextanchor="start",
+                        textfont=dict(size=11, color="#ffffff",
+                                      family="'DM Sans',sans-serif"),
+                        customdata=_hovs,
+                        hovertemplate="%{customdata}<extra></extra>",
+                        showlegend=False,
+                    ))
+
+                # Utilisation % annotations on right side, colour-coded
+                for _rl in _active_roles:
+                    _upct = _role_util[_rl]
+                    _ucol = ("#475569" if _upct < 20 else
+                             "#00d4aa" if _upct < 65 else
+                             "#ffd166" if _upct < 90 else "#f87171")
+                    fig_res.add_annotation(
+                        x=_max_week + 0.5, y=_rl, xref="x", yref="y",
+                        text=f"<b>{_upct}%</b>",
+                        showarrow=False, font=dict(size=11, color=_ucol),
+                        xanchor="left", yanchor="middle",
                     )
 
-            fig_gantt.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                barmode="overlay",
-                height=max(200, (len(_gantt_phases) + 1) * 52 + 80),
-                xaxis=dict(
-                    title="Week", tickmode="linear", tick0=1, dtick=1,
-                    range=[0, _max_week + 1],
-                    gridcolor="rgba(255,255,255,.06)",
-                ),
-                yaxis=dict(autorange="reversed", gridcolor="rgba(255,255,255,.04)"),
-                showlegend=False,
-                margin=dict(t=20, b=40, l=10, r=10),
-            )
-            st.plotly_chart(fig_gantt, use_container_width=True)
+                for m in milestones:
+                    m = safe_dict(m)
+                    mw = safe_int(m.get("week", 0))
+                    if 0 < mw <= _max_week + 2:
+                        fig_res.add_vline(x=mw - 0.5, line_width=1.5,
+                                          line_dash="dot", line_color="rgba(255,209,102,.6)")
+                        fig_res.add_annotation(
+                            x=mw - 0.5, y=0, text=f"◆ {safe_str(m.get('name',''))}",
+                            showarrow=False, font=dict(size=9, color="#ffd166"),
+                            bgcolor="rgba(10,14,26,.8)", bordercolor="rgba(255,209,102,.45)",
+                            borderwidth=1, borderpad=3, yanchor="top", yref="paper",
+                        )
+
+                fig_res.update_layout(
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(21,28,46,0.55)",
+                    barmode="overlay",
+                    height=max(340, len(_active_roles) * 58 + 110),
+                    xaxis=dict(title=dict(text="Week", font=dict(size=11, color="#64748b")),
+                               tickmode="linear", tick0=1, dtick=1,
+                               range=[0, _max_week + 2.8],
+                               gridcolor="rgba(255,255,255,.06)",
+                               tickfont=dict(size=10, color="#64748b"),
+                               showline=True, linecolor="rgba(255,255,255,.1)"),
+                    yaxis=dict(categoryorder="array",
+                               categoryarray=list(reversed(_active_roles)),
+                               ticktext=list(reversed(_ytick_t)),
+                               tickvals=list(reversed(_ytick_v)),
+                               gridcolor="rgba(255,255,255,.05)",
+                               tickfont=dict(size=11, color="#94a3b8",
+                                             family="'DM Sans',sans-serif")),
+                    showlegend=False,
+                    margin=dict(t=16, b=50, l=0, r=75),
+                    hoverlabel=dict(
+                        bgcolor="#0f1928", bordercolor="#1e2a4a",
+                        font=dict(size=12, color="#e2e8f0", family="'DM Sans',sans-serif"),
+                    ),
+                )
+
+                st.session_state[_gcache_key] = (fig_gantt, fig_res, _DOM_COLOR)
+
+            _cached = st.session_state.get(_gcache_key, (None, None, {}))
+            _fph = _cached[0]
+            _frs = _cached[1]
+            _dcol = safe_dict(_cached[2]) if len(_cached) > 2 else {}
+
+            if _fph is not None:
+                # ── Phase Gantt ───────────────────────────────────────
+                st.markdown(
+                    '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px">'
+                    '<div style="width:3px;height:18px;background:linear-gradient'
+                    '(180deg,#00d4aa,#14A0B9);border-radius:2px"></div>'
+                    '<span style="font-size:.95rem;font-weight:700;color:#e2e8f0">'
+                    '📅 Project Timeline</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(_fph, use_container_width=True,
+                                config={"displayModeBar": False})
+
+                # ── Resource Utilisation Gantt ────────────────────────
+                st.markdown(
+                    '<div style="display:flex;align-items:center;gap:10px;margin:28px 0 8px">'
+                    '<div style="width:3px;height:18px;background:linear-gradient'
+                    '(180deg,#7b61ff,#a78bfa);border-radius:2px"></div>'
+                    '<span style="font-size:.95rem;font-weight:700;color:#e2e8f0">'
+                    '👤 Resource Utilisation</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.plotly_chart(_frs, use_container_width=True,
+                                config={"displayModeBar": False})
+
+                # Domain legend + utilisation key
+                _lg = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 5px">'
+                for _d, _c in _dcol.items():
+                    _lg += (
+                        f'<span style="background:{_c}22;border:1px solid {_c}66;'
+                        f'color:{_c};font-size:.7rem;font-weight:600;'
+                        f'padding:3px 12px;border-radius:20px">{_d}</span>'
+                    )
+                _lg += (
+                    '</div>'
+                    '<div style="display:flex;gap:14px;margin:5px 0 4px;flex-wrap:wrap">'
+                    '<span style="font-size:.7rem;color:#64748b">⬛ &lt;20% underutilised</span>'
+                    '<span style="font-size:.7rem;color:#00d4aa">⬛ 20–65% optimal</span>'
+                    '<span style="font-size:.7rem;color:#ffd166">⬛ 65–90% busy</span>'
+                    '<span style="font-size:.7rem;color:#f87171">⬛ &gt;90% overloaded</span>'
+                    '</div>'
+                    '<div style="font-size:.73rem;color:#64748b;margin-top:2px">'
+                    '💡 Y-axis: role name · total allocated hours.  '
+                    '% on the right = utilisation over full project duration.  '
+                    'Hover bars for task details and weekly load.</div>'
+                )
+                st.markdown(_lg, unsafe_allow_html=True)
 
             # ── Detailed task breakdown per phase ─────────────────────
             st.markdown(
@@ -9064,8 +9917,8 @@ def show_results():
                 )
                 st.rerun()
 
+        _active_region = st.session_state.get(_region_key, _default_region)
         if _ce_ready:
-            _active_region = st.session_state.get(_region_key, _default_region)
             if _provider == "aws":
                 st.caption(f"📍 {_prov_name} catalog prices for: **{_active_region}** (on-demand, Apr-2026)")
             elif _provider == "gcp":

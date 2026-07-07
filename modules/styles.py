@@ -16,8 +16,15 @@ ECI_LOGO_WHITE_B64 = "iVBORw0KGgoAAAANSUhEUgAAAMgAAABGCAYAAACJ4ts2AAADvElEQVR4nO
 
 
 def inject_css():
+    # Non-blocking font load: media="print" trick lets the browser fetch fonts
+    # without blocking page render; onload swaps to media="all".
+    st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"></noscript>
+""", unsafe_allow_html=True)
     st.markdown("""<style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
     :root{--bg0:#0a0e1a;--bg1:#111827;--bg2:#151c2e;--bd:#1e2a4a;--t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;--c1:#00d4aa;--c2:#00b4d8;--c3:#7b61ff;--c4:#ff6b6b;--c5:#ffd166;--c6:#06d6a0;--gc:rgba(0,212,170,.15);--gp:rgba(123,97,255,.15)}
     .stApp{background:var(--bg0)!important}
     .main .block-container{padding-top:1rem;max-width:100%}
@@ -159,56 +166,5 @@ def inject_css():
     .cmd-item-hint{font-size:.72rem;color:#64748b;font-family:'JetBrains Mono',monospace}
     #cmdpal-footer{padding:8px 20px;border-top:1px solid #1e2a4a;display:flex;gap:16px;font-size:.72rem;color:#64748b;font-family:'JetBrains Mono',monospace}
 
-    /* ── Custom RUNNING indicator — replaces Streamlit's default stick figure ── */
-    @keyframes eci-spin{to{transform:rotate(360deg)}}
-
-    /* Pill container */
-    [data-testid="stStatusWidget"]{
-        position:relative!important;
-        background:linear-gradient(135deg,rgba(123,97,255,.18),rgba(0,180,216,.12))!important;
-        border:1px solid rgba(123,97,255,.45)!important;
-        border-radius:24px!important;
-        padding:6px 14px 6px 36px!important;
-        backdrop-filter:blur(10px)!important;
-        box-shadow:0 0 18px rgba(123,97,255,.2),0 2px 8px rgba(0,0,0,.4)!important;
-        min-width:148px!important;
-        overflow:hidden!important;
-        display:block!important;
-    }
-
-    /* Hide ALL native content (SVG person, "RUNNING..." text, any buttons) */
-    [data-testid="stStatusWidget"] *{
-        display:none!important;
-        visibility:hidden!important;
-    }
-
-    /* Spinning ring — absolutely positioned at left */
-    [data-testid="stStatusWidget"]::before{
-        content:'';
-        position:absolute;
-        left:10px;top:50%;
-        transform:translateY(-50%);
-        width:16px;height:16px;
-        border:2.5px solid rgba(123,97,255,.25);
-        border-top-color:#7b61ff;
-        border-right-color:#00d4aa;
-        border-radius:50%;
-        animation:eci-spin .75s linear infinite;
-        display:block!important;
-        visibility:visible!important;
-    }
-
-    /* "AI Processing..." label */
-    [data-testid="stStatusWidget"]::after{
-        content:'AI Processing...';
-        display:block!important;
-        visibility:visible!important;
-        font-family:'DM Sans','Space Grotesk',sans-serif!important;
-        font-size:.72rem!important;
-        font-weight:600!important;
-        letter-spacing:.04em!important;
-        color:#c4b5fd!important;
-        white-space:nowrap;
-        line-height:1;
-    }
-    </style>""", unsafe_allow_html=True)
+    </style>
+    """, unsafe_allow_html=True)

@@ -2041,7 +2041,7 @@ def render_mermaid(mermaid_code, height=450):
 }})();
 </script>
 </body></html>"""
-    st.iframe(srcdoc=html, height=height, scrolling=True)
+    st.components.v1.html(html, height=height, scrolling=True)
 
 
 def render_mermaid_tabs(diagrams):
@@ -2173,7 +2173,7 @@ async function generateDiagrams() {{
 }}
 </script>
 </body></html>"""
-    st.iframe(srcdoc=html, height=680, scrolling=True)
+    st.components.v1.html(html, height=680, scrolling=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2512,7 +2512,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});"""
         + _JS +
         "</script></body></html>"
     )
-    st.iframe(srcdoc=html, height=820, scrolling=True)
+    st.components.v1.html(html, height=820, scrolling=True)
 
 def _plotly_workflow(te: dict) -> None:
     """Project Workflow — layered Gantt bars (optimistic/likely/pessimistic) + milestone cards."""
@@ -3220,13 +3220,13 @@ def _render_roi_builder(se: dict, te: dict, ce: dict) -> None:
                 st.rerun()
         with c3:
             gen_clicked = st.button("✨ Regen", key="roi_regen", width="stretch", type="primary")
-        st.iframe(srcdoc=cached, height=990, scrolling=True)
+        st.components.v1.html(cached, height=990, scrolling=True)
     else:
         gen_clicked = st.button(
             "✨ Generate ROI & Business Case with AI Agent",
             key="roi_gen", type="primary", width="stretch",
         )
-        st.iframe(srcdoc=_ROI_TEASER_HTML, height=375, scrolling=False)
+        st.components.v1.html(_ROI_TEASER_HTML, height=375, scrolling=False)
 
     if gen_clicked:
         try:
@@ -3289,13 +3289,13 @@ def _render_transformation_journey(se: dict, te: dict, ar: dict) -> None:
                 st.rerun()
         with c3:
             gen_clicked = st.button("✨ Regen", key="jrn_regen", width="stretch", type="primary")
-        st.iframe(srcdoc=cached, height=1060, scrolling=True)
+        st.components.v1.html(cached, height=1060, scrolling=True)
     else:
         gen_clicked = st.button(
             "✨ Generate Transformation Journey with AI Agent",
             key="jrn_gen", type="primary", width="stretch",
         )
-        st.iframe(srcdoc=_JOURNEY_TEASER_HTML, height=375, scrolling=False)
+        st.components.v1.html(_JOURNEY_TEASER_HTML, height=375, scrolling=False)
 
     if gen_clicked:
         try:
@@ -3566,7 +3566,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
     if st.session_state.get(_FLAG_SHOW):
         st.session_state[_FLAG_SHOW] = False
         st.session_state[_FLAG_WORK] = True
-        st.iframe(srcdoc=_VISION_LOADER_HTML, height=330, scrolling=False)
+        st.components.v1.html(_VISION_LOADER_HTML, height=330, scrolling=False)
         st.rerun(scope="fragment")
         return
 
@@ -3574,7 +3574,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
     if st.session_state.get(_FLAG_WORK):
         st.session_state[_FLAG_WORK] = False
         # Show loader HTML again (will be visible once this rerun ends if API is fast)
-        st.iframe(srcdoc=_VISION_LOADER_HTML, height=330, scrolling=False)
+        st.components.v1.html(_VISION_LOADER_HTML, height=330, scrolling=False)
         _err = None
         _generated = None
         # st.spinner IS streamed mid-rerun — gives native Streamlit feedback
@@ -3606,7 +3606,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
 
     # ── Diagram available ─────────────────────────────────────────────
     if _cv_html:
-        st.iframe(srcdoc=_cv_html, height=1080, scrolling=True)
+        st.components.v1.html(_cv_html, height=1080, scrolling=True)
         from datetime import datetime as _dt2
         _cv1, _cv2, _cv3, _cv4 = st.columns(4)
         with _cv1:
@@ -3762,13 +3762,13 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
     # ── Render diagram HTML outside the fragment ──────────────────────────
     # (stays on screen unchanged when download buttons are clicked)
     if cached_html:
-        st.iframe(srcdoc=cached_html, height=920, scrolling=True)
+        st.components.v1.html(cached_html, height=920, scrolling=True)
         st.session_state[_html_dl_key] = cached_html
     else:
         if _pyhtml_key not in st.session_state:
             st.session_state[_pyhtml_key] = generate_arch_html_svg(ar, se)
         _py_html = st.session_state[_pyhtml_key]
-        st.iframe(srcdoc=_py_html, height=920, scrolling=True)
+        st.components.v1.html(_py_html, height=920, scrolling=True)
         if _html_dl_key not in st.session_state:
             st.session_state[_html_dl_key] = _py_html
 

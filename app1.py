@@ -938,7 +938,7 @@ def inject_command_palette():
       {g:"Admin",    icon:"🔧", label:"Config",         hint:"Admin tab"}
     ]"""
 
-    st.iframe(srcdoc=f"""<!DOCTYPE html><html><body style="margin:0">
+    st.components.v1.html(f"""<!DOCTYPE html><html><body style="margin:0">
 <script>
 (function(, ){{
   var p = window.parent;
@@ -1249,7 +1249,7 @@ def render_mermaid(mermaid_code, height=450):
 }})();
 </script>
 </body></html>"""
-    st.iframe(srcdoc=html, height=height, scrolling=True)
+    st.components.v1.html(html, height=height, scrolling=True)
 
 
 def render_mermaid_tabs(diagrams):
@@ -1355,7 +1355,7 @@ def render_mermaid_tabs(diagrams):
 }})();
 </script>
 </body></html>"""
-    st.iframe(srcdoc=html, height=620, scrolling=True)
+    st.components.v1.html(html, height=620, scrolling=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -9745,7 +9745,7 @@ def show_results():
 
         if flythrough_html:
             # Render inline inside Streamlit
-            st.iframe(srcdoc=flythrough_html, height=620, scrolling=False)
+            st.components.v1.html(flythrough_html, height=620, scrolling=False)
 
             st.markdown("---")
             ft_dl_cols = st.columns([2, 1])

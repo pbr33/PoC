@@ -246,7 +246,7 @@ NEW_FUNC = '''def _plotly_arch_diagram(ar: dict, se: dict) -> None:
         "document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});\n"
         "</script></body></html>"
     )
-    st.iframe(srcdoc=html, height=820, scrolling=True)'''
+    st.components.v1.html(html, height=820, scrolling=True)'''
 
 replacement = src[:start_idx] + NEW_FUNC + src[end_idx:]
 TARGET.write_text(replacement, encoding="utf-8")

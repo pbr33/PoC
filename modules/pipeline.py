@@ -3603,7 +3603,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 </script>
 </body></html>"""
         with _banner_slot:
-            st.iframe(srcdoc=_LIVE_BANNER, height=142, scrolling=False)
+            st.components.v1.html(_LIVE_BANNER, height=142, scrolling=False)
     else:
         pb.empty(); stepper.empty(); status.empty()
         st.markdown(
@@ -7027,7 +7027,7 @@ def _render_scope_risk_tab(se: dict, te: dict, ar: dict, ri: dict, r: dict) -> N
         with c3:
             gen_clicked = st.button("✨ Regen", key="sr_regen", width="stretch", type="primary")
         if not gen_clicked:
-            st.iframe(srcdoc=cached, height=1250, scrolling=True)
+            st.components.v1.html(cached, height=1250, scrolling=True)
     else:
         # SOW-quality generation button hidden (feature temporarily disabled)
         gen_clicked = False

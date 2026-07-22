@@ -27,7 +27,7 @@ def inject_command_palette():
       {g:"Admin",    icon:"🔧", label:"Config",         hint:"Admin tab"}
     ]"""
 
-    st.iframe(srcdoc=f"""<!DOCTYPE html><html><body style="margin:0">
+    st.components.v1.html(f"""<!DOCTYPE html><html><body style="margin:0">
 <script>
 (function(, ){{
   var p = window.parent;

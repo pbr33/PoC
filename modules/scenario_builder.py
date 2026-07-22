@@ -737,7 +737,7 @@ def _render_scope_editor(
         },
         key=f"sc_editor_{tab_i}",
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         num_rows="fixed",
         height=min(65 + len(in_scope_all) * 37, 520),
     )
@@ -863,7 +863,7 @@ def render_scenario_tab():
         if st.button(
             "＋ New Scenario",
             disabled=len(scenarios) >= _MAX_SCENARIOS,
-            use_container_width=True,
+            width="stretch",
             key="sc_add",
             type="primary",
             help=f"Add scenario ({len(scenarios)}/{_MAX_SCENARIOS})",
@@ -879,7 +879,7 @@ def render_scenario_tab():
             st.rerun(scope="fragment")
 
     with tc2:
-        if scenarios and st.button("🗑 Remove", use_container_width=True, key="sc_remove",
+        if scenarios and st.button("🗑 Remove", width="stretch", key="sc_remove",
                                    help="Delete the active scenario"):
             active = min(st.session_state._sc_active, len(scenarios) - 1)
             # Clear editor widget state
@@ -890,7 +890,7 @@ def render_scenario_tab():
             st.rerun(scope="fragment")
 
     with tc3:
-        if scenarios and st.button("↺ Reset", use_container_width=True, key="sc_reset",
+        if scenarios and st.button("↺ Reset", width="stretch", key="sc_reset",
                                    help="Reset active scenario to baseline params"):
             active = min(st.session_state._sc_active, len(scenarios) - 1)
             st.session_state.scenarios[active]["params"] = _default_params(results).copy()
@@ -902,7 +902,7 @@ def render_scenario_tab():
 
     with tc4:
         can_clone = scenarios and len(scenarios) < _MAX_SCENARIOS
-        if can_clone and st.button("⎘ Clone Active", use_container_width=True, key="sc_clone",
+        if can_clone and st.button("⎘ Clone Active", width="stretch", key="sc_clone",
                                    help="Duplicate active scenario as a new one"):
             active = min(st.session_state._sc_active, len(scenarios) - 1)
             src    = scenarios[active]
@@ -1298,7 +1298,7 @@ def render_scenario_tab():
             _pb1, _pb2, _ = st.columns([1.5, 1.5, 4])
             with _pb1:
                 if st.button("📄 Use in Proposal", key=f"sc_to_proposal_{tab_i}",
-                             use_container_width=True,
+                             width="stretch",
                              help="Save this scenario's KPIs to session so the Proposal tab can reference them"):
                     st.session_state["proposal_scenario"] = {
                         "name":          sc["name"],
@@ -1310,7 +1310,7 @@ def render_scenario_tab():
                     st.success(f"✅ '{sc['name']}' set as proposal scenario — switch to Proposal tab.")
             with _pb2:
                 if st.button("📋 Copy Summary", key=f"sc_copy_{tab_i}",
-                             use_container_width=True,
+                             width="stretch",
                              help="Copy a text summary of this scenario to session clipboard"):
                     summary = (
                         f"**{sc['name']}** — {kpi['duration_weeks']:.0f} wks, "
@@ -1514,7 +1514,7 @@ def render_scenario_tab():
                              secondary_y=False)
             fig.update_yaxes(title_text="Weeks", showgrid=False,
                              tickfont=dict(color="#a78bfa"), secondary_y=True)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
         # Chart 2 — Stacked cost
         with ch2:
@@ -1540,7 +1540,7 @@ def render_scenario_tab():
             fig2.update_xaxes(showgrid=False, tickfont=dict(color="#64748b"))
             fig2.update_yaxes(showgrid=True, gridcolor="#1e293b",
                               tickprefix="$", tickfont=dict(color="#64748b"))
-            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig2, width="stretch", config={"displayModeBar": False})
 
         # Radar
         if len(all_kpis) >= 2:
@@ -1583,7 +1583,7 @@ def render_scenario_tab():
                             font=dict(color="#64748b", size=10)),
                 height=370, margin=dict(l=30, r=30, t=20, b=50),
             )
-            st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig3, width="stretch", config={"displayModeBar": False})
 
     except ImportError:
         st.info("Install plotly for charts: pip install plotly")
@@ -1601,7 +1601,7 @@ def render_scenario_tab():
                 data=excel_data,
                 file_name="scenario_comparison.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.caption("Install openpyxl to enable Excel export.")

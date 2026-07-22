@@ -1084,31 +1084,31 @@ def render_interactive_arch_tabs(ar, te, ce):
 
     with d1:
         try:
-            st.plotly_chart(_arch_fig(ar), use_container_width=True)
+            st.plotly_chart(_arch_fig(ar), width="stretch")
         except Exception as e:
             st.warning(f"Architecture diagram error: {e}")
 
     with d2:
         try:
-            st.plotly_chart(_workflow_fig(te), use_container_width=True)
+            st.plotly_chart(_workflow_fig(te), width="stretch")
         except Exception as e:
             st.warning(f"Workflow diagram error: {e}")
 
     with d3:
         try:
-            st.plotly_chart(_dataflow_fig(ar), use_container_width=True)
+            st.plotly_chart(_dataflow_fig(ar), width="stretch")
         except Exception as e:
             st.warning(f"Data flow diagram error: {e}")
 
     with d4:
         try:
-            st.plotly_chart(_infra_map_fig(ce, ar), use_container_width=True)
+            st.plotly_chart(_infra_map_fig(ce, ar), width="stretch")
         except Exception as e:
             st.warning(f"Infrastructure map error: {e}")
 
     with d5:
         try:
-            st.plotly_chart(_security_fig(ar), use_container_width=True)
+            st.plotly_chart(_security_fig(ar), width="stretch")
             # Show bullet list of security controls
             sec = safe_list(ar.get("security"))
             if sec:
@@ -5535,31 +5535,31 @@ def render_interactive_arch_tabs(ar, te, ce):
 
     with d1:
         try:
-            st.plotly_chart(_arch_fig(ar), use_container_width=True)
+            st.plotly_chart(_arch_fig(ar), width="stretch")
         except Exception as e:
             st.warning(f"Architecture diagram error: {e}")
 
     with d2:
         try:
-            st.plotly_chart(_workflow_fig(te), use_container_width=True)
+            st.plotly_chart(_workflow_fig(te), width="stretch")
         except Exception as e:
             st.warning(f"Workflow diagram error: {e}")
 
     with d3:
         try:
-            st.plotly_chart(_dataflow_fig(ar), use_container_width=True)
+            st.plotly_chart(_dataflow_fig(ar), width="stretch")
         except Exception as e:
             st.warning(f"Data flow diagram error: {e}")
 
     with d4:
         try:
-            st.plotly_chart(_infra_map_fig(ce, ar), use_container_width=True)
+            st.plotly_chart(_infra_map_fig(ce, ar), width="stretch")
         except Exception as e:
             st.warning(f"Infrastructure map error: {e}")
 
     with d5:
         try:
-            st.plotly_chart(_security_fig(ar), use_container_width=True)
+            st.plotly_chart(_security_fig(ar), width="stretch")
             # Show bullet list of security controls
             sec = safe_list(ar.get("security"))
             if sec:
@@ -9081,7 +9081,7 @@ with st.sidebar:
     st.session_state.azure_endpoint = st.text_input("Endpoint", value=st.session_state.azure_endpoint, placeholder="https://your-resource.openai.azure.com/", key="k2")
     st.session_state.azure_api_version = st.selectbox("Version", ["2024-06-01", "2024-02-01", "2023-12-01-preview"], key="k3")
     st.session_state.azure_deployment = st.text_input("Deployment", value=st.session_state.azure_deployment, placeholder="gpt-4", key="k4")
-    if st.button("Test Connection", use_container_width=True, key="tb1"):
+    if st.button("Test Connection", width="stretch", key="tb1"):
         ok, msg = AzureAI.from_session().test()
         if ok:
             st.success(msg)
@@ -9093,7 +9093,7 @@ with st.sidebar:
     st.session_state.sp_cid = st.text_input("Client ID", value=st.session_state.sp_cid, key="k6")
     st.session_state.sp_cs = st.text_input("Client Secret", value=st.session_state.sp_cs, type="password", key="k7")
     st.session_state.sp_tid = st.text_input("Tenant ID", value=st.session_state.sp_tid, key="k8")
-    if st.button("Test SharePoint", use_container_width=True, key="tb2"):
+    if st.button("Test SharePoint", width="stretch", key="tb2"):
         ok, msg = SP.from_session().test()
         if ok:
             st.success(msg)
@@ -9139,7 +9139,7 @@ def tab_presale():
     with tc:
         st.markdown('<div class="crd"><div class="crd-t">SharePoint Auto-Trigger</div><div class="crd-d">Monitor folder for new scope docs</div>', unsafe_allow_html=True)
         sp_f = st.text_input("Folder", placeholder="/sites/presales/Shared Documents/Scope", key="spf", label_visibility="collapsed")
-        if st.button("Check Now", use_container_width=True, key="spchk"):
+        if st.button("Check Now", width="stretch", key="spchk"):
             found = SP.from_session().list_folder(sp_f)
             if found:
                 st.success("Found " + str(len(found)) + " doc(s)")
@@ -9153,7 +9153,7 @@ def tab_presale():
         st.markdown("---")
         _, bc, _ = st.columns([1, 2, 1])
         with bc:
-            if st.button("PROCESS & GENERATE ESTIMATES", use_container_width=True, type="primary", key="go"):
+            if st.button("PROCESS & GENERATE ESTIMATES", width="stretch", type="primary", key="go"):
                 run_pipeline(files)
 
     if st.session_state.processing_results:
@@ -9335,7 +9335,7 @@ def show_results():
                 height=max(350, len(phases) * 60), barmode="group", xaxis_title="Hours",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # ── Detailed task breakdown per phase (Inflexion.xlsx style) ──
             st.markdown("### Detailed Task Breakdown")
@@ -9404,7 +9404,7 @@ def show_results():
                 data=excel_data,
                 file_name="ECI_Time_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_time_xlsx",
+                width="stretch", type="primary", key="dl_time_xlsx",
             )
 
     # ── Cost (Infrastructure) ──
@@ -9424,7 +9424,7 @@ def show_results():
             fig = px.pie(values=pie_vals, names=pie_names, title="Azure Infrastructure Cost Distribution (Monthly)",
                          color_discrete_sequence=["#00d4aa", "#00b4d8", "#7b61ff", "#ff6b6b", "#ffd166", "#06d6a0", "#e9c46a", "#f4845f", "#a8dadc", "#457b9d", "#2a9d8f", "#264653"])
             fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         st.markdown("**Azure Services:**")
         for svc in azure_costs:
             svc = safe_dict(svc)
@@ -9451,7 +9451,7 @@ def show_results():
                 data=cost_xl_data,
                 file_name="ECI_Cost_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_cost_xlsx",
+                width="stretch", type="primary", key="dl_cost_xlsx",
             )
 
     # ── Risk ──
@@ -9507,14 +9507,14 @@ def show_results():
                     if arch_svg:
                         st.download_button("Architecture (SVG)", data=arch_svg,
                             file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".svg",
-                            mime="image/svg+xml", use_container_width=True, key="dl_arch_svg2")
+                            mime="image/svg+xml", width="stretch", key="dl_arch_svg2")
                     elif arch_html:
                         st.download_button("Architecture (HTML)", data=arch_html,
                             file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html",
-                            mime="text/html", use_container_width=True, key="dl_arch_html2")
+                            mime="text/html", width="stretch", key="dl_arch_html2")
                     st.download_button("Architecture (DOT)", data=arch_dot.encode("utf-8"),
                         file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".dot",
-                        mime="text/plain", use_container_width=True, key="dl_arch_dot2")
+                        mime="text/plain", width="stretch", key="dl_arch_dot2")
                 else:
                     st.info("Install graphviz system binary to enable static diagram exports.")
             with dl_c2:
@@ -9524,14 +9524,14 @@ def show_results():
                     if flow_svg:
                         st.download_button("Workflow (SVG)", data=flow_svg,
                             file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".svg",
-                            mime="image/svg+xml", use_container_width=True, key="dl_flow_svg2")
+                            mime="image/svg+xml", width="stretch", key="dl_flow_svg2")
                     elif flow_html:
                         st.download_button("Workflow (HTML)", data=flow_html,
                             file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html",
-                            mime="text/html", use_container_width=True, key="dl_flow_html2")
+                            mime="text/html", width="stretch", key="dl_flow_html2")
                     st.download_button("Workflow (DOT)", data=flow_dot.encode("utf-8"),
                         file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".dot",
-                        mime="text/plain", use_container_width=True, key="dl_flow_dot2")
+                        mime="text/plain", width="stretch", key="dl_flow_dot2")
 
     # ── Proposal ──
     with tab_list[5]:
@@ -9552,7 +9552,7 @@ def show_results():
                 data=pdf_data,
                 file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                 mime="application/pdf",
-                use_container_width=True, type="primary", key="dl_proposal_pdf",
+                width="stretch", type="primary", key="dl_proposal_pdf",
             )
         pptx_data = generate_proposal_pptx(r)
         if pptx_data:
@@ -9561,7 +9561,7 @@ def show_results():
                 data=pptx_data,
                 file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True, key="dl_proposal_pptx",
+                width="stretch", key="dl_proposal_pptx",
             )
         sow_data = generate_sow_pdf(r)
         if sow_data:
@@ -9570,7 +9570,7 @@ def show_results():
                 data=sow_data,
                 file_name="ECI_SOW_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                 mime="application/pdf",
-                use_container_width=True, type="primary", key="dl_sow_pdf",
+                width="stretch", type="primary", key="dl_sow_pdf",
             )
 
     # ── Scope ──
@@ -9625,7 +9625,7 @@ def show_results():
                 fig_roles = px.pie(values=role_days, names=role_names, title="Team Allocation (Days)",
                                    color_discrete_sequence=role_colors)
                 fig_roles.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
-                st.plotly_chart(fig_roles, use_container_width=True)
+                st.plotly_chart(fig_roles, width="stretch")
 
         st.markdown("---")
         st.markdown("### Project Duration Summary")
@@ -9665,21 +9665,21 @@ def show_results():
             st.download_button("📊 Time Estimate (Excel)", data=xl_data,
                                file_name="ECI_Time_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True, type="primary", key="bdl_xl")
+                               width="stretch", type="primary", key="bdl_xl")
     with dl_row1[1]:
         cost_xl = generate_cost_excel(ce, te, se)
         if cost_xl:
             st.download_button("💰 Cost Estimate (Excel)", data=cost_xl,
                                file_name="ECI_Cost_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True, type="primary", key="bdl_cost_xl")
+                               width="stretch", type="primary", key="bdl_cost_xl")
     with dl_row1[2]:
         pdf_data = generate_proposal_pdf(r)
         if pdf_data:
             st.download_button("📄 Proposal (PDF)", data=pdf_data,
                                file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                                mime="application/pdf",
-                               use_container_width=True, type="primary", key="bdl_pdf")
+                               width="stretch", type="primary", key="bdl_pdf")
     dl_row2 = st.columns(3)
     with dl_row2[0]:
         pptx_dl = generate_proposal_pptx(r)
@@ -9687,18 +9687,18 @@ def show_results():
             st.download_button("📑 Proposal (PowerPoint)", data=pptx_dl,
                                file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pptx",
                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                               use_container_width=True, type="primary", key="bdl_pptx")
+                               width="stretch", type="primary", key="bdl_pptx")
     with dl_row2[1]:
         sow_dl = generate_sow_pdf(r)
         if sow_dl:
             st.download_button("📝 Statement of Work (PDF)", data=sow_dl,
                                file_name="ECI_SOW_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                                mime="application/pdf",
-                               use_container_width=True, type="primary", key="bdl_sow")
+                               width="stretch", type="primary", key="bdl_sow")
     with dl_row2[2]:
         st.download_button("📋 Full Data (JSON)", data=json.dumps(r, indent=2, default=str),
                            file_name="belal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
-                           mime="application/json", use_container_width=True, key="bdl")
+                           mime="application/json", width="stretch", key="bdl")
     dl_row3 = st.columns(3)
     with dl_row3[0]:
         # Zip bundle of all deliverables
@@ -9718,20 +9718,20 @@ def show_results():
         zip_buf.seek(0)
         st.download_button("📦 All Deliverables (ZIP)", data=zip_buf.getvalue(),
                            file_name="ECI_Deliverables_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".zip",
-                           mime="application/zip", use_container_width=True, key="bdl_zip")
+                           mime="application/zip", width="stretch", key="bdl_zip")
 
     # Actions row
     st.markdown('<div class="shdr" style="font-size:1rem;"><span class="shdr-i">⚡</span> Actions</div>', unsafe_allow_html=True)
     ac_cols = st.columns(2)
     with ac_cols[0]:
-        if st.button("Upload to SharePoint", use_container_width=True, key="bsp"):
+        if st.button("Upload to SharePoint", width="stretch", key="bsp"):
             ok, msg = SP.from_session().upload(r)
             if ok:
                 st.success(msg)
             else:
                 st.error(msg)
     with ac_cols[1]:
-        if st.button("Send Alert Email", use_container_width=True, key="bem"):
+        if st.button("Send Alert Email", width="stretch", key="bem"):
             ok, msg = Mailer.from_session().send(r)
             if ok:
                 st.success(msg)
@@ -9763,7 +9763,7 @@ def tab_admin():
                                    line=dict(color="#00d4aa", width=3), marker=dict(size=10)))
         fig.update_layout(title="Accuracy Trend", template="plotly_dark",
                           paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         dc1, dc2 = st.columns(2)
         with dc1:
             fig2 = go.Figure(go.Bar(x=["Time", "Cost", "Risk", "Arch"], y=[85, 79, 82, 88],
@@ -9771,7 +9771,7 @@ def tab_admin():
                                     text=["85%", "79%", "82%", "88%"], textposition="auto"))
             fig2.update_layout(title="Agent Accuracy", template="plotly_dark",
                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
         with dc2:
             fig3 = go.Figure(go.Indicator(
                 mode="gauge+number+delta", value=m["accuracy"], delta={"reference": 72},
@@ -9779,7 +9779,7 @@ def tab_admin():
                        "steps": [{"range": [0, 50], "color": "rgba(255,107,107,.2)"}, {"range": [50, 75], "color": "rgba(255,209,102,.2)"}, {"range": [75, 100], "color": "rgba(0,212,170,.2)"}]},
                 title={"text": "Model Health"}))
             fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
 
     with at[1]:
         st.file_uploader("Upload Historical Data", type=["json", "csv", "xlsx"], accept_multiple_files=True, key="tfu")
@@ -9817,7 +9817,7 @@ def tab_admin():
             st.selectbox("Pricing", ["Fixed Price", "T&M", "Retainer"], key="pc")
         tc = st.columns(3)
         with tc[0]:
-            if st.button("Train", use_container_width=True, type="primary", key="bt"):
+            if st.button("Train", width="stretch", type="primary", key="bt"):
                 pb = st.progress(0)
                 for i in range(100):
                     time.sleep(0.02)
@@ -9825,18 +9825,18 @@ def tab_admin():
                 st.session_state.model_metrics["accuracy"] = min(st.session_state.model_metrics["accuracy"] + 2.5, 95)
                 st.success("Training complete!")
         with tc[1]:
-            if st.button("Retrain", use_container_width=True, key="br"):
+            if st.button("Retrain", width="stretch", key="br"):
                 time.sleep(1)
                 st.success("Retrained.")
         with tc[2]:
-            if st.button("A/B Test", use_container_width=True, key="ba"):
+            if st.button("A/B Test", width="stretch", key="ba"):
                 time.sleep(1)
                 st.success("New model +8.3%")
 
     with at[3]:
         st.text_input("Library Path", placeholder="/sites/presales/Historical", key="ssp")
         st.multiselect("Types", ["Proposals", "Estimates", "Outcomes", "Templates"], default=["Proposals", "Estimates", "Outcomes"], key="sst")
-        if st.button("Sync Now", use_container_width=True, type="primary", key="bs"):
+        if st.button("Sync Now", width="stretch", type="primary", key="bs"):
             time.sleep(2)
             st.success("Synced 47 docs.")
 

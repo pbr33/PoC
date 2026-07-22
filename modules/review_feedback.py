@@ -633,14 +633,14 @@ def _render_accept_reject_panel():
     ac1, ac2 = st.columns(2)
     with ac1:
         if st.button("✅  Accept & Keep New Version", type="primary",
-                     use_container_width=True, key="rfb_accept_inline"):
+                     width="stretch", key="rfb_accept_inline"):
             st.session_state["results_before_regen"] = None
             st.session_state["regen_sections"]       = []
             st.session_state.pop("_last_rendered_kpi", None)
             st.toast(f"✅ Changes accepted — proposal is now at v{_current_version()}!", icon="✅")
             st.rerun()  # full rerun so ALL tabs re-render with the updated results
     with ac2:
-        if st.button("↩️  Discard — Restore Previous", use_container_width=True,
+        if st.button("↩️  Discard — Restore Previous", width="stretch",
                      key="rfb_discard_inline"):
             st.session_state["processing_results"]   = before
             st.session_state["results_before_regen"] = None
@@ -959,7 +959,7 @@ def _render_rfb_inner(r, se, te, ce, ri, ar, ai_client=None):
                         "Delta": (f"{'+'if diff>=0 else ''}{diff:,}{unit} ({'+' if pct>=0 else ''}{pct:.0f}%)" if changed else "—"),
                         "Status": "🔴 Changed" if changed else "✅ Same",
                     })
-                st.dataframe(_pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.dataframe(_pd.DataFrame(rows), width="stretch", hide_index=True)
             else:
                 st.info("Submit feedback to create v2 — then compare here.")
 
@@ -1012,7 +1012,7 @@ def _render_rfb_inner(r, se, te, ce, ri, ar, ai_client=None):
 
         if st.button(
             f"🚀  Submit & Recalibrate  {total_c} sections  →  v{current_ver + 1}",
-            type="primary", use_container_width=True, key="rfb_submit", disabled=not can_submit,
+            type="primary", width="stretch", key="rfb_submit", disabled=not can_submit,
         ):
             _queue_submit(run_id=run_id, section=sel_sec, fb_type=fb_type,
                           priority=priority, description=description.strip(),
@@ -1030,7 +1030,7 @@ def _render_rfb_inner(r, se, te, ce, ri, ar, ai_client=None):
         qa_cols = st.columns(3)
         for i, (qa_lbl, qa_sec, qa_type, qa_desc) in enumerate(_QUICK_ACTIONS):
             with qa_cols[i % 3]:
-                if st.button(qa_lbl, key=f"rfb_quick_{i}", use_container_width=True):
+                if st.button(qa_lbl, key=f"rfb_quick_{i}", width="stretch"):
                     _queue_submit(run_id=run_id, section=qa_sec, fb_type=qa_type,
                                   priority="Medium", description=qa_desc,
                                   submitted_by=submitted_by.strip() or "Quick Action",
@@ -1279,12 +1279,12 @@ def render_version_history_tab(r: dict):
                         file_name=f"ECI_Proposal_v{vn}_{_dt.now().strftime('%Y%m%d')}.json",
                         mime="application/json",
                         key=f"dl_ver_{vn}",
-                        use_container_width=True,
+                        width="stretch",
                     )
             with btn_cols[1]:
                 if not is_cur and snap:
                     if st.button(f"↩️ Restore v{vn}", key=f"restore_v{vn}",
-                                  use_container_width=True):
+                                  width="stretch"):
                         st.session_state["processing_results"]   = snap
                         st.session_state["results_before_regen"] = None
                         st.session_state["regen_sections"]       = []
@@ -1295,7 +1295,7 @@ def render_version_history_tab(r: dict):
                     st.caption("← Current version")
             with btn_cols[2]:
                 if snap:
-                    if st.button(f"🔍 v{vn}", key=f"inspect_v{vn}", use_container_width=True,
+                    if st.button(f"🔍 v{vn}", key=f"inspect_v{vn}", width="stretch",
                                   help=f"Inspect v{vn} details"):
                         st.session_state[f"_inspect_v{vn}"] = not st.session_state.get(f"_inspect_v{vn}", False)
 
@@ -1333,7 +1333,7 @@ def render_version_history_tab(r: dict):
                 "Risk":    v.get("risk_level",""),
                 "Reqs":    v.get("req_count",""),
             })
-        st.dataframe(_pd.DataFrame(ver_rows), use_container_width=True, hide_index=True)
+        st.dataframe(_pd.DataFrame(ver_rows), width="stretch", hide_index=True)
 
         if len(pipeline_versions) >= 2:
             latest, prev = pipeline_versions[-1], pipeline_versions[-2]
@@ -1354,7 +1354,7 @@ def render_version_history_tab(r: dict):
                     "Latest": fmt(lv) if callable(fmt) else str(lv), "Change": diff_str,
                     "▲": "▲" if diff_val>0 else ("▼" if diff_val<0 else "="),
                 })
-            st.dataframe(_pd.DataFrame(delta_rows), use_container_width=True, hide_index=True)
+            st.dataframe(_pd.DataFrame(delta_rows), width="stretch", hide_index=True)
 
         v_idx = st.selectbox(
             "Download run as JSON",
@@ -1505,19 +1505,19 @@ def render_feedback_admin_panel():
             "Preview": (fb.get("description","") or "")[:55]+"…",
             "Project": fb.get("client_name","") or fb.get("project_type","") or "—",
         })
-    st.dataframe(_pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(_pd.DataFrame(rows), width="stretch", hide_index=True)
     with st.expander("⚙️ Manage", expanded=False):
         sel_id = st.number_input("Feedback ID", min_value=1, step=1,
                                   value=filtered[0].get("id",1) if filtered else 1, key="adm_fb_id")
         a1,a2,a3 = st.columns(3)
         with a1:
-            if st.button("✅ Mark Applied",  key="adm_apply",   use_container_width=True):
+            if st.button("✅ Mark Applied",  key="adm_apply",   width="stretch"):
                 update_feedback_status(int(sel_id), "applied"); st.rerun()
         with a2:
-            if st.button("🚫 Dismiss",       key="adm_dismiss", use_container_width=True):
+            if st.button("🚫 Dismiss",       key="adm_dismiss", width="stretch"):
                 update_feedback_status(int(sel_id), "dismissed"); st.rerun()
         with a3:
-            if st.button("⏳ Reset Pending", key="adm_reset",   use_container_width=True):
+            if st.button("⏳ Reset Pending", key="adm_reset",   width="stretch"):
                 update_feedback_status(int(sel_id), "pending"); st.rerun()
     try:
         import plotly.graph_objects as _go
@@ -1533,5 +1533,5 @@ def render_feedback_admin_panel():
             height=250,margin=dict(l=0,r=0,t=36,b=20),showlegend=False,
             xaxis=dict(color="#64748b",tickfont=dict(size=9)),
             yaxis=dict(color="#64748b",showgrid=True,gridcolor="#1e293b"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     except Exception: pass

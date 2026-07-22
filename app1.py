@@ -295,7 +295,7 @@ div[data-testid="stAlert"] {
             )
             username = st.text_input("Username", placeholder="Enter username")
             password = st.text_input("Password", type="password", placeholder="Enter password")
-            login_btn = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
+            login_btn = st.form_submit_button("Sign In →", type="primary", width="stretch")
 
         if login_btn:
             pw_hash = hashlib.sha256(password.encode()).hexdigest()
@@ -938,9 +938,9 @@ def inject_command_palette():
       {g:"Admin",    icon:"🔧", label:"Config",         hint:"Admin tab"}
     ]"""
 
-    st.components.v1.html(f"""<!DOCTYPE html><html><body style="margin:0">
+    st.iframe(srcdoc=f"""<!DOCTYPE html><html><body style="margin:0">
 <script>
-(function(){{
+(function(, ){{
   var p = window.parent;
   var pd = p.document;
 
@@ -1249,7 +1249,7 @@ def render_mermaid(mermaid_code, height=450):
 }})();
 </script>
 </body></html>"""
-    st.components.v1.html(html, height=height, scrolling=True)
+    st.iframe(srcdoc=html, height=height, scrolling=True)
 
 
 def render_mermaid_tabs(diagrams):
@@ -1355,7 +1355,7 @@ def render_mermaid_tabs(diagrams):
 }})();
 </script>
 </body></html>"""
-    st.components.v1.html(html, height=620, scrolling=True)
+    st.iframe(srcdoc=html, height=620, scrolling=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -7719,7 +7719,7 @@ with st.sidebar:
               if st.session_state.claude_model in AnthropicAI.MODELS else 0,
         key="k_claude_model",
     )
-    if st.button("Test Claude", use_container_width=True, key="tb_ant"):
+    if st.button("Test Claude", width="stretch", key="tb_ant"):
         ok, msg = AnthropicAI.from_session().test()
         st.success(msg) if ok else st.error(msg)
     st.divider()
@@ -7736,7 +7736,7 @@ with st.sidebar:
               if st.session_state.gemini_model in GeminiAI.MODELS else 0,
         key="k_gem_model",
     )
-    if st.button("Test Gemini", use_container_width=True, key="tb_gem"):
+    if st.button("Test Gemini", width="stretch", key="tb_gem"):
         ok, msg = GeminiAI.from_session().test()
         st.success(msg) if ok else st.error(msg)
     st.divider()
@@ -7746,7 +7746,7 @@ with st.sidebar:
     st.session_state.azure_endpoint = st.text_input("Endpoint", value=st.session_state.azure_endpoint, placeholder="https://your-resource.openai.azure.com/", key="k2")
     st.session_state.azure_api_version = st.selectbox("Version", ["2024-06-01", "2024-02-01", "2023-12-01-preview"], key="k3")
     st.session_state.azure_deployment = st.text_input("Deployment", value=st.session_state.azure_deployment, placeholder="gpt-4", key="k4")
-    if st.button("Test Azure", use_container_width=True, key="tb1"):
+    if st.button("Test Azure", width="stretch", key="tb1"):
         ok, msg = AzureAI.from_session().test()
         if ok:
             st.success(msg)
@@ -7758,7 +7758,7 @@ with st.sidebar:
     st.session_state.sp_cid = st.text_input("Client ID", value=st.session_state.sp_cid, key="k6")
     st.session_state.sp_cs = st.text_input("Client Secret", value=st.session_state.sp_cs, type="password", key="k7")
     st.session_state.sp_tid = st.text_input("Tenant ID", value=st.session_state.sp_tid, key="k8")
-    if st.button("Test SharePoint", use_container_width=True, key="tb2"):
+    if st.button("Test SharePoint", width="stretch", key="tb2"):
         ok, msg = SP.from_session().test()
         if ok:
             st.success(msg)
@@ -8252,7 +8252,7 @@ def render_live_demo_tab(se, te, ce, r):
     with btn_cols[0]:
         gen_clicked = st.button(
             "🎯 Create Live Demo",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=(ai is None),
             key="btn_gen_demo",
@@ -8261,7 +8261,7 @@ def render_live_demo_tab(se, te, ce, r):
     with btn_cols[1]:
         regen_clicked = st.button(
             "🔄 Regenerate",
-            use_container_width=True,
+            width="stretch",
             disabled=(ai is None or "live_demo_html" not in st.session_state),
             key="btn_regen_demo",
         )
@@ -8272,7 +8272,7 @@ def render_live_demo_tab(se, te, ce, r):
                 data=st.session_state["live_demo_html"],
                 file_name=f"ECI_LiveDemo_{project_type.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key="btn_dl_demo",
             )
 
@@ -8356,7 +8356,7 @@ def tab_presale():
     with tc:
         st.markdown('<div class="crd"><div class="crd-t">SharePoint Auto-Trigger</div><div class="crd-d">Monitor folder for new scope docs</div>', unsafe_allow_html=True)
         sp_f = st.text_input("Folder", placeholder="/sites/presales/Shared Documents/Scope", key="spf", label_visibility="collapsed")
-        if st.button("Check Now", use_container_width=True, key="spchk"):
+        if st.button("Check Now", width="stretch", key="spchk"):
             found = SP.from_session().list_folder(sp_f)
             if found:
                 st.success("Found " + str(len(found)) + " doc(s)")
@@ -8373,7 +8373,7 @@ def tab_presale():
         st.markdown("---")
         _, bc, _ = st.columns([1, 2, 1])
         with bc:
-            if st.button("PROCESS & GENERATE ESTIMATES", use_container_width=True, type="primary", key="go"):
+            if st.button("PROCESS & GENERATE ESTIMATES", width="stretch", type="primary", key="go"):
                 run_pipeline(files)
 
     # ── Multimodal Discovery ──
@@ -8401,7 +8401,7 @@ def tab_presale():
     if disc_files:
         _, dbc, _ = st.columns([1, 2, 1])
         with dbc:
-            if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", use_container_width=True, type="primary", key="disc_go"):
+            if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", width="stretch", type="primary", key="disc_go"):
                 ai = AzureAI.from_session()
                 dpb = st.progress(0)
                 dstatus = st.empty()
@@ -8531,7 +8531,7 @@ def tab_presale():
                 data=json.dumps(dr, indent=2, default=str),
                 file_name="ECI_Discovery_Report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
                 mime="application/json",
-                use_container_width=True, key="dl_disc_json",
+                width="stretch", key="dl_disc_json",
             )
         with dl_disc_cols[1]:
             if st.session_state.discovery_transcript:
@@ -8540,7 +8540,7 @@ def tab_presale():
                     data=st.session_state.discovery_transcript,
                     file_name="ECI_Transcript_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",
                     mime="text/plain",
-                    use_container_width=True, key="dl_disc_txt",
+                    width="stretch", key="dl_disc_txt",
                 )
 
     if st.session_state.processing_results:
@@ -8804,7 +8804,7 @@ def _quick_feedback(section_key: str, placeholder: str):
             label_visibility="collapsed",
         )
     with qc2:
-        if st.button("Add ➕", key=f"qfb_add_{section_key}", use_container_width=True):
+        if st.button("Add ➕", key=f"qfb_add_{section_key}", width="stretch"):
             if val.strip():
                 if "feedback_items" not in st.session_state:
                     st.session_state.feedback_items = {}
@@ -8888,13 +8888,13 @@ def _show_regen_diff():
 
         ac1, ac2 = st.columns(2)
         with ac1:
-            if st.button("✅ Accept Changes", type="primary", use_container_width=True, key="fb_accept"):
+            if st.button("✅ Accept Changes", type="primary", width="stretch", key="fb_accept"):
                 st.session_state["results_before_regen"] = None
                 st.session_state["regen_sections"]       = []
                 show_toast("Changes accepted!", "success")
                 st.rerun()
         with ac2:
-            if st.button("↩️ Discard — Restore Original", use_container_width=True, key="fb_discard"):
+            if st.button("↩️ Discard — Restore Original", width="stretch", key="fb_discard"):
                 st.session_state.processing_results  = before
                 st.session_state["results_before_regen"] = None
                 st.session_state["regen_sections"]       = []
@@ -8970,13 +8970,13 @@ def _render_feedback_panel(r):
             else:
                 st.caption("Tick a section above and write feedback to enable regeneration.")
         with c2:
-            if fl and st.button("📋 Revision Log", use_container_width=True, key="fb_log_btn"):
+            if fl and st.button("📋 Revision Log", width="stretch", key="fb_log_btn"):
                 st.session_state["_show_fb_log"] = not st.session_state.get("_show_fb_log", False)
         with c3:
             if st.button(
                 "🔄 Apply Feedback",
                 disabled=not pending,
-                use_container_width=True,
+                width="stretch",
                 type="primary",
                 key="fb_apply_btn",
             ) and pending:
@@ -9012,7 +9012,7 @@ def _render_feedback_panel(r):
                 )
             with rev_col2:
                 st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                if st.button("✅ Mark as Architect Reviewed", use_container_width=True,
+                if st.button("✅ Mark as Architect Reviewed", width="stretch",
                              type="primary", key="btn_mark_reviewed"):
                     _db_mark_reviewed(run_id, notes=rev_notes)
                     show_toast("Proposal marked as Architect Reviewed ✅", "success")
@@ -9252,7 +9252,7 @@ def show_results():
                 height=max(350, len(phases) * 60), barmode="group", xaxis_title="Hours",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # ── Detailed task breakdown per phase (Inflexion.xlsx style) ──
             st.markdown("### Detailed Task Breakdown")
@@ -9323,7 +9323,7 @@ def show_results():
                     data=excel_data,
                     file_name="ECI_Time_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="primary", key="dl_time_xlsx",
+                    width="stretch", type="primary", key="dl_time_xlsx",
                 )
         with dl_time_cols[1]:
             lenox_data = generate_lenox_excel(te, se, ce, ri, r)
@@ -9333,7 +9333,7 @@ def show_results():
                     data=lenox_data,
                     file_name="ECI_Estimation_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="secondary", key="dl_lenox_time",
+                    width="stretch", type="secondary", key="dl_lenox_time",
                 )
 
         _quick_feedback("time", 'e.g. "hours are too low, add 20% for integration testing"')
@@ -9355,7 +9355,7 @@ def show_results():
             fig = px.pie(values=pie_vals, names=pie_names, title="Azure Infrastructure Cost Distribution (Monthly)",
                          color_discrete_sequence=["#00d4aa", "#00b4d8", "#7b61ff", "#ff6b6b", "#ffd166", "#06d6a0", "#e9c46a", "#f4845f", "#a8dadc", "#457b9d", "#2a9d8f", "#264653"])
             fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         st.markdown("**Azure Services:**")
         for svc in azure_costs:
             svc = safe_dict(svc)
@@ -9385,7 +9385,7 @@ def show_results():
         with lp_cols[0]:
             refresh_prices_btn = st.button(
                 "🔄 Refresh Live Azure Prices",
-                use_container_width=True,
+                width="stretch",
                 key="btn_live_prices",
             )
         with lp_cols[1]:
@@ -9420,7 +9420,7 @@ def show_results():
                     live_rows.append({"Service": svc, "Live $/mo": lp, "AI Estimate $/mo": cat_price, "Δ": diff_str})
                 if live_rows:
                     import pandas as pd
-                    st.dataframe(pd.DataFrame(live_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(live_rows), width="stretch", hide_index=True)
 
         # Cost Excel download
         st.markdown("---")
@@ -9431,7 +9431,7 @@ def show_results():
                 data=cost_xl_data,
                 file_name="ECI_Cost_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_cost_xlsx",
+                width="stretch", type="primary", key="dl_cost_xlsx",
             )
 
         _quick_feedback("cost", 'e.g. "switch SQL to Premium tier, add Redis Cache"')
@@ -9460,7 +9460,7 @@ def show_results():
             arch_dot = generate_architecture_diagram(ar)
             if arch_dot:
                 st.markdown("### Solution Architecture Diagram")
-                st.graphviz_chart(arch_dot, use_container_width=True)
+                st.graphviz_chart(arch_dot, width="stretch")
         except Exception:
             pass
 
@@ -9478,7 +9478,7 @@ def show_results():
                         data=arch_svg,
                         file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".svg",
                         mime="image/svg+xml",
-                        use_container_width=True, type="primary", key="dl_arch_svg",
+                        width="stretch", type="primary", key="dl_arch_svg",
                     )
                 elif arch_html:
                     st.download_button(
@@ -9486,7 +9486,7 @@ def show_results():
                         data=arch_html,
                         file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html",
                         mime="text/html",
-                        use_container_width=True, type="primary", key="dl_arch_html",
+                        width="stretch", type="primary", key="dl_arch_html",
                     )
             with dl_arch_cols[1]:
                 if arch_png:
@@ -9495,7 +9495,7 @@ def show_results():
                         data=arch_png,
                         file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".png",
                         mime="image/png",
-                        use_container_width=True, type="primary", key="dl_arch_png",
+                        width="stretch", type="primary", key="dl_arch_png",
                     )
                 elif arch_html and not arch_svg:
                     st.info("Open the HTML file in a browser, then use the Download PNG button inside it.")
@@ -9505,7 +9505,7 @@ def show_results():
                     data=arch_dot.encode("utf-8"),
                     file_name="ECI_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".dot",
                     mime="text/plain",
-                    use_container_width=True, key="dl_arch_dot",
+                    width="stretch", key="dl_arch_dot",
                 )
 
         # ── Component cards ──
@@ -9526,7 +9526,7 @@ def show_results():
             flow_dot = generate_flow_diagram(te)
             if flow_dot:
                 st.markdown("### Project Workflow Diagram")
-                st.graphviz_chart(flow_dot, use_container_width=True)
+                st.graphviz_chart(flow_dot, width="stretch")
         except Exception:
             pass
 
@@ -9544,7 +9544,7 @@ def show_results():
                         data=flow_svg,
                         file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".svg",
                         mime="image/svg+xml",
-                        use_container_width=True, type="primary", key="dl_flow_svg",
+                        width="stretch", type="primary", key="dl_flow_svg",
                     )
                 elif flow_html:
                     st.download_button(
@@ -9552,7 +9552,7 @@ def show_results():
                         data=flow_html,
                         file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html",
                         mime="text/html",
-                        use_container_width=True, type="primary", key="dl_flow_html",
+                        width="stretch", type="primary", key="dl_flow_html",
                     )
             with dl_flow_cols[1]:
                 if flow_png:
@@ -9561,7 +9561,7 @@ def show_results():
                         data=flow_png,
                         file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".png",
                         mime="image/png",
-                        use_container_width=True, type="primary", key="dl_flow_png",
+                        width="stretch", type="primary", key="dl_flow_png",
                     )
                 elif flow_html and not flow_svg:
                     st.info("Open the HTML file in a browser, then use the Download PNG button inside it.")
@@ -9571,7 +9571,7 @@ def show_results():
                     data=flow_dot.encode("utf-8"),
                     file_name="ECI_Workflow_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".dot",
                     mime="text/plain",
-                    use_container_width=True, key="dl_flow_dot",
+                    width="stretch", key="dl_flow_dot",
                 )
 
         # ── Security ──
@@ -9587,7 +9587,7 @@ def show_results():
         mermaid_data = safe_dict(r.get("mermaid_diagrams"))
         if mermaid_data:
             st.markdown("Click **Generate Diagrams** to render the architecture diagrams.")
-            if st.button("🔄 Generate Diagrams", key="btn_gen_diagrams", use_container_width=True):
+            if st.button("🔄 Generate Diagrams", key="btn_gen_diagrams", width="stretch"):
                 st.session_state["show_diagrams"] = True
 
             if st.session_state.get("show_diagrams"):
@@ -9605,7 +9605,7 @@ def show_results():
                     data=json.dumps(mermaid_data, indent=2),
                     file_name="ECI_Diagrams_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
                     mime="application/json",
-                    use_container_width=True, key="dl_diagrams",
+                    width="stretch", key="dl_diagrams",
                 )
         else:
             st.info("Architecture diagrams will be generated after processing documents.")
@@ -9629,7 +9629,7 @@ def show_results():
                 data=pdf_data,
                 file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                 mime="application/pdf",
-                use_container_width=True, type="primary", key="dl_proposal_pdf",
+                width="stretch", type="primary", key="dl_proposal_pdf",
             )
         pptx_data = generate_proposal_pptx(r)
         if pptx_data:
@@ -9638,7 +9638,7 @@ def show_results():
                 data=pptx_data,
                 file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True, key="dl_proposal_pptx",
+                width="stretch", key="dl_proposal_pptx",
             )
         sow_data = generate_sow_pdf(r)
         if sow_data:
@@ -9647,7 +9647,7 @@ def show_results():
                 data=sow_data,
                 file_name="ECI_SOW_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                 mime="application/pdf",
-                use_container_width=True, type="primary", key="dl_sow_pdf",
+                width="stretch", type="primary", key="dl_sow_pdf",
             )
         _quick_feedback("proposal", 'e.g. "rewrite executive summary, make it more concise"')
 
@@ -9704,7 +9704,7 @@ def show_results():
                 fig_roles = px.pie(values=role_days, names=role_names, title="Team Allocation (Days)",
                                    color_discrete_sequence=role_colors)
                 fig_roles.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=400)
-                st.plotly_chart(fig_roles, use_container_width=True)
+                st.plotly_chart(fig_roles, width="stretch")
 
         st.markdown("---")
         st.markdown("### Project Duration Summary")
@@ -9745,7 +9745,7 @@ def show_results():
 
         if flythrough_html:
             # Render inline inside Streamlit
-            st.components.v1.html(flythrough_html, height=620, scrolling=False)
+            st.iframe(srcdoc=flythrough_html, height=620, scrolling=False)
 
             st.markdown("---")
             ft_dl_cols = st.columns([2, 1])
@@ -9760,7 +9760,7 @@ def show_results():
                     data=flythrough_html.encode("utf-8"),
                     file_name="ECI_3D_Architecture_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html",
                     mime="text/html",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                     key="dl_3d_html",
                 )
@@ -9815,7 +9815,7 @@ def show_results():
 
         gen_cols = st.columns([3, 1])
         with gen_cols[1]:
-            if st.button("✍️ Generate Script", use_container_width=True, key="btn_gen_script"):
+            if st.button("✍️ Generate Script", width="stretch", key="btn_gen_script"):
                 with st.spinner("Writing architect pitch script…"):
                     st.session_state.narrator_script = narrator.generate_script(r)
                 st.success("Script ready — review and edit below before generating audio/video.")
@@ -9842,7 +9842,7 @@ def show_results():
         st.markdown("**Step 2 — Voice Synthesis (ElevenLabs)**")
         voice_cols = st.columns([3, 1])
         with voice_cols[1]:
-            gen_voice = st.button("🎙️ Synthesise Voice", use_container_width=True,
+            gen_voice = st.button("🎙️ Synthesise Voice", width="stretch",
                                   key="btn_voice", disabled=not (script_text.strip() and narrator.el_ready))
         with voice_cols[0]:
             if not narrator.el_ready:
@@ -9932,7 +9932,7 @@ def show_results():
             with did_img_cols[1]:
                 upload_did_btn = st.button(
                     "⬆️ Upload to D-ID",
-                    use_container_width=True,
+                    width="stretch",
                     key="btn_did_upload",
                     disabled=did_photo is None,
                 )
@@ -10074,7 +10074,7 @@ def show_results():
                 elif st.session_state.narrator_mode == "stock":
                     av_cols = st.columns([2, 1, 1])
                     with av_cols[1]:
-                        fetch_avs = st.button("🔍 Fetch Avatars", use_container_width=True, key="btn_fetch_avs")
+                        fetch_avs = st.button("🔍 Fetch Avatars", width="stretch", key="btn_fetch_avs")
                     if fetch_avs:
                         with st.spinner("Fetching HeyGen avatars…"):
                             avs, av_err = narrator.list_free_avatars()
@@ -10112,7 +10112,7 @@ def show_results():
                     with tp_cols[1]:
                         upload_btn = st.button(
                             "⬆️ Upload Photo",
-                            use_container_width=True,
+                            width="stretch",
                             key="btn_upload_photo",
                             disabled=uploaded_photo is None,
                         )
@@ -10166,7 +10166,7 @@ def show_results():
 
                 gen_video_btn = st.button(
                     "🎥 Generate Video",
-                    use_container_width=False,
+                    width="content",
                     key="btn_video",
                     disabled=not can_generate,
                     type="primary",
@@ -10384,7 +10384,7 @@ def show_results():
                     "Reqs":     v.get("req_count", ""),
                     "Model":    v.get("model_used", ""),
                 })
-            st.dataframe(pd.DataFrame(ver_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(ver_rows), width="stretch", hide_index=True)
 
             # Diff view
             if len(versions) >= 2:
@@ -10409,7 +10409,7 @@ def show_results():
                         "Change":   diff_str,
                         "▲":       "▲" if diff_val > 0 else ("▼" if diff_val < 0 else "="),
                     })
-                st.dataframe(pd.DataFrame(delta_rows), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(delta_rows), width="stretch", hide_index=True)
 
             # Download any version as JSON
             v_idx = st.selectbox(
@@ -10443,28 +10443,28 @@ def show_results():
             st.download_button("📊 Time Estimate (Excel)", data=xl_data,
                                file_name="ECI_Time_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True, type="primary", key="bdl_xl")
+                               width="stretch", type="primary", key="bdl_xl")
     with dl_row1[1]:
         lenox_data = generate_lenox_excel(te, se, ce, ri, r)
         if lenox_data:
             st.download_button("📋 Full Estimation (Lenox)", data=lenox_data,
                                file_name="ECI_Estimation_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True, type="primary", key="bdl_lenox")
+                               width="stretch", type="primary", key="bdl_lenox")
     with dl_row1[2]:
         cost_xl = generate_cost_excel(ce, te, se)
         if cost_xl:
             st.download_button("💰 Cost Estimate (Excel)", data=cost_xl,
                                file_name="ECI_Cost_Estimate_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True, type="primary", key="bdl_cost_xl")
+                               width="stretch", type="primary", key="bdl_cost_xl")
     with dl_row1[3]:
         pdf_data = generate_proposal_pdf(r)
         if pdf_data:
             st.download_button("📄 Proposal (PDF)", data=pdf_data,
                                file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                                mime="application/pdf",
-                               use_container_width=True, type="primary", key="bdl_pdf")
+                               width="stretch", type="primary", key="bdl_pdf")
     dl_row2 = st.columns(3)
     with dl_row2[0]:
         pptx_dl = generate_proposal_pptx(r)
@@ -10472,18 +10472,18 @@ def show_results():
             st.download_button("📑 Proposal (PowerPoint)", data=pptx_dl,
                                file_name="ECI_Proposal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pptx",
                                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                               use_container_width=True, type="primary", key="bdl_pptx")
+                               width="stretch", type="primary", key="bdl_pptx")
     with dl_row2[1]:
         sow_dl = generate_sow_pdf(r)
         if sow_dl:
             st.download_button("📝 Statement of Work (PDF)", data=sow_dl,
                                file_name="ECI_SOW_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                                mime="application/pdf",
-                               use_container_width=True, type="primary", key="bdl_sow")
+                               width="stretch", type="primary", key="bdl_sow")
     with dl_row2[2]:
         st.download_button("📋 Full Data (JSON)", data=json.dumps(r, indent=2, default=str),
                            file_name="belal_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
-                           mime="application/json", use_container_width=True, key="bdl")
+                           mime="application/json", width="stretch", key="bdl")
     dl_row3 = st.columns(3)
     with dl_row3[0]:
         # Zip bundle of all deliverables (including Lenox estimation)
@@ -10505,20 +10505,20 @@ def show_results():
         zip_buf.seek(0)
         st.download_button("📦 All Deliverables (ZIP)", data=zip_buf.getvalue(),
                            file_name="ECI_Deliverables_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".zip",
-                           mime="application/zip", use_container_width=True, key="bdl_zip")
+                           mime="application/zip", width="stretch", key="bdl_zip")
 
     # Actions row
     st.markdown('<div class="shdr" style="font-size:1rem;"><span class="shdr-i">⚡</span> Actions</div>', unsafe_allow_html=True)
     ac_cols = st.columns(2)
     with ac_cols[0]:
-        if st.button("Upload to SharePoint", use_container_width=True, key="bsp"):
+        if st.button("Upload to SharePoint", width="stretch", key="bsp"):
             ok, msg = SP.from_session().upload(r)
             if ok:
                 st.success(msg)
             else:
                 st.error(msg)
     with ac_cols[1]:
-        if st.button("Send Alert Email", use_container_width=True, key="bem"):
+        if st.button("Send Alert Email", width="stretch", key="bem"):
             ok, msg = Mailer.from_session().send(r)
             if ok:
                 st.success(msg)
@@ -10550,7 +10550,7 @@ def tab_admin():
                                    line=dict(color="#00d4aa", width=3), marker=dict(size=10)))
         fig.update_layout(title="Accuracy Trend", template="plotly_dark",
                           paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         dc1, dc2 = st.columns(2)
         with dc1:
             fig2 = go.Figure(go.Bar(x=["Time", "Cost", "Risk", "Arch"], y=[85, 79, 82, 88],
@@ -10558,7 +10558,7 @@ def tab_admin():
                                     text=["85%", "79%", "82%", "88%"], textposition="auto"))
             fig2.update_layout(title="Agent Accuracy", template="plotly_dark",
                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
         with dc2:
             fig3 = go.Figure(go.Indicator(
                 mode="gauge+number+delta", value=m["accuracy"], delta={"reference": 72},
@@ -10566,7 +10566,7 @@ def tab_admin():
                        "steps": [{"range": [0, 50], "color": "rgba(255,107,107,.2)"}, {"range": [50, 75], "color": "rgba(255,209,102,.2)"}, {"range": [75, 100], "color": "rgba(0,212,170,.2)"}]},
                 title={"text": "Model Health"}))
             fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
 
     with at[1]:
         st.file_uploader("Upload Historical Data", type=["json", "csv", "xlsx"], accept_multiple_files=True, key="tfu")
@@ -10604,7 +10604,7 @@ def tab_admin():
             st.selectbox("Pricing", ["Fixed Price", "T&M", "Retainer"], key="pc")
         tc = st.columns(3)
         with tc[0]:
-            if st.button("Train", use_container_width=True, type="primary", key="bt"):
+            if st.button("Train", width="stretch", type="primary", key="bt"):
                 pb = st.progress(0)
                 for i in range(100):
                     time.sleep(0.02)
@@ -10612,18 +10612,18 @@ def tab_admin():
                 st.session_state.model_metrics["accuracy"] = min(st.session_state.model_metrics["accuracy"] + 2.5, 95)
                 st.success("Training complete!")
         with tc[1]:
-            if st.button("Retrain", use_container_width=True, key="br"):
+            if st.button("Retrain", width="stretch", key="br"):
                 time.sleep(1)
                 st.success("Retrained.")
         with tc[2]:
-            if st.button("A/B Test", use_container_width=True, key="ba"):
+            if st.button("A/B Test", width="stretch", key="ba"):
                 time.sleep(1)
                 st.success("New model +8.3%")
 
     with at[3]:
         st.text_input("Library Path", placeholder="/sites/presales/Historical", key="ssp")
         st.multiselect("Types", ["Proposals", "Estimates", "Outcomes", "Templates"], default=["Proposals", "Estimates", "Outcomes"], key="sst")
-        if st.button("Sync Now", use_container_width=True, type="primary", key="bs"):
+        if st.button("Sync Now", width="stretch", type="primary", key="bs"):
             time.sleep(2)
             st.success("Synced 47 docs.")
 
@@ -10782,7 +10782,7 @@ def tab_run_library():
                 "Model":    r.get("model_used", ""),
                 "Review by": r.get("review_ts", "") or "",
             })
-        st.dataframe(pd.DataFrame(tbl_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(tbl_rows), width="stretch", hide_index=True)
 
     st.markdown("")
 
@@ -10865,7 +10865,7 @@ def tab_run_library():
             )
             act_cols = st.columns(4)
             with act_cols[0]:
-                if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
+                if st.button("📂 Restore", key=f"lib_restore_{run['id']}", width="stretch"):
                     with st.spinner("Loading run from database…"):
                         full = _db_load_results(run["id"])
                     if full:
@@ -10884,20 +10884,20 @@ def tab_run_library():
                     data=json.dumps(dl_data, indent=2, default=str),
                     file_name=f"ECI_Run_{run['id']}_{run.get('ts','').replace(':','-').replace(' ','_')}.json",
                     mime="application/json",
-                    use_container_width=True,
+                    width="stretch",
                     key=f"lib_dl_{run['id']}",
                 )
             with act_cols[2]:
                 if reviewed:
-                    if st.button("↩️ Unmark", key=f"lib_unrev_{run['id']}", use_container_width=True):
+                    if st.button("↩️ Unmark", key=f"lib_unrev_{run['id']}", width="stretch"):
                         _db_mark_reviewed(run["id"], unmark=True)
                         st.rerun()
                 else:
-                    if st.button("✅ Approve", key=f"lib_rev_{run['id']}", use_container_width=True, type="primary"):
+                    if st.button("✅ Approve", key=f"lib_rev_{run['id']}", width="stretch", type="primary"):
                         _db_mark_reviewed(run["id"], notes="Approved via Run Library")
                         st.rerun()
             with act_cols[3]:
-                if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", use_container_width=True):
+                if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", width="stretch"):
                     _db_delete_run(run["id"])
                     st.rerun()
 
@@ -10905,7 +10905,7 @@ def tab_run_library():
     # ── Bulk actions ──────────────────────────────────────────────────
     bulk_cols = st.columns([2, 2, 4])
     with bulk_cols[0]:
-        if st.button("🗑️ Delete All Runs", use_container_width=True, type="secondary"):
+        if st.button("🗑️ Delete All Runs", width="stretch", type="secondary"):
             con = sqlite3.connect(_DB_PATH)
             con.execute("DELETE FROM proposals")
             con.commit()
@@ -10920,7 +10920,7 @@ def tab_run_library():
                 data=json.dumps(all_runs_full, indent=2, default=str),
                 file_name=f"ECI_All_Runs_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
                 key="lib_export_all",
             )
 
@@ -10951,7 +10951,7 @@ with st.sidebar:
         f'</div>',
         unsafe_allow_html=True,
     )
-    if st.button("🚪 Sign Out", use_container_width=True, type="secondary"):
+    if st.button("🚪 Sign Out", width="stretch", type="secondary"):
         for k in ["auth_ok", "auth_user", "auth_email", "auth_method"]:
             st.session_state.pop(k, None)
         st.rerun()

@@ -2041,7 +2041,7 @@ def render_mermaid(mermaid_code, height=450):
 }})();
 </script>
 </body></html>"""
-    st.components.v1.html(html, height=height, scrolling=True)
+    st.iframe(srcdoc=html, height=height, scrolling=True)
 
 
 def render_mermaid_tabs(diagrams):
@@ -2173,7 +2173,7 @@ async function generateDiagrams() {{
 }}
 </script>
 </body></html>"""
-    st.components.v1.html(html, height=680, scrolling=True)
+    st.iframe(srcdoc=html, height=680, scrolling=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2512,7 +2512,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});"""
         + _JS +
         "</script></body></html>"
     )
-    st.components.v1.html(html, height=820, scrolling=True)
+    st.iframe(srcdoc=html, height=820, scrolling=True)
 
 def _plotly_workflow(te: dict) -> None:
     """Project Workflow — layered Gantt bars (optimistic/likely/pessimistic) + milestone cards."""
@@ -2599,7 +2599,7 @@ def _plotly_workflow(te: dict) -> None:
                     orientation="h", y=1.04, x=0.5, xanchor="center"),
         hoverlabel=dict(bgcolor="#1e293b", font_size=12, bordercolor="#334155"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     milestones = safe_list(te.get("milestones", []))
     if milestones:
@@ -2700,7 +2700,7 @@ def _plotly_dataflow(ar: dict) -> None:
         height=560, margin=dict(l=30, r=30, t=80, b=30),
         font=dict(color="#e2e8f0", size=12),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     if len(data_flow) >= 2:
         step_colors = ["#0078D4","#00B294","#5C2D91","#107C10","#D83B01","#E6A800"]
@@ -2829,7 +2829,7 @@ def _plotly_infra_map(ce: dict) -> None:
             template="plotly_dark", paper_bgcolor="#0a0f1e",
             height=440, margin=dict(l=10, r=10, t=50, b=10),
         )
-        st.plotly_chart(fig_sb, use_container_width=True)
+        st.plotly_chart(fig_sb, width="stretch")
 
     with col_r:
         rows_s = sorted([safe_dict(s) for s in azure_costs],
@@ -2862,7 +2862,7 @@ def _plotly_infra_map(ce: dict) -> None:
             yaxis=dict(tickfont=dict(color="#e2e8f0"), autorange="reversed"),
             bargap=0.25,
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width="stretch")
 
     with st.expander("📋 Full Service Breakdown — East US Pay-As-You-Go", expanded=False):
         all_rows = sorted([safe_dict(s) for s in azure_costs],
@@ -2876,7 +2876,7 @@ def _plotly_infra_map(ce: dict) -> None:
             "% Budget":  f"{safe_int(r.get('monthly_cost', r.get('cost',0))) / max(total,1)*100:.1f}%",
             "Notes":     safe_str(r.get("description", ""))[:65],
         } for r in all_rows])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -3212,21 +3212,21 @@ def _render_roi_builder(se: dict, te: dict, ce: dict) -> None:
                 "📥 Download ROI Model (HTML)",
                 data=cached.encode("utf-8"),
                 file_name=f"ROI_{client.replace(' ', '_')}_{_dt.now().strftime('%Y%m%d')}.html",
-                mime="text/html", use_container_width=True, key="dl_roi_html",
+                mime="text/html", width="stretch", key="dl_roi_html",
             )
         with c2:
-            if st.button("🔄 Reset", key="roi_rst", use_container_width=True):
+            if st.button("🔄 Reset", key="roi_rst", width="stretch"):
                 st.session_state.pop(_key, None)
                 st.rerun()
         with c3:
-            gen_clicked = st.button("✨ Regen", key="roi_regen", use_container_width=True, type="primary")
-        st.components.v1.html(cached, height=990, scrolling=True)
+            gen_clicked = st.button("✨ Regen", key="roi_regen", width="stretch", type="primary")
+        st.iframe(srcdoc=cached, height=990, scrolling=True)
     else:
         gen_clicked = st.button(
             "✨ Generate ROI & Business Case with AI Agent",
-            key="roi_gen", type="primary", use_container_width=True,
+            key="roi_gen", type="primary", width="stretch",
         )
-        st.components.v1.html(_ROI_TEASER_HTML, height=375, scrolling=False)
+        st.iframe(srcdoc=_ROI_TEASER_HTML, height=375, scrolling=False)
 
     if gen_clicked:
         try:
@@ -3281,21 +3281,21 @@ def _render_transformation_journey(se: dict, te: dict, ar: dict) -> None:
                 "📥 Download Journey Map (HTML)",
                 data=cached.encode("utf-8"),
                 file_name=f"Journey_{client.replace(' ', '_')}_{_dt.now().strftime('%Y%m%d')}.html",
-                mime="text/html", use_container_width=True, key="dl_journey_html",
+                mime="text/html", width="stretch", key="dl_journey_html",
             )
         with c2:
-            if st.button("🔄 Reset", key="jrn_rst", use_container_width=True):
+            if st.button("🔄 Reset", key="jrn_rst", width="stretch"):
                 st.session_state.pop(_key, None)
                 st.rerun()
         with c3:
-            gen_clicked = st.button("✨ Regen", key="jrn_regen", use_container_width=True, type="primary")
-        st.components.v1.html(cached, height=1060, scrolling=True)
+            gen_clicked = st.button("✨ Regen", key="jrn_regen", width="stretch", type="primary")
+        st.iframe(srcdoc=cached, height=1060, scrolling=True)
     else:
         gen_clicked = st.button(
             "✨ Generate Transformation Journey with AI Agent",
-            key="jrn_gen", type="primary", use_container_width=True,
+            key="jrn_gen", type="primary", width="stretch",
         )
-        st.components.v1.html(_JOURNEY_TEASER_HTML, height=375, scrolling=False)
+        st.iframe(srcdoc=_JOURNEY_TEASER_HTML, height=375, scrolling=False)
 
     if gen_clicked:
         try:
@@ -3378,7 +3378,7 @@ def _plotly_security(ar: dict) -> None:
             template="plotly_dark", paper_bgcolor="#0a0f1e",
             height=260, margin=dict(l=20, r=20, t=60, b=10),
         )
-        st.plotly_chart(fig_g, use_container_width=True)
+        st.plotly_chart(fig_g, width="stretch")
 
         for d, s in zip(DOMAINS, scores):
             c    = DOMAIN_COLORS.get(d, "#0078D4")
@@ -3445,7 +3445,7 @@ def _plotly_security(ar: dict) -> None:
                         font=dict(color="#94a3b8", size=9),
                         x=0.5, y=-0.08, xanchor="center", orientation="h"),
         )
-        st.plotly_chart(fig_r, use_container_width=True)
+        st.plotly_chart(fig_r, width="stretch")
 
     if security_items:
         st.markdown(
@@ -3566,7 +3566,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
     if st.session_state.get(_FLAG_SHOW):
         st.session_state[_FLAG_SHOW] = False
         st.session_state[_FLAG_WORK] = True
-        st.components.v1.html(_VISION_LOADER_HTML, height=330, scrolling=False)
+        st.iframe(srcdoc=_VISION_LOADER_HTML, height=330, scrolling=False)
         st.rerun(scope="fragment")
         return
 
@@ -3574,7 +3574,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
     if st.session_state.get(_FLAG_WORK):
         st.session_state[_FLAG_WORK] = False
         # Show loader HTML again (will be visible once this rerun ends if API is fast)
-        st.components.v1.html(_VISION_LOADER_HTML, height=330, scrolling=False)
+        st.iframe(srcdoc=_VISION_LOADER_HTML, height=330, scrolling=False)
         _err = None
         _generated = None
         # st.spinner IS streamed mid-rerun — gives native Streamlit feedback
@@ -3606,7 +3606,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
 
     # ── Diagram available ─────────────────────────────────────────────
     if _cv_html:
-        st.components.v1.html(_cv_html, height=1080, scrolling=True)
+        st.iframe(srcdoc=_cv_html, height=1080, scrolling=True)
         from datetime import datetime as _dt2
         _cv1, _cv2, _cv3, _cv4 = st.columns(4)
         with _cv1:
@@ -3615,7 +3615,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
                 data=_cv_html.encode("utf-8"),
                 file_name="ECI_Vision_" + _dt2.now().strftime("%Y%m%d_%H%M%S") + ".html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key="dl_cv_html",
             )
         with _cv2:
@@ -3628,18 +3628,18 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
                 data=st.session_state[_drawio_key],
                 file_name="ECI_Vision_" + _dt2.now().strftime("%Y%m%d_%H%M%S") + ".drawio",
                 mime="application/xml",
-                use_container_width=True,
+                width="stretch",
                 key="dl_cv_drawio",
                 help="Download .drawio file → in Lucidchart: File → Import → diagrams.net",
             )
         with _cv3:
-            if st.button("🔄 Reset Vision", key="btn_cv_reset", use_container_width=True):
+            if st.button("🔄 Reset Vision", key="btn_cv_reset", width="stretch"):
                 st.session_state.pop(cv_key, None)
                 st.session_state.pop(cv_key + "_drawio", None)
                 st.rerun(scope="fragment")
         with _cv4:
             if st.button("✨ Regenerate", key="btn_cv_regen",
-                         use_container_width=True, type="primary"):
+                         width="stretch", type="primary"):
                 st.session_state.pop(cv_key, None)
                 st.session_state.pop(cv_key + "_drawio", None)
                 st.session_state["_arch_vision_show_loader"] = True
@@ -3677,7 +3677,7 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
             if st.button(
                 "🚀 Generate AI Vision Architecture",
                 key="btn_cv_gen",
-                use_container_width=True,
+                width="stretch",
                 type="primary",
             ):
                 st.session_state["_arch_vision_show_loader"] = True
@@ -3694,17 +3694,17 @@ def _arch_dl_fragment(drawio_key: str, html_key: str, lucid_url: str) -> None:
         st.download_button(
             "📥 Download (HTML)", data=_html_s,
             file_name="ECI_Architecture.html", mime="text/html",
-            use_container_width=True, key="dl_arch_html_frag",
+            width="stretch", key="dl_arch_html_frag",
         )
     with c2:
         if _drawio_b:
             st.download_button(
                 "📐 Export for Lucidchart", data=_drawio_b,
                 file_name="ECI_Architecture.drawio", mime="application/xml",
-                use_container_width=True, key="dl_arch_drawio_frag",
+                width="stretch", key="dl_arch_drawio_frag",
             )
     with c3:
-        st.link_button("🔗 Open Lucidchart", lucid_url, use_container_width=True)
+        st.link_button("🔗 Open Lucidchart", lucid_url, width="stretch")
     st.info(
         "**To import into Lucidchart:** Download the `.drawio` file → "
         "in Lucidchart go to **File → Import → diagrams.net** and select the file.",
@@ -3762,13 +3762,13 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
     # ── Render diagram HTML outside the fragment ──────────────────────────
     # (stays on screen unchanged when download buttons are clicked)
     if cached_html:
-        st.components.v1.html(cached_html, height=920, scrolling=True)
+        st.iframe(srcdoc=cached_html, height=920, scrolling=True)
         st.session_state[_html_dl_key] = cached_html
     else:
         if _pyhtml_key not in st.session_state:
             st.session_state[_pyhtml_key] = generate_arch_html_svg(ar, se)
         _py_html = st.session_state[_pyhtml_key]
-        st.components.v1.html(_py_html, height=920, scrolling=True)
+        st.iframe(srcdoc=_py_html, height=920, scrolling=True)
         if _html_dl_key not in st.session_state:
             st.session_state[_html_dl_key] = _py_html
 

@@ -1558,7 +1558,7 @@ def render_animated_explainer_tab(r: dict, se: dict, te: dict, ce: dict,
         use_ai = st.toggle("✨ AI-Enhanced Narration", value=True,
                             help="Uses AI to write natural spoken narration per scene")
     with c2:
-        regen = st.button("🔄 Regenerate", use_container_width=True,
+        regen = st.button("🔄 Regenerate", width="stretch",
                            help="Rebuild presentation from latest proposal data")
     with c3:
         st.caption("Chrome recommended for voice")

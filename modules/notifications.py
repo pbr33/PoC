@@ -169,7 +169,7 @@ def render_notification_bell():
     badge  = f" ({unread})" if unread else ""
     label  = f"🔔{badge}"
 
-    with st.popover(label, use_container_width=False):
+    with st.popover(label, width="content"):
         st.markdown(
             '<div style="font-weight:700;font-size:.95rem;color:#e2e8f0;'
             'margin-bottom:8px">Notifications</div>',
@@ -187,11 +187,11 @@ def render_notification_bell():
             col_l, col_r = st.columns([2, 1])
             with col_l:
                 if unread:
-                    if st.button("Mark all read", key="_notif_mark_all", use_container_width=True):
+                    if st.button("Mark all read", key="_notif_mark_all", width="stretch"):
                         mark_all_read()
                         st.rerun()
             with col_r:
-                if st.button("Clear all", key="_notif_clear_all", use_container_width=True):
+                if st.button("Clear all", key="_notif_clear_all", width="stretch"):
                     clear_all_notifications()
                     st.rerun()
 

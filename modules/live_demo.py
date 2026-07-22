@@ -1134,7 +1134,7 @@ def render_live_demo_tab(se, te, ce, r):
     with btn_cols[0]:
         gen_clicked = st.button(
             "🎯 Create Live Demo",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=(ai is None),
             key="btn_gen_demo",
@@ -1143,7 +1143,7 @@ def render_live_demo_tab(se, te, ce, r):
     with btn_cols[1]:
         regen_clicked = st.button(
             "🔄 Regenerate",
-            use_container_width=True,
+            width="stretch",
             disabled=(ai is None or "live_demo_html" not in st.session_state),
             key="btn_regen_demo",
         )
@@ -1154,7 +1154,7 @@ def render_live_demo_tab(se, te, ce, r):
                 data=st.session_state["live_demo_html"],
                 file_name=f"ECI_LiveDemo_{project_type.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key="btn_dl_demo",
             )
 
@@ -1297,7 +1297,7 @@ def render_live_demo_tab(se, te, ce, r):
     with mp_cols[0]:
         mp_gen = st.button(
             "🌟 Generate AI Agent Masterpiece Demo",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             disabled=(not ant_live),
             key="btn_mp_gen",
@@ -1306,7 +1306,7 @@ def render_live_demo_tab(se, te, ce, r):
     with mp_cols[1]:
         mp_regen = st.button(
             "🔄 Regenerate",
-            use_container_width=True,
+            width="stretch",
             disabled=(not ant_live or not _mp_html),
             key="btn_mp_regen",
         )
@@ -1317,7 +1317,7 @@ def render_live_demo_tab(se, te, ce, r):
                 data=_mp_html,
                 file_name=f"ECI_Masterpiece_{project_type.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key="btn_mp_dl",
             )
 

@@ -1082,7 +1082,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
         _fu_cols = st.columns(len(_fu_items))
         for _fi, (_fc, _fq) in enumerate(zip(_fu_cols, _fu_items)):
             with _fc:
-                if st.button(_fq, key=f"bellafu_{_fi}", use_container_width=True):
+                if st.button(_fq, key=f"bellafu_{_fi}", width="stretch"):
                     st.session_state["bella_pending"] = _fq
                     st.rerun(scope="fragment")
 
@@ -1093,7 +1093,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
     cat_cols = st.columns(len(_BELLA_CHIPS))
     for ci, cat in enumerate(_BELLA_CHIPS.keys()):
         with cat_cols[ci]:
-            if st.button(cat, key=f"bellat_{ci}", use_container_width=True,
+            if st.button(cat, key=f"bellat_{ci}", width="stretch",
                          type="primary" if st.session_state.bella_cat == cat else "secondary"):
                 st.session_state.bella_cat = cat
                 st.rerun(scope="fragment")
@@ -1102,7 +1102,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
     cc = st.columns(2)
     for ci, chip in enumerate(active_chips):
         with cc[ci % 2]:
-            if st.button(chip, key=f"bellac_{ci}", use_container_width=True):
+            if st.button(chip, key=f"bellac_{ci}", width="stretch"):
                 st.session_state["bella_pending"] = chip
                 st.rerun(scope="fragment")
 
@@ -1156,7 +1156,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
     if msgs:
         fc1, fc2, fc3 = st.columns([5, 1.5, 1.8])
         with fc2:
-            if st.button("🗑 Clear", key="bella_clr", use_container_width=True):
+            if st.button("🗑 Clear", key="bella_clr", width="stretch"):
                 st.session_state["chat_messages"] = []
                 st.session_state.pop("bella_cat", None)
                 st.rerun(scope="fragment")
@@ -1165,7 +1165,7 @@ def _render_proposal_chat(r: dict, se: dict, te: dict, ce: dict, ri: dict):
                       for m in msgs]
             st.download_button("💾 Export", data="\n".join(_lines).encode(),
                                file_name="bella_chat.txt", mime="text/plain",
-                               use_container_width=True, key="bella_exp")
+                               width="stretch", key="bella_exp")
 
 
 def _empty_chat():
@@ -1502,21 +1502,21 @@ def _render_completeness_checker(files):
     with b1:
         do_check = st.button(
             "🔍 Check Requirements Completeness",
-            use_container_width=True,
+            width="stretch",
             key="btn_completeness",
             help="Run Agent 0: analyse the scope document for gaps and generate a clarification checklist.",
         )
     with b2:
         do_run = st.button(
             "⚡ PROCESS & GENERATE ESTIMATES",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             key="go",
             help="Skip completeness check and run the full 10-agent pipeline now.",
         )
     with b3:
         if cc:
-            if st.button("🗑️ Clear Completeness Check", use_container_width=True, key="btn_clear_cc"):
+            if st.button("🗑️ Clear Completeness Check", width="stretch", key="btn_clear_cc"):
                 st.session_state.pop("_completeness_check", None)
                 st.session_state.pop("_completeness_dismissed", None)
                 st.session_state.pop("_completeness_acked", None)
@@ -1556,7 +1556,7 @@ def _render_completeness_checker(files):
             _sv2_key = "scope_validation_result"
             _sv2_col1, _sv2_col2 = st.columns([4, 1])
             with _sv2_col2:
-                if st.button("🔄 Re-analyse", key="btn_sv2_rerun", use_container_width=True):
+                if st.button("🔄 Re-analyse", key="btn_sv2_rerun", width="stretch"):
                     st.session_state.pop(_sv2_key, None)
                     st.rerun()
             with _sv2_col1:
@@ -1686,7 +1686,7 @@ def _render_completeness_checker(files):
                     unsafe_allow_html=True,
                 )
             with _ts_c2:
-                if st.button("🔄 Re-scan", key="btn_ts_rerun", use_container_width=True):
+                if st.button("🔄 Re-scan", key="btn_ts_rerun", width="stretch"):
                     st.session_state.pop(_ts_key, None)
                     st.rerun()
 
@@ -1940,7 +1940,7 @@ def _render_completeness_checker(files):
             with prc1:
                 if st.button(
                     "⚡ Proceed to Full Analysis",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                     key="go_after_cc",
                     help="Run the 10-agent pipeline now.",
@@ -2057,7 +2057,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
 
     gen_cols = st.columns([3, 1])
     with gen_cols[1]:
-        if st.button("✍️ Generate Script", use_container_width=True, key="btn_gen_script"):
+        if st.button("✍️ Generate Script", width="stretch", key="btn_gen_script"):
             with st.spinner("Writing architect pitch script…"):
                 st.session_state.narrator_script = narrator.generate_script(r)
             st.success("Script ready — review and edit below before generating audio/video.")
@@ -2080,7 +2080,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
     st.markdown("**Step 2 — Voice Synthesis (ElevenLabs)**")
     voice_cols = st.columns([3, 1])
     with voice_cols[1]:
-        gen_voice = st.button("🎙️ Synthesise Voice", use_container_width=True,
+        gen_voice = st.button("🎙️ Synthesise Voice", width="stretch",
                               key="btn_voice",
                               disabled=not (script_text.strip() and narrator.el_ready))
     with voice_cols[0]:
@@ -2154,7 +2154,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
                 st.session_state.narrator_did_image_url = did_url_input.strip()
         with did_img_cols[1]:
             upload_did_btn = st.button(
-                "⬆️ Upload to D-ID", use_container_width=True,
+                "⬆️ Upload to D-ID", width="stretch",
                 key="btn_did_upload", disabled=did_photo is None,
             )
         if upload_did_btn and did_photo is not None:
@@ -2281,7 +2281,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
             elif st.session_state.narrator_mode == "stock":
                 av_cols = st.columns([2, 1, 1])
                 with av_cols[1]:
-                    fetch_avs = st.button("🔍 Fetch Avatars", use_container_width=True, key="btn_fetch_avs")
+                    fetch_avs = st.button("🔍 Fetch Avatars", width="stretch", key="btn_fetch_avs")
                 if fetch_avs:
                     with st.spinner("Fetching HeyGen avatars…"):
                         avs, av_err = narrator.list_free_avatars()
@@ -2316,7 +2316,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
                     )
                 with tp_cols[1]:
                     upload_btn = st.button(
-                        "⬆️ Upload Photo", use_container_width=True,
+                        "⬆️ Upload Photo", width="stretch",
                         key="btn_upload_photo", disabled=uploaded_photo is None,
                     )
                 if upload_btn and uploaded_photo is not None:
@@ -2362,7 +2362,7 @@ def _render_narrator_tab(r: dict, se: dict, te: dict, ce: dict, ri: dict, ar: di
 
             can_generate = bool(script_text.strip() and (effective_avatar_id or effective_tp_id))
             gen_video_btn = st.button(
-                "🎥 Generate Video", use_container_width=False,
+                "🎥 Generate Video", width="content",
                 key="btn_video", disabled=not can_generate, type="primary",
             )
             if gen_video_btn and can_generate:
@@ -2564,7 +2564,7 @@ def _render_3d_view_tab(ar, ce, r):
                 data=flythrough_html.encode("utf-8"),
                 file_name="ECI_3D_Architecture_" + _dt.now().strftime("%Y%m%d_%H%M%S") + ".html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 type="primary",
                 key="dl_3d_html",
             )
@@ -2869,7 +2869,7 @@ def tab_presale():
         if disc_files:
             _, dbc, _ = st.columns([1, 2, 1])
             with dbc:
-                if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", use_container_width=True, type="primary", key="disc_go"):
+                if st.button("🎙️ ANALYZE TRANSCRIPTS & GENERATE WBS", width="stretch", type="primary", key="disc_go"):
                     st.session_state["_az_err_shown"] = False
                     ai = _pick_ai_for("discovery")
                     dpb = st.progress(0)
@@ -3001,7 +3001,7 @@ def tab_presale():
                     data=json.dumps(dr, indent=2, default=str),
                     file_name="ECI_Discovery_Report_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
                     mime="application/json",
-                    use_container_width=True, key="dl_disc_json",
+                    width="stretch", key="dl_disc_json",
                 )
             with dl_disc_cols[1]:
                 if st.session_state.discovery_transcript:
@@ -3010,7 +3010,7 @@ def tab_presale():
                         data=st.session_state.discovery_transcript,
                         file_name="ECI_Transcript_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".txt",
                         mime="text/plain",
-                        use_container_width=True, key="dl_disc_txt",
+                        width="stretch", key="dl_disc_txt",
                     )
 
             # ── Full 11-agent pipeline from transcript ──────────────────
@@ -3032,7 +3032,7 @@ def tab_presale():
                 with _fc:
                     if st.button(
                         "🚀 RUN FULL 11-AGENT ANALYSIS FROM TRANSCRIPT",
-                        use_container_width=True, type="primary",
+                        width="stretch", type="primary",
                         key="disc_full_pipeline",
                     ):
                         _disc_src = ", ".join(
@@ -3603,7 +3603,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 </script>
 </body></html>"""
         with _banner_slot:
-            st.components.v1.html(_LIVE_BANNER, height=142, scrolling=False)
+            st.iframe(srcdoc=_LIVE_BANNER, height=142, scrolling=False)
     else:
         pb.empty(); stepper.empty(); status.empty()
         st.markdown(
@@ -4057,7 +4057,7 @@ def _quick_feedback(section_key: str, placeholder: str):
             label_visibility="collapsed",
         )
     with qc2:
-        if st.button("Add ➕", key=f"qfb_add_{section_key}", use_container_width=True):
+        if st.button("Add ➕", key=f"qfb_add_{section_key}", width="stretch"):
             if val.strip():
                 if "feedback_items" not in st.session_state:
                     st.session_state.feedback_items = {}
@@ -4357,13 +4357,13 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
         with sc1:
             st.button(
                 "💾 Save Changes", key=f"prop_save_{idx}",
-                type="primary", use_container_width=True,
+                type="primary", width="stretch",
                 on_click=_cb_save_edit, args=(title, _area_key),
             )
         with sc2:
             st.button(
                 "✖ Cancel", key=f"prop_cancel_{idx}",
-                use_container_width=True,
+                width="stretch",
                 on_click=_cb_cancel_edit, args=(title,),
             )
         with sc3:
@@ -4388,7 +4388,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
         with ac1:
             st.button(
                 "✏️ Edit", key=f"prop_edit_{idx}",
-                use_container_width=True,
+                width="stretch",
                 on_click=_cb_enter_edit, args=(title,),
             )
         with ac2:
@@ -4397,7 +4397,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
             if ai_client:
                 st.button(
                     ai_label, key=f"prop_ai_studio_{idx}",
-                    type=ai_type, use_container_width=True,
+                    type=ai_type, width="stretch",
                     on_click=_cb_toggle_ai_studio, args=(title,),
                 )
         with ac3:
@@ -4405,13 +4405,13 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
             ref_type  = "primary" if is_ref_open else "secondary"
             st.button(
                 ref_label, key=f"prop_ref_{idx}",
-                type=ref_type, use_container_width=True,
+                type=ref_type, width="stretch",
                 on_click=_cb_toggle_ref, args=(title,),
             )
         with ac4:
             st.button(
                 "↩️ Reset", key=f"prop_reset_{idx}",
-                use_container_width=True, disabled=not is_edited,
+                width="stretch", disabled=not is_edited,
                 on_click=_cb_reset_section, args=(title,),
             )
 
@@ -4452,7 +4452,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
                 btn_style = "primary" if is_active else "secondary"
                 st.button(
                     chip_label, key=f"chip_{idx}_{ci}",
-                    use_container_width=True, type=btn_style,
+                    width="stretch", type=btn_style,
                     on_click=_cb_set_chip, args=(title, chip_prompt),
                 )
 
@@ -4495,7 +4495,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
         with gc2:
             st.button(
                 "✖ Close", key=f"regen_close_{idx}",
-                use_container_width=True,
+                width="stretch",
                 on_click=_cb_close_ai_studio, args=(title,),
             )
         with gc3:
@@ -4504,7 +4504,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
             _gen_label = "⏳ Queued…" if _already_queued else "✨ Generate"
             st.button(
                 _gen_label, key=f"regen_go_{idx}",
-                type="primary", use_container_width=True,
+                type="primary", width="stretch",
                 disabled=gen_disabled or _already_queued,
                 on_click=_cb_generate, args=(title, _prompt_area_key),
             )
@@ -4545,7 +4545,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
                 f'📄 Original Doc{(" · " + _orig_filenames[0][:20] + "…") if _orig_filenames else ""}',
                 key=f"ref_src_orig_{idx}",
                 type=orig_btn_type,
-                use_container_width=True,
+                width="stretch",
                 disabled=orig_disabled,
             ):
                 st.session_state[_ref_source_key] = "original"
@@ -4559,7 +4559,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
                 "📂 Upload Different Doc",
                 key=f"ref_src_custom_{idx}",
                 type=custom_btn_type,
-                use_container_width=True,
+                width="stretch",
             ):
                 st.session_state[_ref_source_key] = "custom"
                 st.rerun(scope="fragment")
@@ -4643,7 +4643,7 @@ def _proposal_section_card(sec: dict, idx: int, ai_client, r: dict):
                 )
 
         # Close button
-        if st.button("✖ Close Reference", key=f"ref_close_{idx}", use_container_width=True):
+        if st.button("✖ Close Reference", key=f"ref_close_{idx}", width="stretch"):
             ref_show.discard(title)
             st.rerun(scope="fragment")
 
@@ -4850,9 +4850,9 @@ def _proposal_download_strip(r: dict):
             if pdf_data:
                 st.download_button("📄 Download PDF", data=pdf_data,
                     file_name=f"ECI_Proposal_{ts}.pdf", mime="application/pdf",
-                    use_container_width=True, type="primary", key="prop_dl_pdf")
+                    width="stretch", type="primary", key="prop_dl_pdf")
         else:
-            st.button("📄 PDF (install reportlab)", disabled=True, use_container_width=True, key="prop_dl_pdf_dis")
+            st.button("📄 PDF (install reportlab)", disabled=True, width="stretch", key="prop_dl_pdf_dis")
     with dc2:
         if HAS_PPTX:
             pptx_data = generate_proposal_pptx(r_with_edits)
@@ -4860,18 +4860,18 @@ def _proposal_download_strip(r: dict):
                 st.download_button("📊 Download PPTX", data=pptx_data,
                     file_name=f"ECI_Proposal_{ts}.pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True, type="primary", key="prop_dl_pptx")
+                    width="stretch", type="primary", key="prop_dl_pptx")
         else:
-            st.button("📊 PPTX (install python-pptx)", disabled=True, use_container_width=True, key="prop_dl_pptx_dis")
+            st.button("📊 PPTX (install python-pptx)", disabled=True, width="stretch", key="prop_dl_pptx_dis")
     with dc3:
         if HAS_REPORTLAB:
             sow_data = generate_sow_pdf(r_with_edits)
             if sow_data:
                 st.download_button("📝 Download SOW", data=sow_data,
                     file_name=f"ECI_SOW_{ts}.pdf", mime="application/pdf",
-                    use_container_width=True, type="primary", key="prop_dl_sow")
+                    width="stretch", type="primary", key="prop_dl_sow")
         else:
-            st.button("📝 SOW (install reportlab)", disabled=True, use_container_width=True, key="prop_dl_sow_dis")
+            st.button("📝 SOW (install reportlab)", disabled=True, width="stretch", key="prop_dl_sow_dis")
 
 
 def _ppt_slides_html(r: dict) -> str:
@@ -5695,7 +5695,7 @@ def _proposal_studio_fragment(r: dict, ai_client, sections: list, quality_checks
                 unsafe_allow_html=True,
             )
         with _bc2:
-            if st.button("✖ Cancel", key="_regen_cancel", use_container_width=True):
+            if st.button("✖ Cancel", key="_regen_cancel", width="stretch"):
                 _regen_loading.discard(_gtitle)
                 st.rerun(scope="fragment")
                 return
@@ -5820,7 +5820,7 @@ def _proposal_studio_fragment(r: dict, ai_client, sections: list, quality_checks
                     data=html_preview.encode("utf-8"),
                     file_name=f"ECI_Proposal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                     mime="text/html",
-                    use_container_width=True,
+                    width="stretch",
                     key="prop_dl_html",
                 )
 
@@ -5834,7 +5834,7 @@ def _proposal_studio_fragment(r: dict, ai_client, sections: list, quality_checks
                 _proposal_section_card(safe_dict(sec), i, ai_client, r)
             if st.session_state.get("proposal_edits"):
                 st.button(
-                    "↩️ Reset All Edits", use_container_width=True,
+                    "↩️ Reset All Edits", width="stretch",
                     key="prop_reset_all", on_click=_cb_reset_all_edits,
                 )
 
@@ -5948,7 +5948,7 @@ def _proposal_studio_fragment(r: dict, ai_client, sections: list, quality_checks
                         data=sow_pdf,
                         file_name=f"ECI_SOW_{ts2}.pdf",
                         mime="application/pdf",
-                        use_container_width=True,
+                        width="stretch",
                         type="primary",
                         key="sow_dl_pdf",
                     )
@@ -5960,7 +5960,7 @@ def _proposal_studio_fragment(r: dict, ai_client, sections: list, quality_checks
                 data=sow_html.encode("utf-8"),
                 file_name=f"ECI_SOW_{ts2}.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 key="sow_dl_html",
             )
 
@@ -6077,13 +6077,13 @@ def _show_regen_diff():
 
         ac1, ac2 = st.columns(2)
         with ac1:
-            if st.button("✅ Accept Changes", type="primary", use_container_width=True, key="fb_accept"):
+            if st.button("✅ Accept Changes", type="primary", width="stretch", key="fb_accept"):
                 st.session_state["results_before_regen"] = None
                 st.session_state["regen_sections"]       = []
                 show_toast("Changes accepted!", "success")
                 st.rerun()
         with ac2:
-            if st.button("↩️ Discard — Restore Original", use_container_width=True, key="fb_discard"):
+            if st.button("↩️ Discard — Restore Original", width="stretch", key="fb_discard"):
                 st.session_state.processing_results  = before
                 st.session_state["results_before_regen"] = None
                 st.session_state["regen_sections"]       = []
@@ -6159,13 +6159,13 @@ def _render_feedback_panel(r):
             else:
                 st.caption("Tick a section above and write feedback to enable regeneration.")
         with c2:
-            if fl and st.button("📋 Revision Log", use_container_width=True, key="fb_log_btn"):
+            if fl and st.button("📋 Revision Log", width="stretch", key="fb_log_btn"):
                 st.session_state["_show_fb_log"] = not st.session_state.get("_show_fb_log", False)
         with c3:
             if st.button(
                 "🔄 Apply Feedback",
                 disabled=not pending,
-                use_container_width=True,
+                width="stretch",
                 type="primary",
                 key="fb_apply_btn",
             ) and pending:
@@ -6201,7 +6201,7 @@ def _render_feedback_panel(r):
                 )
             with rev_col2:
                 st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                if st.button("✅ Mark as Architect Reviewed", use_container_width=True,
+                if st.button("✅ Mark as Architect Reviewed", width="stretch",
                              type="primary", key="btn_mark_reviewed"):
                     _db_mark_reviewed(run_id, notes=rev_notes)
                     notify("run_reviewed", f"Run #{run_id} marked as Architect Reviewed",
@@ -6497,7 +6497,7 @@ def _render_discovery_tab(results: dict):
                     data=pdf_bytes,
                     file_name="ECI_Discovery_Prep_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf",
                     mime="application/pdf",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary",
                     key="dl_disc_pdf",
                 )
@@ -6513,7 +6513,7 @@ def _render_discovery_tab(results: dict):
                     data=pptx_bytes,
                     file_name="ECI_Discovery_Prep_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True,
+                    width="stretch",
                     key="dl_disc_pptx",
                 )
         else:
@@ -6525,7 +6525,7 @@ def _render_discovery_tab(results: dict):
             data=json.dumps(dq, indent=2, default=str),
             file_name="ECI_Discovery_Questions_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json",
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
             key="dl_disc_json2",
         )
 
@@ -7018,16 +7018,16 @@ def _render_scope_risk_tab(se: dict, te: dict, ar: dict, ri: dict, r: dict) -> N
                 "📥 Download SOW Scope & Risk Register (HTML)",
                 data=cached.encode("utf-8"),
                 file_name=f"SOW_Scope_Risk_{client.replace(' ','_')}_{_dt.now().strftime('%Y%m%d')}.html",
-                mime="text/html", use_container_width=True, key="dl_scope_risk_html",
+                mime="text/html", width="stretch", key="dl_scope_risk_html",
             )
         with c2:
-            if st.button("🔄 Reset", key="sr_rst", use_container_width=True):
+            if st.button("🔄 Reset", key="sr_rst", width="stretch"):
                 st.session_state.pop(_key, None)
                 st.rerun()
         with c3:
-            gen_clicked = st.button("✨ Regen", key="sr_regen", use_container_width=True, type="primary")
+            gen_clicked = st.button("✨ Regen", key="sr_regen", width="stretch", type="primary")
         if not gen_clicked:
-            st.components.v1.html(cached, height=1250, scrolling=True)
+            st.iframe(srcdoc=cached, height=1250, scrolling=True)
     else:
         # SOW-quality generation button hidden (feature temporarily disabled)
         gen_clicked = False
@@ -7128,7 +7128,7 @@ def _render_estimate_chat(te: dict, se: dict) -> None:
             ]
             for _ci, _chip in enumerate(_chips):
                 with _chip_cols[_ci]:
-                    if st.button(_chip, key=f"{_key_prefix}_chip_{_ci}", use_container_width=True):
+                    if st.button(_chip, key=f"{_key_prefix}_chip_{_ci}", width="stretch"):
                         st.session_state[f"{_key_prefix}_pending"] = _chip
                         st.rerun(scope="fragment")
 
@@ -7937,7 +7937,7 @@ def _render_auto_corrections_badge() -> None:
 
         _ba, _bb = st.columns([5, 1])
         with _bb:
-            if st.button("↩️ Undo All", key="_autocorr_undo", use_container_width=True):
+            if st.button("↩️ Undo All", key="_autocorr_undo", width="stretch"):
                 st.session_state["_autocorr_undo_clicked"] = True
                 st.rerun()
 
@@ -8039,7 +8039,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             "▶ Review Now",
             key=f"{_RK}_run",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=_busy,
         )
 
@@ -8449,7 +8449,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                     f"⚡ Fix Selected ({_n_checked})",
                     key=f"{_RK}_fix_selected_btn",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     # Build ordered list of fixes from checked findings
                     _sel_fixes = []
@@ -8509,12 +8509,12 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             _ac1, _ac2, _ac3 = st.columns([2, 2, 5])
             with _ac1:
                 if _is_fixable:
-                    if st.button(_FIX_L[_ft], key=f"{_RK}_fix_{_fid}", type="primary", use_container_width=True):
+                    if st.button(_FIX_L[_ft], key=f"{_RK}_fix_{_fid}", type="primary", width="stretch"):
                         st.session_state[f"{_RK}_pending_fix"] = {"type": _ft, "data": _fdata}
                         st.session_state[f"{_RK}_state"]       = "fixing"
                         st.rerun(scope="fragment")
             with _ac2:
-                if st.button("✏️ Ask Agent", key=f"{_RK}_ask_{_fid}", use_container_width=True):
+                if st.button("✏️ Ask Agent", key=f"{_RK}_ask_{_fid}", width="stretch"):
                     _cur = st.session_state.get(f"{_RK}_ask_active")
                     st.session_state[f"{_RK}_ask_active"] = None if _cur == _fid else _fid
                     st.rerun(scope="fragment")
@@ -8528,7 +8528,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                 )
                 _pa, _pb = st.columns([1, 1])
                 with _pa:
-                    if st.button("▶ Apply", key=f"{_RK}_applyask_{_fid}", type="primary", use_container_width=True):
+                    if st.button("▶ Apply", key=f"{_RK}_applyask_{_fid}", type="primary", width="stretch"):
                         st.session_state[f"{_RK}_pending_ask"] = {
                             "detail":      safe_str(_fd.get("detail", "")),
                             "instruction": _instr,
@@ -8537,7 +8537,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                         st.session_state[f"{_RK}_state"]      = "ask_agent"
                         st.rerun(scope="fragment")
                 with _pb:
-                    if st.button("Cancel", key=f"{_RK}_cancel_{_fid}", use_container_width=True):
+                    if st.button("Cancel", key=f"{_RK}_cancel_{_fid}", width="stretch"):
                         st.session_state[f"{_RK}_ask_active"] = None
                         st.rerun(scope="fragment")
 
@@ -8545,7 +8545,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     _rr1, _rr2, _rr3 = st.columns([3, 2, 3])
     with _rr2:
-        if st.button("🔄 Re-review", key=f"{_RK}_rerun", use_container_width=True):
+        if st.button("🔄 Re-review", key=f"{_RK}_rerun", width="stretch"):
             st.session_state[f"{_RK}_state"] = "reviewing"
             st.session_state.pop(f"{_RK}_result",        None)
             st.session_state.pop(f"{_RK}_error",         None)
@@ -8743,7 +8743,7 @@ def show_results():
             # Clear cache when user clicks re-run
             _sv_col1, _sv_col2 = st.columns([4, 1])
             with _sv_col2:
-                if st.button("🔄 Re-analyse", key="btn_sv_rerun", use_container_width=True):
+                if st.button("🔄 Re-analyse", key="btn_sv_rerun", width="stretch"):
                     st.session_state.pop(_sv_key, None)
                     st.rerun()
 
@@ -8911,7 +8911,7 @@ def show_results():
                     data=_email_full.encode("utf-8"),
                     file_name=f"Scope_Clarification_{safe_str(se.get('client_name','Client')).replace(' ','_')}.txt",
                     mime="text/plain",
-                    use_container_width=False,
+                    width="content",
                     key="sv_email_dl",
                 )
 
@@ -9050,7 +9050,7 @@ def show_results():
                     )],
                     margin=dict(t=40, b=10, l=10, r=10),
                 )
-                st.plotly_chart(fig_donut, use_container_width=True)
+                st.plotly_chart(fig_donut, width="stretch")
 
             with ch2:
                 # Three-point horizontal bar chart
@@ -9070,7 +9070,7 @@ def show_results():
                                 font=dict(size=10, color="#94a3b8"), bgcolor="rgba(0,0,0,0)"),
                     margin=dict(t=40, b=10, l=10, r=10),
                 )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, width="stretch")
 
             # ── Gantt charts — @st.fragment for instant toggle ─────────────
             _qa_ref_wks = safe_int(te.get("qa_weeks", 3))
@@ -9414,7 +9414,7 @@ def show_results():
                     '📅 Project Timeline</span></div>',
                     unsafe_allow_html=True,
                 )
-                st.plotly_chart(_fph, use_container_width=True,
+                st.plotly_chart(_fph, width="stretch",
                                 config={"displayModeBar": False})
 
                 # ── Resource Utilisation Gantt ────────────────────────
@@ -9426,7 +9426,7 @@ def show_results():
                     '👤 Resource Utilisation</span></div>',
                     unsafe_allow_html=True,
                 )
-                st.plotly_chart(_frs, use_container_width=True,
+                st.plotly_chart(_frs, width="stretch",
                                 config={"displayModeBar": False})
 
                 # Domain legend + utilisation key
@@ -9890,7 +9890,7 @@ def show_results():
             with _rc2:
                 st.markdown('<div style="margin-top:28px"></div>', unsafe_allow_html=True)
                 _do_refresh = st.button("🔄 Refresh Prices", key="btn_live_prices",
-                                        type="secondary", use_container_width=True)
+                                        type="secondary", width="stretch")
         else:
             _sel_region_label = _default_region_lbl
             _do_refresh = False
@@ -10008,7 +10008,7 @@ def show_results():
                         )],
                         margin=dict(t=40, b=10, l=10, r=120),
                     )
-                    st.plotly_chart(_fig_cat, use_container_width=True)
+                    st.plotly_chart(_fig_cat, width="stretch")
 
                 with _cd2:
                     st.markdown(
@@ -10097,7 +10097,7 @@ def show_results():
                 yaxis=dict(color="#e2e8f0", automargin=True),
                 bargap=0.3,
             )
-            st.plotly_chart(_fig, use_container_width=True)
+            st.plotly_chart(_fig, width="stretch")
 
         # ── Service cards table ───────────────────────────────────────
         _svc_section_label = {
@@ -10393,7 +10393,7 @@ def show_results():
                 data=_final_est_bytes,
                 file_name="Final_Estimation_" + proj_name.replace(" ", "_") + _ver_suffix + "_" + ts + ".xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="del_final_est",
+                width="stretch", type="primary", key="del_final_est",
                 help="Multi-sheet estimation: Summary | Development | DevOps & Cloud | Infra Cost | Version History",
             )
             st.markdown('<div style="margin-bottom:12px;"></div>', unsafe_allow_html=True)
@@ -10416,25 +10416,25 @@ def show_results():
                 st.download_button("⏱️ Time Estimate (Excel)", data=_xl_data,
                     file_name="ECI_Time_Estimate" + _ver_suffix + "_" + ts + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="primary", key="del_xl")
+                    width="stretch", type="primary", key="del_xl")
             else:
-                st.button("⏱️ Time Estimate", disabled=True, use_container_width=True, key="del_xl_dis")
+                st.button("⏱️ Time Estimate", disabled=True, width="stretch", key="del_xl_dis")
         with est_cols[1]:
             if _lenox_data:
                 st.download_button("📋 Full Estimation (Lenox)", data=_lenox_data,
                     file_name="ECI_Estimation" + _ver_suffix + "_" + ts + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="primary", key="del_lenox")
+                    width="stretch", type="primary", key="del_lenox")
             else:
-                st.button("📋 Lenox Estimation", disabled=True, use_container_width=True, key="del_lenox_dis")
+                st.button("📋 Lenox Estimation", disabled=True, width="stretch", key="del_lenox_dis")
         with est_cols[2]:
             if _cost_xl:
                 st.download_button("💰 Cost Estimate (Excel)", data=_cost_xl,
                     file_name="ECI_Cost_Estimate" + _ver_suffix + "_" + ts + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="primary", key="del_cost_xl")
+                    width="stretch", type="primary", key="del_cost_xl")
             else:
-                st.button("💰 Cost Estimate", disabled=True, use_container_width=True, key="del_cost_dis")
+                st.button("💰 Cost Estimate", disabled=True, width="stretch", key="del_cost_dis")
 
         # ── Proposal Documents ─────────────────────────────────────────
         _sec("📄", "Proposal Documents", "Client-ready deliverables")
@@ -10444,27 +10444,27 @@ def show_results():
                 if st.download_button("📄 Proposal (PDF)", data=_pdf_data,
                     file_name="ECI_Proposal" + _ver_suffix + "_" + ts + ".pdf",
                     mime="application/pdf",
-                    use_container_width=True, type="primary", key="del_pdf"):
+                    width="stretch", type="primary", key="del_pdf"):
                     _log_act("export_pdf", f"Downloaded Proposal PDF — {st.session_state.get('proposal_client_name','')}", "Export")
             else:
-                st.button("📄 Proposal PDF", disabled=True, use_container_width=True, key="del_pdf_dis")
+                st.button("📄 Proposal PDF", disabled=True, width="stretch", key="del_pdf_dis")
         with prop_cols[1]:
             if _pptx_dl:
                 if st.download_button("📑 Proposal (PowerPoint)", data=_pptx_dl,
                     file_name="ECI_Proposal" + _ver_suffix + "_" + ts + ".pptx",
                     mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True, type="primary", key="del_pptx"):
+                    width="stretch", type="primary", key="del_pptx"):
                     _log_act("export_pptx", f"Downloaded Proposal PPTX — {st.session_state.get('proposal_client_name','')}", "Export")
             else:
-                st.button("📑 Proposal PPTX", disabled=True, use_container_width=True, key="del_pptx_dis")
+                st.button("📑 Proposal PPTX", disabled=True, width="stretch", key="del_pptx_dis")
         with prop_cols[2]:
             if _sow_dl:
                 st.download_button("📝 Statement of Work (PDF)", data=_sow_dl,
                     file_name="ECI_SOW" + _ver_suffix + "_" + ts + ".pdf",
                     mime="application/pdf",
-                    use_container_width=True, type="primary", key="del_sow")
+                    width="stretch", type="primary", key="del_sow")
             else:
-                st.button("📝 SOW PDF", disabled=True, use_container_width=True, key="del_sow_dis")
+                st.button("📝 SOW PDF", disabled=True, width="stretch", key="del_sow_dis")
 
         # ── Architecture Diagrams ──────────────────────────────────────
         _sec("🏗️", "Architecture Diagrams", "SVG, PNG and DOT formats")
@@ -10475,25 +10475,25 @@ def show_results():
                 if _arch_svg2:
                     st.download_button("🏗️ Architecture (SVG)", data=_arch_svg2,
                         file_name="ECI_Architecture" + _ver_suffix + "_" + ts + ".svg", mime="image/svg+xml",
-                        use_container_width=True, type="primary", key="del_arch_svg")
+                        width="stretch", type="primary", key="del_arch_svg")
                 else:
                     _arch_html2 = render_dot_to_html(_arch_dot)
                     if _arch_html2:
                         st.download_button("🏗️ Architecture (HTML)", data=_arch_html2,
                             file_name="ECI_Architecture" + _ver_suffix + "_" + ts + ".html", mime="text/html",
-                            use_container_width=True, type="primary", key="del_arch_html")
+                            width="stretch", type="primary", key="del_arch_html")
         with arch_cols2[1]:
             if _arch_dot:
                 _arch_png2 = render_dot_to_png(_arch_dot)
                 if _arch_png2:
                     st.download_button("🏗️ Architecture (PNG)", data=_arch_png2,
                         file_name="ECI_Architecture" + _ver_suffix + "_" + ts + ".png", mime="image/png",
-                        use_container_width=True, type="primary", key="del_arch_png")
+                        width="stretch", type="primary", key="del_arch_png")
         with arch_cols2[2]:
             if _arch_dot:
                 st.download_button("🏗️ Architecture (DOT)", data=_arch_dot.encode("utf-8"),
                     file_name="ECI_Architecture" + _ver_suffix + "_" + ts + ".dot", mime="text/plain",
-                    use_container_width=True, key="del_arch_dot")
+                    width="stretch", key="del_arch_dot")
 
         flow_cols2 = st.columns(3)
         with flow_cols2[0]:
@@ -10502,25 +10502,25 @@ def show_results():
                 if _flow_svg2:
                     st.download_button("🔄 Workflow (SVG)", data=_flow_svg2,
                         file_name="ECI_Workflow" + _ver_suffix + "_" + ts + ".svg", mime="image/svg+xml",
-                        use_container_width=True, type="primary", key="del_flow_svg")
+                        width="stretch", type="primary", key="del_flow_svg")
                 else:
                     _flow_html2 = render_dot_to_html(_flow_dot)
                     if _flow_html2:
                         st.download_button("🔄 Workflow (HTML)", data=_flow_html2,
                             file_name="ECI_Workflow" + _ver_suffix + "_" + ts + ".html", mime="text/html",
-                            use_container_width=True, type="primary", key="del_flow_html")
+                            width="stretch", type="primary", key="del_flow_html")
         with flow_cols2[1]:
             if _flow_dot:
                 _flow_png2 = render_dot_to_png(_flow_dot)
                 if _flow_png2:
                     st.download_button("🔄 Workflow (PNG)", data=_flow_png2,
                         file_name="ECI_Workflow" + _ver_suffix + "_" + ts + ".png", mime="image/png",
-                        use_container_width=True, type="primary", key="del_flow_png")
+                        width="stretch", type="primary", key="del_flow_png")
         with flow_cols2[2]:
             if _flow_dot:
                 st.download_button("🔄 Workflow (DOT)", data=_flow_dot.encode("utf-8"),
                     file_name="ECI_Workflow" + _ver_suffix + "_" + ts + ".dot", mime="text/plain",
-                    use_container_width=True, key="del_flow_dot")
+                    width="stretch", key="del_flow_dot")
 
         # ── Mermaid Diagrams JSON ──────────────────────────────────────
         _mermaid_data2 = safe_dict(_del_r.get("mermaid_diagrams"))
@@ -10528,13 +10528,13 @@ def show_results():
             _sec("📐", "Mermaid Diagrams", "Raw diagram definitions (JSON)")
             st.download_button("📐 All Diagrams (JSON)", data=json.dumps(_mermaid_data2, indent=2),
                 file_name="ECI_Diagrams" + _ver_suffix + "_" + ts + ".json", mime="application/json",
-                use_container_width=True, key="del_diagrams_json")
+                width="stretch", key="del_diagrams_json")
 
         # ── Raw Data ───────────────────────────────────────────────────
         _sec("🗄️", "Raw Data", "Complete estimation data in JSON format")
         st.download_button("📋 Full Project Data (JSON)", data=json.dumps(_del_r, indent=2, default=str),
             file_name="ECI_Data" + _ver_suffix + "_" + ts + ".json", mime="application/json",
-            use_container_width=True, key="del_json")
+            width="stretch", key="del_json")
 
         # ── ZIP Bundle ─────────────────────────────────────────────────
         _sec("📦", "Complete Bundle", "All deliverables in a single ZIP archive")
@@ -10563,7 +10563,7 @@ def show_results():
             data=_zip_buf.getvalue(),
             file_name="ECI_Deliverables" + _ver_suffix + "_" + ts + ".zip",
             mime="application/zip",
-            use_container_width=True,
+            width="stretch",
             type="primary",
             key="del_zip",
         )
@@ -10572,11 +10572,11 @@ def show_results():
         _sec("⚡", "Actions", "Publish or share the estimation")
         ac_cols2 = st.columns(2)
         with ac_cols2[0]:
-            if st.button("☁️ Upload to SharePoint", use_container_width=True, key="del_sp", type="secondary"):
+            if st.button("☁️ Upload to SharePoint", width="stretch", key="del_sp", type="secondary"):
                 ok, msg = SP.from_session().upload(r)
                 st.success(msg) if ok else st.error(msg)
         with ac_cols2[1]:
-            if st.button("📧 Send Alert Email", use_container_width=True, key="del_email", type="secondary"):
+            if st.button("📧 Send Alert Email", width="stretch", key="del_email", type="secondary"):
                 ok, msg = Mailer.from_session().send(r)
                 st.success(msg) if ok else st.error(msg)
 
@@ -10612,7 +10612,7 @@ def tab_admin():
                                    line=dict(color="#00d4aa", width=3), marker=dict(size=10)))
         fig.update_layout(title="Accuracy Trend", template="plotly_dark",
                           paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         dc1, dc2 = st.columns(2)
         with dc1:
             fig2 = go.Figure(go.Bar(x=["Time", "Cost", "Risk", "Arch"], y=[85, 79, 82, 88],
@@ -10620,7 +10620,7 @@ def tab_admin():
                                     text=["85%", "79%", "82%", "88%"], textposition="auto"))
             fig2.update_layout(title="Agent Accuracy", template="plotly_dark",
                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
         with dc2:
             fig3 = go.Figure(go.Indicator(
                 mode="gauge+number+delta", value=m["accuracy"], delta={"reference": 72},
@@ -10628,7 +10628,7 @@ def tab_admin():
                        "steps": [{"range": [0, 50], "color": "rgba(255,107,107,.2)"}, {"range": [50, 75], "color": "rgba(255,209,102,.2)"}, {"range": [75, 100], "color": "rgba(0,212,170,.2)"}]},
                 title={"text": "Model Health"}))
             fig3.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", height=300)
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
 
     with at[1]:
         st.file_uploader("Upload Historical Data", type=["json", "csv", "xlsx"], accept_multiple_files=True, key="tfu")
@@ -10666,7 +10666,7 @@ def tab_admin():
             st.selectbox("Pricing", ["Fixed Price", "T&M", "Retainer"], key="pc")
         tc = st.columns(3)
         with tc[0]:
-            if st.button("Train", use_container_width=True, type="primary", key="bt"):
+            if st.button("Train", width="stretch", type="primary", key="bt"):
                 pb = st.progress(0)
                 for i in range(100):
                     time.sleep(0.02)
@@ -10674,18 +10674,18 @@ def tab_admin():
                 st.session_state.model_metrics["accuracy"] = min(st.session_state.model_metrics["accuracy"] + 2.5, 95)
                 st.success("Training complete!")
         with tc[1]:
-            if st.button("Retrain", use_container_width=True, key="br"):
+            if st.button("Retrain", width="stretch", key="br"):
                 time.sleep(1)
                 st.success("Retrained.")
         with tc[2]:
-            if st.button("A/B Test", use_container_width=True, key="ba"):
+            if st.button("A/B Test", width="stretch", key="ba"):
                 time.sleep(1)
                 st.success("New model +8.3%")
 
     with at[3]:
         st.text_input("Library Path", placeholder="/sites/presales/Historical", key="ssp")
         st.multiselect("Types", ["Proposals", "Estimates", "Outcomes", "Templates"], default=["Proposals", "Estimates", "Outcomes"], key="sst")
-        if st.button("Sync Now", use_container_width=True, type="primary", key="bs"):
+        if st.button("Sync Now", width="stretch", type="primary", key="bs"):
             time.sleep(2)
             st.success("Synced 47 docs.")
 
@@ -10769,7 +10769,7 @@ def _render_template_library_tab():
         show_inactive = st.checkbox("Show inactive templates", key="_tpl_show_inactive")
     with tb_col3:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        if st.button("➕ Add Template", use_container_width=True, type="primary", key="_tpl_add_btn"):
+        if st.button("➕ Add Template", width="stretch", type="primary", key="_tpl_add_btn"):
             st.session_state["_tpl_mode"] = "add"
             st.session_state["_tpl_edit_id"] = None
 
@@ -10825,9 +10825,9 @@ def _render_template_library_tab():
 
             s1, s2, s3 = st.columns(3)
             with s1:
-                submitted = st.form_submit_button("💾 Save", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("💾 Save", type="primary", width="stretch")
             with s2:
-                cancelled = st.form_submit_button("Cancel", use_container_width=True)
+                cancelled = st.form_submit_button("Cancel", width="stretch")
 
             if submitted:
                 if not f_title.strip():
@@ -10898,12 +10898,12 @@ def _render_template_library_tab():
                     )
                     ea, da = st.columns(2)
                     with ea:
-                        if st.button("✏️ Edit", key=f"tpl_edit_{t['id']}", use_container_width=True):
+                        if st.button("✏️ Edit", key=f"tpl_edit_{t['id']}", width="stretch"):
                             st.session_state["_tpl_mode"] = "edit"
                             st.session_state["_tpl_edit_id"] = t["id"]
                             st.rerun()
                     with da:
-                        if st.button("🗑️ Delete", key=f"tpl_del_{t['id']}", use_container_width=True):
+                        if st.button("🗑️ Delete", key=f"tpl_del_{t['id']}", width="stretch"):
                             delete_template(t["id"])
                             st.rerun()
 
@@ -11201,7 +11201,7 @@ def tab_run_library():
         _rc1, _rc2, _ = st.columns([1, 1, 6])
         with _rc1:
             if st.button("✅ Yes, Restore", key="lib_confirm_restore_yes",
-                         type="primary", use_container_width=True):
+                         type="primary", width="stretch"):
                 with st.spinner("Restoring run…"):
                     full = json.loads(_cached_run_json(pending_restore_id))
                 if full:
@@ -11216,7 +11216,7 @@ def tab_run_library():
                 else:
                     st.error("Could not load results for this run.")
         with _rc2:
-            if st.button("❌ Cancel", key="lib_confirm_restore_no", use_container_width=True):
+            if st.button("❌ Cancel", key="lib_confirm_restore_no", width="stretch"):
                 st.session_state.pop("lib_pending_restore_id", None)
                 st.rerun()
         st.markdown("---")
@@ -11264,7 +11264,7 @@ def tab_run_library():
                 "Parent Run":  f"#{r['parent_run_id']}" if r.get("parent_run_id") else "",
                 "Archived":    "🗄️" if r.get("is_archived", 0) else "",
             })
-        st.dataframe(pd.DataFrame(tbl_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(tbl_rows), width="stretch", hide_index=True)
 
     st.markdown("")
 
@@ -11280,7 +11280,7 @@ def tab_run_library():
     if total_pages > 1:
         pg1, pg2, pg3 = st.columns([1, 4, 1])
         with pg1:
-            if st.button("◀ Prev", key="lib_prev", disabled=cur_page == 0, use_container_width=True):
+            if st.button("◀ Prev", key="lib_prev", disabled=cur_page == 0, width="stretch"):
                 st.session_state["lib_page"] -= 1
                 st.rerun()
         with pg2:
@@ -11290,7 +11290,7 @@ def tab_run_library():
                 unsafe_allow_html=True,
             )
         with pg3:
-            if st.button("Next ▶", key="lib_next", disabled=cur_page >= total_pages-1, use_container_width=True):
+            if st.button("Next ▶", key="lib_next", disabled=cur_page >= total_pages-1, width="stretch"):
                 st.session_state["lib_page"] += 1
                 st.rerun()
         st.markdown("")
@@ -11519,11 +11519,11 @@ def tab_run_library():
             # Action buttons
             a1, a2, a3, a4, a5 = st.columns(5)
             with a1:
-                st.button("✏️ Revise", key=f"lib_revise_{run['id']}", use_container_width=True,
+                st.button("✏️ Revise", key=f"lib_revise_{run['id']}", width="stretch",
                           disabled=True,
                           help="Revision temporarily disabled")
             with a2:
-                if st.button("📂 Restore", key=f"lib_restore_{run['id']}", use_container_width=True):
+                if st.button("📂 Restore", key=f"lib_restore_{run['id']}", width="stretch"):
                     st.session_state["lib_pending_restore_id"] = run["id"]
                     _log_act("restore", f"Restored Run #{run['id']} ({run.get('client_name','')} — {run.get('project_type','')})", "Library")
                     st.rerun()
@@ -11533,17 +11533,17 @@ def tab_run_library():
                     data=_cached_run_json(run["id"]),
                     file_name=f"ECI_Run_{run['id']}_{run.get('ts','').replace(':','-').replace(' ','_')}.json",
                     mime="application/json",
-                    use_container_width=True,
+                    width="stretch",
                     key=f"lib_dl_{run['id']}",
                 )
             with a4:
                 if run.get("is_archived", 0):
-                    if st.button("📤 Unarchive", key=f"lib_unarch_{run['id']}", use_container_width=True):
+                    if st.button("📤 Unarchive", key=f"lib_unarch_{run['id']}", width="stretch"):
                         db_unarchive_run(run["id"])
                         _cached_load_runs.clear(); _cached_category_counts.clear()
                         st.rerun()
                 else:
-                    if st.button("🗄️ Archive", key=f"lib_arch_{run['id']}", use_container_width=True):
+                    if st.button("🗄️ Archive", key=f"lib_arch_{run['id']}", width="stretch"):
                         db_archive_run(run["id"])
                         try:
                             db_log_activity(
@@ -11560,7 +11560,7 @@ def tab_run_library():
                         _cached_load_runs.clear(); _cached_category_counts.clear()
                         st.rerun()
             with a5:
-                if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", use_container_width=True):
+                if st.button("🗑️ Delete", key=f"lib_del_{run['id']}", width="stretch"):
                     notify("run_deleted", f"Run #{run['id']} deleted",
                            run.get("project_type", ""), {"run_id": run["id"]})
                     _db_delete_run(run["id"])
@@ -11584,7 +11584,7 @@ def tab_run_library():
             with rs_c2:
                 if new_status != rs:
                     if st.button("Apply", key=f"lib_rs_apply_{run['id']}",
-                                 use_container_width=True, type="primary"):
+                                 width="stretch", type="primary"):
                         db_set_review_status(
                             run["id"], new_status,
                             notes=f"Set to {new_status} via Run Library",
@@ -11609,7 +11609,7 @@ def tab_run_library():
             # Compare toggle
             _cmp_ids = st.session_state.get("lib_compare_ids", [])
             _cmp_label = "☑ In Comparison" if _is_in_compare else "📊 Compare"
-            if st.button(_cmp_label, key=f"lib_cmp_{run['id']}", use_container_width=True):
+            if st.button(_cmp_label, key=f"lib_cmp_{run['id']}", width="stretch"):
                 if _is_in_compare:
                     st.session_state["lib_compare_ids"] = [i for i in _cmp_ids if i != run["id"]]
                 elif len(_cmp_ids) < 2:
@@ -11649,7 +11649,7 @@ def tab_run_library():
                         key=f"lib_oc_n_{run['id']}",
                     )
                 if st.button("💾 Save Outcome", key=f"lib_oc_save_{run['id']}",
-                             use_container_width=True, type="primary"):
+                             width="stretch", type="primary"):
                     db_update_outcome(
                         run["id"], new_outcome,
                         actual_hours=actual_h or None,
@@ -11732,7 +11732,7 @@ def tab_run_library():
                                 # Mark winning version button
                                 if not run.get("is_winning_version"):
                                     if st.button(f"⭐ Mark V{_v_num} as Winning",
-                                                 key=f"lib_win_{run['id']}", use_container_width=True):
+                                                 key=f"lib_win_{run['id']}", width="stretch"):
                                         with st.spinner("Marking as winning version…"):
                                             db_mark_winning_version(run["id"])
                                             _cached_load_runs.clear()
@@ -11748,7 +11748,7 @@ def tab_run_library():
                                 _cur_vstat = run.get("version_status","draft")
                                 if _cur_vstat != "submitted":
                                     if st.button(f"📤 Submit V{_v_num} to Client",
-                                                 key=f"lib_submit_{run['id']}", use_container_width=True,
+                                                 key=f"lib_submit_{run['id']}", width="stretch",
                                                  help="Marks this version as formally submitted to the client"):
                                         with st.spinner("Submitting to client…"):
                                             db_mark_submitted(run["id"])
@@ -11767,7 +11767,7 @@ def tab_run_library():
                         else:
                             st.caption("No other versions yet. Use ✏️ Revise to create V2.")
                             if st.button(f"📤 Submit V1 to Client",
-                                         key=f"lib_submit_v1_{run['id']}", use_container_width=True):
+                                         key=f"lib_submit_v1_{run['id']}", width="stretch"):
                                 with st.spinner("Submitting to client…"):
                                     db_mark_submitted(run["id"])
                                     _log_act("version_submitted",
@@ -11784,7 +11784,7 @@ def tab_run_library():
     if total_pages > 1:
         pg1b, pg2b, pg3b = st.columns([1, 4, 1])
         with pg1b:
-            if st.button("◀ Prev", key="lib_prev_b", disabled=cur_page == 0, use_container_width=True):
+            if st.button("◀ Prev", key="lib_prev_b", disabled=cur_page == 0, width="stretch"):
                 st.session_state["lib_page"] -= 1
                 st.rerun()
         with pg2b:
@@ -11794,7 +11794,7 @@ def tab_run_library():
                 unsafe_allow_html=True,
             )
         with pg3b:
-            if st.button("Next ▶", key="lib_next_b", disabled=cur_page >= total_pages-1, use_container_width=True):
+            if st.button("Next ▶", key="lib_next_b", disabled=cur_page >= total_pages-1, width="stretch"):
                 st.session_state["lib_page"] += 1
                 st.rerun()
 
@@ -11803,7 +11803,7 @@ def tab_run_library():
     # ── Bulk actions ───────────────────────────────────────────────────
     bulk_cols = st.columns([2, 2, 2, 2])
     with bulk_cols[0]:
-        if st.button("🗑️ Delete All Runs", use_container_width=True, type="secondary"):
+        if st.button("🗑️ Delete All Runs", width="stretch", type="secondary"):
             con = sqlite3.connect(_DB_PATH)
             con.execute("DELETE FROM proposals")
             con.commit()
@@ -11818,7 +11818,7 @@ def tab_run_library():
                 data=json.dumps(runs, indent=2, default=str),
                 file_name=f"ECI_Filtered_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
                 key="lib_export_filtered",
             )
     with bulk_cols[2]:
@@ -11829,7 +11829,7 @@ def tab_run_library():
                 data=json.dumps(all_runs_export, indent=2, default=str),
                 file_name=f"ECI_All_Runs_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
                 key="lib_export_all",
             )
 
@@ -12169,7 +12169,7 @@ def tab_dashboard():
             unsafe_allow_html=True,
         )
     with _ref_c:
-        if st.button("↻  Refresh", key="dash_refresh_btn", use_container_width=True, type="secondary"):
+        if st.button("↻  Refresh", key="dash_refresh_btn", width="stretch", type="secondary"):
             _cached_load_runs.clear()
             _cached_category_counts.clear()
             _cached_activity_log.clear()
@@ -12407,7 +12407,7 @@ def tab_dashboard():
                 legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10)),
                 height=248,
             )
-            st.plotly_chart(_fig_t, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_t, width="stretch", config={"displayModeBar": False})
 
         with _c2:
             _o_lbl = ["Won", "Lost", "No Bid", "Open"]
@@ -12426,7 +12426,7 @@ def tab_dashboard():
             _fig_d.update_layout(**_PL,
                 title=dict(text="Outcome Distribution", font=dict(size=12, color="#94a3b8")),
                 showlegend=False, height=248)
-            st.plotly_chart(_fig_d, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_d, width="stretch", config={"displayModeBar": False})
 
         _c3, _c4, _c5 = st.columns(3)
         _cats  = collections.Counter(r.get("category", "General") for r in all_runs)
@@ -12443,7 +12443,7 @@ def tab_dashboard():
             _fig_c.update_layout(**_PL, title=dict(text="By Category", font=dict(size=12, color="#94a3b8")),
                 xaxis=dict(showgrid=False, showticklabels=False),
                 yaxis=dict(showgrid=False, color="#94a3b8"), height=210)
-            st.plotly_chart(_fig_c, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_c, width="stretch", config={"displayModeBar": False})
 
         with _c4:
             _r_ord = ["Low","Medium","High","Critical"]
@@ -12457,7 +12457,7 @@ def tab_dashboard():
             _fig_r.update_layout(**_PL, title=dict(text="Risk Distribution", font=dict(size=12, color="#94a3b8")),
                 xaxis=dict(showgrid=False, color="#94a3b8"),
                 yaxis=dict(showgrid=True, gridcolor="#1a2540", showticklabels=False, zeroline=False), height=210)
-            st.plotly_chart(_fig_r, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_r, width="stretch", config={"displayModeBar": False})
 
         with _c5:
             _rv_lbl = ["Approved","Pending","Needs Changes"]
@@ -12471,7 +12471,7 @@ def tab_dashboard():
             _fig_rv.update_layout(**_PL, title=dict(text="Review Pipeline", font=dict(size=12, color="#94a3b8")),
                 xaxis=dict(showgrid=False, showticklabels=False),
                 yaxis=dict(showgrid=False, color="#94a3b8"), height=210)
-            st.plotly_chart(_fig_rv, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_rv, width="stretch", config={"displayModeBar": False})
 
         # ── Activity Heatmap — GitHub-style calendar ───────────────────────
         st.markdown('<div class="dash-sec">📅 Proposal Activity — Last 12 Weeks</div>', unsafe_allow_html=True)
@@ -12644,7 +12644,7 @@ def tab_dashboard():
                 yaxis=dict(showgrid=True, gridcolor="#1a2540", color="#64748b", zeroline=False),
                 height=240,
             )
-            st.plotly_chart(_fig_vol, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_vol, width="stretch", config={"displayModeBar": False})
 
         with _eng_c2:
             # Feature usage breakdown
@@ -12692,7 +12692,7 @@ def tab_dashboard():
                 yaxis=dict(showgrid=True, gridcolor="#1a2540", zeroline=False, color="#64748b"),
                 legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8", size=10), orientation="h", y=1.12),
             )
-            st.plotly_chart(_fig_cat, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_fig_cat, width="stretch", config={"displayModeBar": False})
 
         with _int_c2:
             # Top clients by proposal count
@@ -12903,12 +12903,12 @@ def tab_dashboard():
             _sel_ai        = st.selectbox("Action", _act_disp, key="actlog_act_flt", label_visibility="collapsed")
             _sel_a         = "" if _sel_ai == "All actions" else _all_act_types[_act_disp.index(_sel_ai) - 1]
         with _fc3:
-            _srch = st.text_input("", placeholder="🔍  Search user, feature, client...",
+            _srch = st.text_input("Search", placeholder="🔍  Search user, feature, client...",
                                   key="actlog_srch", label_visibility="collapsed")
         with _fc4:
-            _do_refresh = st.button("↻ Refresh", key="actlog_ref_btn", use_container_width=True)
+            _do_refresh = st.button("↻ Refresh", key="actlog_ref_btn", width="stretch")
         with _fc5:
-            _do_export = st.button("⬇ CSV", key="actlog_export_btn", use_container_width=True)
+            _do_export = st.button("⬇ CSV", key="actlog_export_btn", width="stretch")
 
         if _do_refresh:
             _cached_activity_log.clear()

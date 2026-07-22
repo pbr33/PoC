@@ -949,7 +949,7 @@ def _render_team_roles_tab_inner(r: dict, se: dict, te: dict, ai_client=None):
 
             add_col, clear_col = st.columns([1, 4])
             with add_col:
-                if st.button("➕ Add to Team", type="primary", use_container_width=True, key="deal_add_btn"):
+                if st.button("➕ Add to Team", type="primary", width="stretch", key="deal_add_btn"):
                     member = {
                         "id":            str(uuid.uuid4())[:8],
                         "location":      loc,
@@ -1128,7 +1128,7 @@ body{margin:0;background:transparent}</style>""", height=60)
             if st.button(
                 "🤖 Suggest Optimal Team",
                 type="primary" if can_ai else "secondary",
-                use_container_width=True, key="deal_ai_suggest",
+                width="stretch", key="deal_ai_suggest",
                 disabled=ai_loading or not can_ai,
             ):
                 st.session_state["deal_ai_loading"] = True
@@ -1243,7 +1243,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                     xaxis=dict(showgrid=False),
                     showlegend=False,
                 )
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
             except ImportError:
                 pass
 
@@ -1286,7 +1286,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                 )
                 fig2.update_traces(texttemplate="$%{y:,.0f}", textposition="outside",
                                    textfont=dict(size=9))
-                st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig2, width="stretch", config={"displayModeBar": False})
             except ImportError:
                 pass
 
@@ -1318,7 +1318,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                                 bgcolor="rgba(0,0,0,0)", orientation="h",
                                 yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
                 )
-                st.plotly_chart(_fig_s, use_container_width=True,
+                st.plotly_chart(_fig_s, width="stretch",
                                 config={"displayModeBar": False})
             except ImportError:
                 pass
@@ -1370,7 +1370,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                     "📥 Export to Excel",
                     data=xl_bytes, file_name=fname,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, type="primary",
+                    width="stretch", type="primary",
                     key="deal_xl_dl",
                 )
 
@@ -1528,7 +1528,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                     template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                     height=180, margin=dict(l=0, r=0, t=10, b=0),
                 )
-                st.plotly_chart(_fig_tbl, use_container_width=True,
+                st.plotly_chart(_fig_tbl, width="stretch",
                                 config={"displayModeBar": False})
             except ImportError:
                 pass
@@ -1574,7 +1574,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                                tickformat=",.0f", showgrid=True,
                                gridcolor="#1e293b", color="#64748b"),
                 )
-                st.plotly_chart(_fig_sc, use_container_width=True,
+                st.plotly_chart(_fig_sc, width="stretch",
                                 config={"displayModeBar": False})
             except ImportError:
                 pass
@@ -1647,7 +1647,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                     "Net Margin":   f"{d.get('net_margin',0)*100:.1f}%",
                     "Saved":        sc.get("ts", ""),
                 })
-            st.dataframe(pd.DataFrame(scen_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(scen_rows), width="stretch", hide_index=True)
 
             # Load scenario back
             sc_names = [s.get("name", f"S{i+1}") for i, s in enumerate(scenarios)]
@@ -1688,7 +1688,7 @@ body{margin:0;background:transparent}</style>""", height=60)
                     "Listed Role": f"{loc}-{com}-{rol}",
                 })
             if rc_df_rows:
-                st.dataframe(pd.DataFrame(rc_df_rows), use_container_width=True, hide_index=True, height=340)
+                st.dataframe(pd.DataFrame(rc_df_rows), width="stretch", hide_index=True, height=340)
             else:
                 st.info("No roles match your search.")
         except ImportError:

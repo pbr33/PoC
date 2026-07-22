@@ -586,7 +586,7 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
         # Admin form — hidden by default, revealed on button click
         show_admin = st.session_state.get("_show_admin_form", False)
         if not show_admin:
-            if st.button("🔐  Admin Access", key="_admin_toggle", use_container_width=True):
+            if st.button("🔐  Admin Access", key="_admin_toggle", width="stretch"):
                 st.session_state["_show_admin_form"] = True
                 st.rerun()
         else:
@@ -594,7 +594,7 @@ div[data-testid="stAlert"]{background:rgba(255,50,50,.07) !important;
             with st.form("login_form", clear_on_submit=False):
                 username  = st.text_input("Username", placeholder="Enter your username")
                 password  = st.text_input("Password", type="password", placeholder="Enter your password")
-                login_btn = st.form_submit_button("Sign In →", type="primary", use_container_width=True)
+                login_btn = st.form_submit_button("Sign In →", type="primary", width="stretch")
 
             if login_btn:
                 pw_hash = hashlib.sha256(password.encode()).hexdigest()

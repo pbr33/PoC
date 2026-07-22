@@ -202,7 +202,7 @@ with hc3:
             f'</div>',
             unsafe_allow_html=True,
         )
-        if st.button("🚪 Sign Out", use_container_width=True, type="secondary", key="signout_btn"):
+        if st.button("🚪 Sign Out", width="stretch", type="secondary", key="signout_btn"):
             for _k in ["auth_ok", "auth_user", "auth_email", "auth_method"]:
                 st.session_state.pop(_k, None)
             st.rerun()

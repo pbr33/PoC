@@ -11,5 +11,4 @@ gatherUsageStats       = false
 
 [client]
 toolbarMode            = "minimal"
-showBrandingPlaceholder = false
 showErrorDetails       = false

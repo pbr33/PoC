@@ -149,7 +149,7 @@ def apply_config_to_session() -> None:
     deepseek = prov.get("deepseek", {})
     _set("deepseek_endpoint",   deepseek.get("endpoint",   ""))
     _set("deepseek_key",        deepseek.get("key",        ""))
-    _set("deepseek_deployment", deepseek.get("deployment", "DeepSeek-V3.1"))
+    _set("deepseek_deployment", deepseek.get("deployment", "DeepSeek-V3.2"))
 
     # ── GPT-5.3-Codex (Azure OpenAI, standard endpoint) ──────────────────
     codex = prov.get("codex", {})

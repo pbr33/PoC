@@ -3261,7 +3261,7 @@ class DeepSeekAI(QwenAI):
     Config keys (set by config_loader from config.yaml providers.deepseek):
         deepseek_endpoint   — e.g. https://your-resource.openai.azure.com/openai/v1/
         deepseek_key        — API key
-        deepseek_deployment — deployment/model name, e.g. DeepSeek-V3.1
+        deepseek_deployment — deployment/model name, e.g. DeepSeek-V3.2
         deepseek_api_version — not used (endpoint already versioned)
     """
 
@@ -3272,7 +3272,7 @@ class DeepSeekAI(QwenAI):
         self._client      = None
         self._inf_client  = None   # not used for DeepSeek
         self._mode        = "openai_compat"
-        self.model        = (deployment or model or "DeepSeek-V3.1").strip()
+        self.model        = (deployment or model or "DeepSeek-V3.2").strip()
         self.deployment   = self.model
 
         endpoint = (endpoint or "").strip().rstrip("/") + "/"
@@ -3291,9 +3291,9 @@ class DeepSeekAI(QwenAI):
     def from_session(cls):
         return cls(
             key        = st.session_state.get("deepseek_key",        "").strip(),
-            model      = st.session_state.get("deepseek_deployment", "DeepSeek-V3.1").strip(),
+            model      = st.session_state.get("deepseek_deployment", "DeepSeek-V3.2").strip(),
             endpoint   = st.session_state.get("deepseek_endpoint",   "").strip(),
-            deployment = st.session_state.get("deepseek_deployment", "DeepSeek-V3.1").strip(),
+            deployment = st.session_state.get("deepseek_deployment", "DeepSeek-V3.2").strip(),
         )
 
     @property

@@ -4,7 +4,8 @@
 import os, sqlite3, json
 from datetime import datetime
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eci_runs.db")
+_DATA_DIR = "/data/bella" if os.path.isdir("/data/bella") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+_DB_PATH = os.path.join(_DATA_DIR, "eci_runs.db")
 
 _CATEGORY_KEYWORDS = {
     "AI":    ["ai", "openai", "gpt", "claude", "gemini", "llm", "machine learning",

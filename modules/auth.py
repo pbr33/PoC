@@ -12,8 +12,8 @@ except ImportError:
     HAS_MSAL = False
 
 # ── Credentials & Azure AD config (override via .streamlit/secrets.toml) ──
-_ADMIN_USER     = "genaiwithprabhakar"
-_ADMIN_PASS_SHA = "a982f0b44037073bf04460c430c2073913fa5ee7924358441caece8cb99dfc1d"  # password: genaiwithprabhakar
+_ADMIN_USER     = "prabhakar"
+_ADMIN_PASS_SHA = "2f835a18449213e30763cc07f71dedd57ba138f3543de60d7830bec305e9652c"  # password: prabhakar
 
 import os as _os
 

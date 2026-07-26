@@ -25,8 +25,8 @@ except ImportError:
     HAS_MSAL = False
 
 # ── Credentials & Azure AD config (override via .streamlit/secrets.toml) ──
-_ADMIN_USER     = "genaiwithprabhakar"
-_ADMIN_PASS_SHA = hashlib.sha256(b"ECI@2025!Presale").hexdigest()   # default password: ECI@2025!Presale
+_ADMIN_USER     = "prabhakar"
+_ADMIN_PASS_SHA = hashlib.sha256(b"prabhakar").hexdigest()           # default password: prabhakar
 
 def _secret(key: str, default: str = "") -> str:
     """Safe secrets accessor — returns default when secrets.toml doesn't exist."""

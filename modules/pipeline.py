@@ -10881,6 +10881,31 @@ def _render_knowledge_base_tab():
         accept_multiple_files=True,
         key="kb_upload",
     )
+
+    # ── Project category tags ────────────────────────────────────────────
+    _KB_CATS = ["Data", "AI", "SharePoint", "Cloud", "Integration", "Mobile", "Web App", "DevOps"]
+    _kb_tag_cols = st.columns([3, 2])
+    with _kb_tag_cols[0]:
+        _kb_selected = st.multiselect(
+            "Project type tags",
+            options=_KB_CATS,
+            default=[],
+            key="kb_tags",
+            help="Select all that apply — stored as metadata in Milvus so the AI can filter by project type.",
+        )
+    with _kb_tag_cols[1]:
+        _kb_custom = st.text_input(
+            "Custom tags (comma-separated)",
+            value="",
+            placeholder="e.g. Fabric, RAG, Teams",
+            key="kb_custom_tags",
+        )
+    _all_tags = ", ".join(
+        t.strip() for t in (_kb_selected + [x.strip() for x in _kb_custom.split(",") if x.strip()])
+    )[:100]  # Milvus field is VARCHAR(100)
+    if _all_tags:
+        st.caption(f"Tags that will be stored: **{_all_tags}**")
+
     if uploaded:
         st.markdown(f"**{len(uploaded)} file(s) ready to ingest**")
         for f in uploaded:
@@ -10890,7 +10915,7 @@ def _render_knowledge_base_tab():
         col_go, col_clr = st.columns([2, 1])
         with col_go:
             if st.button("⚡ Ingest All into Knowledge Base", type="primary", key="kb_ingest", width="stretch"):
-                _kb_run_ingestion(uploaded)
+                _kb_run_ingestion(uploaded, project_tags=_all_tags)
 
     st.divider()
 
@@ -11004,7 +11029,7 @@ def _kb_embed(text: str) -> list:
     return resp.data[0].embedding
 
 
-def _kb_run_ingestion(uploaded_files):
+def _kb_run_ingestion(uploaded_files, project_tags: str = ""):
     import streamlit as st
     import uuid as _uuid, time as _time
     from pymilvus import connections, Collection, utility
@@ -11060,7 +11085,7 @@ def _kb_run_ingestion(uploaded_files):
                         "document_id":              int(_time.time()),
                         "vector":                   vec,
                         "source":                   fname[:250],
-                        "document_type":            "proposal",
+                        "document_type":            (project_tags or "proposal")[:100],
                         "text":                     chunk[:65000],
                         "estimation_reference_url": "",
                     }
@@ -11097,7 +11122,7 @@ def _kb_list_documents() -> list:
         by_source = {}
         for r in rows:
             src = r.get("source","Unknown")
-            by_source.setdefault(src, {"Document": src, "Chunks": 0, "Type": r.get("document_type","")})
+            by_source.setdefault(src, {"Document": src, "Chunks": 0, "Tags": r.get("document_type","")})
             by_source[src]["Chunks"] += 1
             if "Preview" not in by_source[src]:
                 by_source[src]["Preview"] = (r.get("text") or "")[:120] + "…"

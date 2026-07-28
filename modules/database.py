@@ -58,6 +58,15 @@ def _db_init():
         )
     """)
     con.commit()
+    # Migrations: add columns that didn't exist in earlier schema versions
+    for _mig in [
+        "ALTER TABLE training_instructions ADD COLUMN project_types TEXT DEFAULT '[]'",
+    ]:
+        try:
+            con.execute(_mig)
+            con.commit()
+        except Exception:
+            pass  # Column already exists
     con.execute("""
         CREATE TABLE IF NOT EXISTS proposals (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,

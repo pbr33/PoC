@@ -3793,11 +3793,25 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     # ── Training context injection ─────────────────────────────────────────
     try:
         from .training import load_training_context as _ltc
-        _tc = _ltc()
+        # Detect project types from semantic analysis for scoped instruction filtering
+        _sem_pt  = (semantic.get("project_type") or "").lower()
+        _sem_ts  = " ".join(str(t).lower() for t in safe_list(semantic.get("technology_stack", [])))
+        _combined = f"{_sem_pt} {_sem_ts}"
+        _detected_types: list = []
+        if any(k in _combined for k in ["ai", "openai", "gpt", "claude", "llm", "ml", "machine learning", "copilot", "rag", "chatbot", "foundry"]):
+            _detected_types.append("AI")
+        if any(k in _combined for k in ["sharepoint", "teams", "m365", "office 365", "o365", "power automate", "power apps", "viva"]):
+            _detected_types.append("SharePoint")
+        if any(k in _combined for k in ["data", "databricks", "synapse", "fabric", "etl", "pipeline", "analytics", "bi", "warehouse", "lakehouse"]):
+            _detected_types.append("Data")
+        if any(k in _combined for k in ["cloud", "azure", "aws", "gcp", "kubernetes", "docker", "devops", "terraform", "migration", "infrastructure"]):
+            _detected_types.append("Cloud")
+        _tc = _ltc(project_types=_detected_types or None)
         if _tc:
             rag["training_context"] = _tc
             st.session_state["_training_context"] = _tc
-            log_agent("Training", f"Loaded {len(_tc)} chars of training context")
+            st.session_state["_training_types"] = _detected_types
+            log_agent("Training", f"Loaded {len(_tc)} chars of training context (types: {_detected_types or ['All']})")
     except Exception as _tc_exc:
         log_agent("Training", f"Training context skipped: {_tc_exc}")
     _render_live_log(); time.sleep(0.2)
@@ -10702,6 +10716,94 @@ def _analyse_screenshot_feedback(images: list, wrong_desc: str, fix_desc: str) -
     return _claude_raw_call(system, content_blocks, max_tokens=400)
 
 
+def _generate_instruction_from_delta(fb: dict) -> str:
+    """
+    Auto-generate a training instruction from a single Excel feedback record.
+    fb: dict from list_feedback() — has bella_hours, actual_hours, phase_deltas, notes, client_name.
+    """
+    import json as _json
+    h_delta = fb["actual_hours"] - fb["bella_hours"]
+    pct = round(abs(h_delta) / max(fb["bella_hours"], 1) * 100)
+    direction = "over-estimated" if h_delta < 0 else "under-estimated"
+
+    phase_text = ""
+    try:
+        phases = _json.loads(fb.get("phase_deltas") or "[]")
+        bad_phases = [p for p in phases if abs(p.get("actual_hours", 0) - p.get("bella_hours", 0)) > 10]
+        if bad_phases:
+            phase_text = "\nPhase-level deltas:\n"
+            for p in bad_phases:
+                d = p.get("actual_hours", 0) - p.get("bella_hours", 0)
+                phase_text += f"  - {p.get('phase','?')}: BELLA {p.get('bella_hours',0)}h → Actual {p.get('actual_hours',0)}h ({d:+}h)\n"
+    except Exception:
+        pass
+
+    system = (
+        "You are a training engineer for BELLA, an AI presales estimation tool. "
+        "Based on a gap between BELLA's estimate and actual delivery, write one concise "
+        "training instruction that will improve future estimates for similar projects. "
+        "Rules:\n"
+        "  • Reference the specific phases or work streams that were wrong\n"
+        "  • Use DO / DO NOT language\n"
+        "  • Make it generalisable — a rule for future projects, not a correction for this one\n"
+        "  • 2-4 sentences maximum\n"
+        "Write ONLY the instruction — no preamble, no explanation."
+    )
+    user_text = (
+        f"Project: {fb.get('client_name', 'Unknown')}\n"
+        f"BELLA estimated: {fb['bella_hours']}h (${fb.get('bella_cost', 0):,}/mo)\n"
+        f"Actual delivered: {fb['actual_hours']}h (${fb.get('actual_cost', 0):,}/mo)\n"
+        f"BELLA {direction} by {abs(h_delta)}h ({pct}%)\n"
+        f"{phase_text}"
+        f"Notes from presales lead: {fb.get('notes', '') or 'None'}\n\n"
+        "Write a single training instruction to prevent this type of estimation error in future."
+    )
+    return _claude_raw_call(system, [{"type": "text", "text": user_text}], max_tokens=300)
+
+
+def _detect_systematic_patterns(feedback_list: list) -> str:
+    """
+    Analyse all Excel feedback records together and surface systemic estimation biases.
+    Returns a formatted string with PATTERN / RULE blocks.
+    """
+    if not feedback_list:
+        return ""
+
+    import json as _json
+    records = []
+    for fb in feedback_list:
+        h_delta = fb["actual_hours"] - fb["bella_hours"]
+        pct = round(abs(h_delta) / max(fb["bella_hours"], 1) * 100)
+        direction = "over-estimated" if h_delta < 0 else "under-estimated"
+        phase_summary = ""
+        try:
+            phases = _json.loads(fb.get("phase_deltas") or "[]")
+            bad = [(p.get("phase","?"), p.get("actual_hours",0) - p.get("bella_hours",0)) for p in phases if abs(p.get("actual_hours",0) - p.get("bella_hours",0)) > 20]
+            if bad:
+                phase_summary = " | Worst phases: " + ", ".join(f"{n} ({d:+}h)" for n, d in bad[:3])
+        except Exception:
+            pass
+        records.append(
+            f"• {fb.get('client_name','Client')}: {direction} by {abs(h_delta)}h ({pct}%){phase_summary}"
+            + (f" | Note: {fb['notes']}" if fb.get("notes") else "")
+        )
+
+    system = (
+        "You are a data analyst reviewing estimation accuracy for BELLA, an AI presales tool. "
+        "Find systematic patterns (recurring mistakes, consistent over/under-estimation of specific phases) "
+        "across multiple projects. Write 2-5 training rules to fix the most important patterns."
+    )
+    user_text = (
+        f"Estimation accuracy across {len(feedback_list)} past projects:\n\n"
+        + "\n".join(records)
+        + "\n\nIdentify systemic patterns and write training rules. Format each as:\n"
+        "PATTERN: <what BELLA consistently gets wrong>\n"
+        "RULE: <precise training instruction to fix it>\n\n"
+        "Focus on the 2-5 most impactful, actionable rules."
+    )
+    return _claude_raw_call(system, [{"type": "text", "text": user_text}], max_tokens=900)
+
+
 def _detect_instruction_conflicts(instructions: list) -> str:
     """
     Send all active instructions to Claude and ask it to identify contradictions.
@@ -10767,119 +10869,183 @@ def _analyse_scope_vs_output(scope_text: str, bella_output: str, what_wrong: str
 
 
 def _render_training_tab():
-    """Agent training: text instructions + Excel comparison feedback."""
+    """Agent training — 5-tab system for improving BELLA estimation accuracy."""
+    import json as _json
     from .training import (
         add_instruction, list_instructions, toggle_instruction, delete_instruction,
         add_feedback, list_feedback, delete_feedback, parse_excel_estimate,
     )
 
+    _PROJ_TYPES = ["AI", "SharePoint", "Data", "Cloud"]
+
     st.markdown("### 🧠 Agent Training")
     st.markdown(
-        "Everything entered here is injected into every agent's system prompt before each estimation run. "
-        "Use any combination of methods below to teach BELLA how to estimate better."
+        "Everything saved here is injected into every agent's system prompt before each estimation run. "
+        "Instructions can be scoped to specific project types so AI rules don't fire on SharePoint projects and vice versa."
     )
 
-    tr1, tr2, tr3, tr4 = st.tabs([
+    tr1, tr2, tr3, tr4, tr5 = st.tabs([
         "📋 Instructions",
         "📸 Visual Feedback",
         "📄 Scope vs Output",
         "📊 Excel Feedback",
+        "📈 Insights",
     ])
 
     # ── TAB 1: Text instructions + Conflict Detector ──────────────────────
     with tr1:
         with st.form("add_instr_form", clear_on_submit=True):
             st.markdown("**Add a new instruction**")
-            i_cat = st.selectbox(
-                "Category",
-                ["general", "hours", "cost", "risk", "scope", "architecture"],
-                key="i_cat",
-            )
+            _if1, _if2 = st.columns(2)
+            with _if1:
+                i_cat = st.selectbox(
+                    "Category",
+                    ["general", "hours", "cost", "risk", "scope", "architecture"],
+                    key="i_cat",
+                )
+            with _if2:
+                i_types = st.multiselect(
+                    "Project types (empty = all projects)",
+                    _PROJ_TYPES,
+                    key="i_types",
+                    help="Scope this instruction to specific project types. Leave empty to apply to every estimation.",
+                )
             i_txt = st.text_area(
                 "Instruction",
-                placeholder="e.g. Always add 15% contingency to SharePoint migration tasks.",
+                placeholder=(
+                    "e.g. For AI-only projects, DO NOT add a Data Engineering stream unless "
+                    "the scope explicitly mentions ETL, Fabric, or Databricks."
+                ),
                 key="i_txt",
                 height=100,
             )
             if st.form_submit_button("➕ Save Instruction", type="primary"):
                 if i_txt.strip():
-                    _iid = add_instruction(i_txt.strip(), category=i_cat, created_by="admin")
+                    _iid = add_instruction(
+                        i_txt.strip(), category=i_cat,
+                        created_by="admin", project_types=i_types,
+                    )
                     st.success(f"Saved instruction #{_iid}")
                 else:
                     st.warning("Enter an instruction first.")
 
         st.markdown("---")
 
-        # Conflict Detector
         _all_instrs = list_instructions()
         _active_instrs = [i for i in _all_instrs if i.get("active")]
 
-        _cd_col1, _cd_col2 = st.columns([3, 1])
-        with _cd_col1:
-            st.markdown(
-                f"**Saved instructions** — {len(_active_instrs)} active · "
-                f"{len(_all_instrs) - len(_active_instrs)} disabled"
+        # ── Toolbar: search / filter / bulk ops / conflict detector ──────
+        _tb1, _tb2, _tb3, _tb4 = st.columns([3, 2, 1, 1])
+        with _tb1:
+            _search = st.text_input("🔍 Search", key="instr_search", placeholder="keyword…", label_visibility="collapsed")
+        with _tb2:
+            _cat_filter = st.selectbox(
+                "Filter", ["All categories"] + ["general", "hours", "cost", "risk", "scope", "architecture"],
+                key="instr_cat_filter", label_visibility="collapsed",
             )
-        with _cd_col2:
+        with _tb3:
+            if st.button("✅ All On", key="bulk_enable", help="Enable all instructions"):
+                for _bi in _all_instrs:
+                    toggle_instruction(_bi["id"], True)
+                st.rerun()
+        with _tb4:
+            if st.button("⭕ All Off", key="bulk_disable", help="Disable all instructions"):
+                for _bi in _all_instrs:
+                    toggle_instruction(_bi["id"], False)
+                st.rerun()
+
+        _type_filter = st.multiselect(
+            "Project type filter",
+            _PROJ_TYPES,
+            key="instr_type_filter",
+            help="Show only instructions tagged for these project types",
+        )
+        _show_inactive = st.checkbox("Show disabled instructions", key="instr_show_inactive", value=False)
+
+        # Apply filters
+        _filtered = _all_instrs if _show_inactive else _active_instrs
+        if _search:
+            _filtered = [i for i in _filtered if _search.lower() in (i.get("instruction") or "").lower()]
+        if _cat_filter != "All categories":
+            _filtered = [i for i in _filtered if (i.get("category") or "general") == _cat_filter]
+        if _type_filter:
+            _tmp = []
+            for _fi in _filtered:
+                try:
+                    _ipt = _json.loads(_fi.get("project_types") or "[]")
+                except Exception:
+                    _ipt = []
+                if not _ipt or any(pt in _ipt for pt in _type_filter):
+                    _tmp.append(_fi)
+            _filtered = _tmp
+
+        # Conflict detector
+        _cdc1, _cdc2 = st.columns([4, 1])
+        with _cdc1:
+            st.caption(
+                f"Showing **{len(_filtered)}** of {len(_all_instrs)} instructions · "
+                f"{len(_active_instrs)} active"
+            )
+        with _cdc2:
             if st.button(
-                "🔎 Check for Conflicts",
+                "🔎 Check Conflicts",
                 key="conflict_detect_btn",
-                help="Reads all active instructions and identifies contradictions",
                 disabled=len(_active_instrs) < 2,
+                help="Find contradictions between active instructions",
             ):
-                with st.spinner("Analysing instructions for conflicts…"):
+                with st.spinner("Analysing for conflicts…"):
                     _conflict_report = _detect_instruction_conflicts(_active_instrs)
                 st.session_state["_conflict_report"] = _conflict_report
 
         if st.session_state.get("_conflict_report"):
             _report = st.session_state["_conflict_report"]
             if "NO CONFLICTS FOUND" in _report.upper():
-                st.success("✅ No conflicts found — all instructions are consistent.")
+                st.success("✅ No conflicts — all instructions are consistent.")
             else:
-                st.warning("⚠️ Conflicts detected between your instructions:")
-                # Parse and display each conflict block
-                _blocks = [b.strip() for b in _report.split("\n\n") if b.strip()]
-                for _blk in _blocks:
-                    lines = _blk.splitlines()
-                    _conflict_id = next((l for l in lines if l.startswith("CONFLICT:")), "")
-                    _issue_line  = next((l for l in lines if l.startswith("ISSUE:")), "")
-                    _res_line    = next((l for l in lines if l.startswith("RESOLUTION:")), "")
-                    if not _conflict_id:
-                        st.markdown(_blk)
-                        continue
-                    with st.expander(_conflict_id, expanded=True):
-                        if _issue_line:
-                            st.markdown(f"**Problem:** {_issue_line.replace('ISSUE:', '').strip()}")
-                        if _res_line:
-                            _res_text = _res_line.replace("RESOLUTION:", "").strip()
-                            st.info(f"**Suggested fix:** {_res_text}")
-                            _res_key = f"resolve_{hash(_conflict_id) % 99999}"
-                            if st.button("✅ Save resolved instruction", key=_res_key):
-                                _iid = add_instruction(_res_text, category="general", created_by="admin")
-                                st.success(f"Saved as instruction #{_iid}")
+                st.warning("⚠️ Conflicts detected:")
+                for _blk in [b.strip() for b in _report.split("\n\n") if b.strip()]:
+                    _lines = _blk.splitlines()
+                    _cid  = next((l for l in _lines if l.startswith("CONFLICT:")), "")
+                    _iss  = next((l for l in _lines if l.startswith("ISSUE:")), "")
+                    _res  = next((l for l in _lines if l.startswith("RESOLUTION:")), "")
+                    if not _cid:
+                        st.markdown(_blk); continue
+                    with st.expander(_cid, expanded=True):
+                        if _iss:
+                            st.markdown(f"**Problem:** {_iss.replace('ISSUE:','').strip()}")
+                        if _res:
+                            _rt = _res.replace("RESOLUTION:", "").strip()
+                            st.info(f"**Suggested fix:** {_rt}")
+                            if st.button("✅ Save resolved instruction", key=f"resolve_{hash(_cid)%99999}"):
+                                _iid = add_instruction(_rt, category="general", created_by="admin")
+                                st.success(f"Saved as #{_iid}")
                                 st.session_state.pop("_conflict_report", None)
                                 st.rerun()
-            if st.button("✖ Clear report", key="clear_conflict_report"):
+            if st.button("✖ Clear", key="clear_conflict_report"):
                 st.session_state.pop("_conflict_report", None)
                 st.rerun()
 
         st.markdown("---")
-        if not _all_instrs:
-            st.info("No instructions yet.")
-        for _i in _all_instrs:
+        if not _filtered:
+            st.info("No instructions match the current filter." if _search or _cat_filter != "All categories" or _type_filter else "No instructions yet.")
+        for _i in _filtered:
             with st.container():
                 _ic1, _ic2, _ic3 = st.columns([6, 1, 1])
                 with _ic1:
                     _badge = "🟢" if _i["active"] else "⚪"
+                    _ipt_list = []
+                    try: _ipt_list = _json.loads(_i.get("project_types") or "[]")
+                    except Exception: pass
+                    _type_str = " · ".join(f"`{t}`" for t in _ipt_list) if _ipt_list else "`ALL`"
                     st.markdown(
-                        f"{_badge} **[{(_i['category'] or 'general').upper()}]** {_i['instruction']}"
+                        f"{_badge} **[{(_i['category'] or 'general').upper()}]** {_type_str}  \n"
+                        f"{_i['instruction']}"
                     )
                     st.caption(f"#{_i['id']} · {_i['created_at'][:16]}")
                 with _ic2:
-                    _new_active = not bool(_i["active"])
                     _lbl = "Disable" if _i["active"] else "Enable"
                     if st.button(_lbl, key=f"tog_instr_{_i['id']}"):
-                        toggle_instruction(_i["id"], _new_active)
+                        toggle_instruction(_i["id"], not bool(_i["active"]))
                         st.rerun()
                 with _ic3:
                     if st.button("🗑️", key=f"del_instr_{_i['id']}"):
@@ -11058,7 +11224,7 @@ def _render_training_tab():
     with tr4:
         st.markdown(
             "Upload the final Excel you sent to the client. "
-            "BELLA will compare it against its own estimate and store the delta as training data."
+            "BELLA stores the delta and can auto-generate a training instruction from it."
         )
         with st.form("add_feedback_form", clear_on_submit=True):
             _fc1, _fc2 = st.columns(2)
@@ -11122,27 +11288,196 @@ def _render_training_tab():
         st.markdown("**Past feedback records**")
         _fbs = list_feedback()
         if not _fbs:
-            st.info("No feedback records yet.")
+            st.info("No feedback records yet. Upload your first actual client Excel above.")
         for _fb in _fbs:
             _dh = _fb["actual_hours"] - _fb["bella_hours"]
             _sign = "+" if _dh >= 0 else ""
+            _pct  = round(abs(_dh) / max(_fb["bella_hours"], 1) * 100)
             _colour = "#ff6b6b" if abs(_dh) > _fb["bella_hours"] * 0.2 else "#00d4aa"
             with st.container():
-                _fbc1, _fbc2 = st.columns([8, 1])
+                _fbc1, _fbc2, _fbc3 = st.columns([6, 2, 1])
                 with _fbc1:
                     st.markdown(
                         f"**{_fb['client_name'] or 'Client'}** · "
                         f"BELLA {_fb['bella_hours']}h → Actual {_fb['actual_hours']}h "
-                        f"<span style='color:{_colour};font-weight:700'>({_sign}{_dh}h)</span>",
+                        f"<span style='color:{_colour};font-weight:700'>({_sign}{_dh}h / {_pct}%)</span>",
                         unsafe_allow_html=True,
                     )
                     if _fb.get("notes"):
                         st.caption(_fb["notes"])
                     st.caption(f"#{_fb['id']} · {_fb['created_at'][:16]}")
                 with _fbc2:
+                    if st.button("🤖 Auto-learn", key=f"autolearn_fb_{_fb['id']}",
+                                 help="Generate a training instruction from this delta"):
+                        with st.spinner("Claude is writing a rule from this delta…"):
+                            _gen = _generate_instruction_from_delta(_fb)
+                        if _gen:
+                            st.session_state[f"_fb_gen_{_fb['id']}"] = _gen
+                        else:
+                            st.error("Could not generate — check API key in sidebar.")
+                with _fbc3:
                     if st.button("🗑️", key=f"del_fb_{_fb['id']}"):
                         delete_feedback(_fb["id"])
                         st.rerun()
+                # Inline generated instruction editor
+                _gen_key = f"_fb_gen_{_fb['id']}"
+                if st.session_state.get(_gen_key):
+                    _fb_final = st.text_area(
+                        "Review & edit generated instruction:",
+                        value=st.session_state[_gen_key],
+                        key=f"fb_final_{_fb['id']}",
+                        height=100,
+                    )
+                    _fc_save1, _fc_save2 = st.columns([2, 1])
+                    with _fc_save1:
+                        _fb_save_types = st.multiselect(
+                            "Project types", _PROJ_TYPES,
+                            key=f"fb_save_types_{_fb['id']}",
+                            help="Leave empty = applies to all projects",
+                        )
+                    with _fc_save2:
+                        if st.button("✅ Save Instruction", key=f"fb_save_{_fb['id']}", type="primary"):
+                            _iid = add_instruction(
+                                _fb_final.strip(), category="hours",
+                                created_by="admin", project_types=_fb_save_types,
+                            )
+                            st.success(f"Saved as instruction #{_iid}")
+                            st.session_state.pop(_gen_key, None)
+                            st.rerun()
+                st.markdown("---")
+
+    # ── TAB 5: Insights ───────────────────────────────────────────────────
+    with tr5:
+        st.markdown("**Training system health and estimation accuracy over time.**")
+
+        _all_i   = list_instructions()
+        _active_i = [i for i in _all_i if i.get("active")]
+        _all_fb  = list_feedback()
+
+        # ── Key metrics ──────────────────────────────────────────────────
+        _m1, _m2, _m3, _m4 = st.columns(4)
+        with _m1:
+            st.metric("Active instructions", len(_active_i), delta=len(_active_i) - (len(_all_i) - len(_active_i)) or None)
+        with _m2:
+            st.metric("Feedback records", len(_all_fb))
+        with _m3:
+            if _all_fb:
+                _avg_delta = round(sum(fb["actual_hours"] - fb["bella_hours"] for fb in _all_fb) / len(_all_fb))
+                _bias_label = f"{_avg_delta:+}h avg"
+                st.metric("Avg delta", _bias_label,
+                          help="Positive = BELLA under-estimates; Negative = over-estimates")
+            else:
+                st.metric("Avg delta", "—")
+        with _m4:
+            if _all_fb:
+                _over_count = sum(1 for fb in _all_fb if fb["actual_hours"] < fb["bella_hours"])
+                st.metric("Over-estimates", f"{_over_count}/{len(_all_fb)}")
+            else:
+                st.metric("Over-estimates", "—")
+
+        st.markdown("---")
+
+        # ── Category breakdown ───────────────────────────────────────────
+        if _active_i:
+            from collections import Counter as _Ctr
+            _cat_counts = _Ctr((i.get("category") or "general") for i in _active_i)
+            _type_counts: dict = {}
+            for _i in _active_i:
+                try: _ipt = _json.loads(_i.get("project_types") or "[]")
+                except Exception: _ipt = []
+                for _t in (_ipt or ["ALL"]):
+                    _type_counts[_t] = _type_counts.get(_t, 0) + 1
+
+            _ins_c1, _ins_c2 = st.columns(2)
+            with _ins_c1:
+                st.markdown("**Instructions by category**")
+                for _cat, _cnt in sorted(_cat_counts.items(), key=lambda x: -x[1]):
+                    _bar = "█" * _cnt
+                    st.markdown(f"`{_cat.upper()}` {_bar} {_cnt}")
+            with _ins_c2:
+                st.markdown("**Instructions by project type**")
+                for _tp, _cnt in sorted(_type_counts.items(), key=lambda x: -x[1]):
+                    _bar = "█" * _cnt
+                    st.markdown(f"`{_tp}` {_bar} {_cnt}")
+        else:
+            st.info("Add instructions to see category and type breakdowns here.")
+
+        st.markdown("---")
+
+        # ── Feedback delta chart ─────────────────────────────────────────
+        if _all_fb:
+            st.markdown("**Estimation accuracy per project** (positive = under-estimated, negative = over-estimated)")
+            _chart_data = {
+                fb.get("client_name") or f"#{fb['id']}": fb["actual_hours"] - fb["bella_hours"]
+                for fb in reversed(_all_fb[-10:])
+            }
+            st.bar_chart(_chart_data)
+
+        st.markdown("---")
+
+        # ── Pattern detection ────────────────────────────────────────────
+        st.markdown("**Pattern Detection** — Let Claude analyse all your feedback records and surface systemic biases.")
+        _pat_col1, _pat_col2 = st.columns([3, 1])
+        with _pat_col2:
+            if st.button(
+                "🔍 Detect Patterns",
+                key="detect_patterns_btn",
+                type="primary",
+                disabled=len(_all_fb) < 2,
+                help="Requires at least 2 feedback records",
+            ):
+                with st.spinner(f"Analysing {len(_all_fb)} feedback records for patterns…"):
+                    _pattern_report = _detect_systematic_patterns(_all_fb)
+                st.session_state["_pattern_report"] = _pattern_report
+        with _pat_col1:
+            st.caption(
+                f"Will analyse {len(_all_fb)} feedback record(s). "
+                "Best results with 3+ projects."
+                if _all_fb else "Add feedback records in the Excel Feedback tab first."
+            )
+
+        if st.session_state.get("_pattern_report"):
+            _pr = st.session_state["_pattern_report"]
+            st.markdown("**Detected patterns:**")
+            _pblocks = [b.strip() for b in _pr.split("\n\n") if b.strip()]
+            for _pb in _pblocks:
+                _plines = _pb.splitlines()
+                _patt_line = next((l for l in _plines if l.startswith("PATTERN:")), "")
+                _rule_line  = next((l for l in _plines if l.startswith("RULE:")), "")
+                if not _patt_line and not _rule_line:
+                    st.markdown(_pb); continue
+                with st.expander(
+                    (_patt_line.replace("PATTERN:", "").strip() or "Pattern") if _patt_line else "Pattern",
+                    expanded=True,
+                ):
+                    if _patt_line:
+                        st.markdown(f"**Issue:** {_patt_line.replace('PATTERN:','').strip()}")
+                    if _rule_line:
+                        _rl = _rule_line.replace("RULE:", "").strip()
+                        st.info(f"**Suggested rule:** {_rl}")
+                        _pk = f"save_pattern_{hash(_rl)%99999}"
+                        if st.button("✅ Save as Training Instruction", key=_pk):
+                            _iid = add_instruction(_rl, category="hours", created_by="admin")
+                            st.success(f"Saved as instruction #{_iid}")
+                            st.session_state.pop("_pattern_report", None)
+                            st.rerun()
+            if st.button("✖ Clear report", key="clear_pattern_report"):
+                st.session_state.pop("_pattern_report", None)
+                st.rerun()
+
+        st.markdown("---")
+
+        # ── Last run context ─────────────────────────────────────────────
+        _last_ctx = st.session_state.get("_training_context", "")
+        _last_types = st.session_state.get("_training_types", [])
+        with st.expander(
+            f"Last estimation — training context applied (project types: {_last_types or ['All']})",
+            expanded=False,
+        ):
+            if _last_ctx:
+                st.code(_last_ctx, language=None)
+            else:
+                st.info("Run an estimation to see what training context was injected.")
 
 
 # ═══════════════════════════════════════════════════════════════════════

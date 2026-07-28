@@ -13,9 +13,12 @@ from .database import _DB_PATH
 
 # ── Read ──────────────────────────────────────────────────────────────
 
-def load_training_context() -> str:
+def load_training_context(project_types: list = None) -> str:
     """
-    Load all active instructions + recent feedback summaries from SQLite.
+    Load active instructions + recent feedback summaries from SQLite.
+    project_types: list of detected types for this run (e.g. ["AI", "Cloud"]).
+      Instructions tagged with any of those types are included.
+      Instructions tagged [] (general) always load regardless.
     Returns a formatted block ready to prepend to agent system prompts.
     Returns "" if nothing is stored yet.
     """
@@ -23,10 +26,24 @@ def load_training_context() -> str:
         con = sqlite3.connect(_DB_PATH)
         con.row_factory = sqlite3.Row
 
-        instructions = con.execute(
-            "SELECT instruction, category FROM training_instructions "
+        all_instrs = con.execute(
+            "SELECT instruction, category, project_types FROM training_instructions "
             "WHERE active=1 ORDER BY id ASC"
         ).fetchall()
+
+        # Filter by project type: empty project_types on instruction = applies to all
+        instructions = []
+        for row in all_instrs:
+            try:
+                ipt = json.loads(row["project_types"] or "[]")
+            except Exception:
+                ipt = []
+            if not ipt:  # general — always include
+                instructions.append(row)
+            elif not project_types:  # caller didn't specify type — include everything
+                instructions.append(row)
+            elif any(pt in ipt for pt in project_types):
+                instructions.append(row)
 
         feedback = con.execute(
             "SELECT client_name, bella_hours, actual_hours, bella_cost, actual_cost, "
@@ -99,13 +116,15 @@ def load_training_context() -> str:
 
 # ── Write ─────────────────────────────────────────────────────────────
 
-def add_instruction(instruction: str, category: str = "general", created_by: str = "") -> int:
+def add_instruction(instruction: str, category: str = "general",
+                    created_by: str = "", project_types: list = None) -> int:
     """Insert a new training instruction. Returns the new row id."""
     con = sqlite3.connect(_DB_PATH)
     cur = con.execute(
-        "INSERT INTO training_instructions (created_at, instruction, category, created_by) "
-        "VALUES (?,?,?,?)",
-        (datetime.utcnow().isoformat(), instruction.strip(), category.lower(), created_by)
+        "INSERT INTO training_instructions (created_at, instruction, category, created_by, project_types) "
+        "VALUES (?,?,?,?,?)",
+        (datetime.utcnow().isoformat(), instruction.strip(), category.lower(), created_by,
+         json.dumps(project_types or []))
     )
     con.commit()
     row_id = cur.lastrowid

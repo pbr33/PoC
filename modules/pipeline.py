@@ -10604,73 +10604,105 @@ def show_results():
 
 def _analyse_screenshot_feedback(img_bytes, filename: str, wrong_desc: str, fix_desc: str) -> str:
     """
-    Call Claude Vision with a screenshot + user description → return a precise training instruction string.
-    Falls back to text-only analysis if no image supplied or vision unavailable.
+    Generate a training instruction from user feedback, using the already-configured
+    Claude client (handles Azure AI Services endpoint automatically).
+    With image: sends via raw HTTP so vision content blocks work.
+    Without image: delegates to the existing AnthropicAI._call().
     """
-    import base64
-    api_key = (
-        st.session_state.get("anthropic_api_key", "")
-        or st.session_state.get("claude_api_key", "")
-    )
-    if not api_key:
-        try:
-            from .config_loader import load_config as _lc
-            api_key = _lc().get("providers", {}).get("claude", {}).get("api_key", "")
-        except Exception:
-            pass
-    if not api_key:
-        return ""
+    import json, urllib.request, urllib.error
 
     try:
-        import anthropic as _ant
-        client = _ant.Anthropic(api_key=api_key)
+        from .ai_clients import AnthropicAI as _AntAI
+    except Exception:
+        return ""
 
-        system = (
-            "You are a training data engineer for BELLA, an AI presales estimation tool used by ECI. "
-            "Your job is to convert a user's visual feedback about a wrong estimation into a short, precise, "
-            "actionable training instruction that will be prepended to the AI agents' system prompts. "
-            "The instruction must be:\n"
-            "  • Specific: name exact streams, technologies, or conditions involved\n"
-            "  • Prescriptive: say DO or DO NOT clearly\n"
-            "  • Concise: 2-5 sentences maximum\n"
-            "  • Generalisable: applicable to future similar projects, not just this one\n"
-            "Write ONLY the instruction text — no preamble, no bullet headers, no explanation."
-        )
+    client = _AntAI.from_session()
+    if not client.is_live:
+        return ""
 
-        content = []
-        if img_bytes:
-            ext = (filename or "").rsplit(".", 1)[-1].lower()
-            media_type = "image/png" if ext == "png" else "image/jpeg"
-            content.append({
+    system = (
+        "You are a training data engineer for BELLA, an AI presales estimation tool used by ECI. "
+        "Convert user feedback about a wrong estimation into a short, precise, actionable training "
+        "instruction that will be prepended to the AI agents' system prompts. Rules:\n"
+        "  • Name exact work streams, technologies, or conditions involved\n"
+        "  • Use DO / DO NOT language clearly\n"
+        "  • 2-5 sentences maximum\n"
+        "  • Make it generalisable to future similar projects, not just this one\n"
+        "Write ONLY the instruction text — no preamble, no bullets, no explanation."
+    )
+
+    user_text = f"PROBLEM WITH BELLA OUTPUT: {wrong_desc}\n\n"
+    if fix_desc:
+        user_text += f"CORRECT BEHAVIOUR: {fix_desc}\n\n"
+    user_text += "Write a single, precise training instruction for the AI agent."
+
+    # ── Text-only path: reuse existing _call (handles Azure auth internally) ──
+    if not img_bytes:
+        try:
+            result = client._call(system, user_text, max_tokens=350)
+            return (result or "").strip() if isinstance(result, str) else ""
+        except Exception:
+            return ""
+
+    # ── Vision path: raw HTTP so we can send image content blocks ────────────
+    import base64
+    ext = (filename or "screenshot.png").rsplit(".", 1)[-1].lower()
+    media_type = "image/png" if ext == "png" else "image/jpeg"
+
+    messages = [{
+        "role": "user",
+        "content": [
+            {
                 "type": "image",
                 "source": {
                     "type": "base64",
                     "media_type": media_type,
                     "data": base64.b64encode(img_bytes).decode("utf-8"),
                 },
-            })
+            },
+            {"type": "text", "text": user_text},
+        ],
+    }]
 
-        user_text = (
-            f"I am looking at a BELLA estimation output.\n\n"
-            f"PROBLEM: {wrong_desc}\n\n"
-        )
-        if fix_desc:
-            user_text += f"CORRECT BEHAVIOUR: {fix_desc}\n\n"
-        user_text += (
-            "Based on the screenshot (if provided) and the feedback above, "
-            "write a single training instruction for the AI agent."
-        )
-        content.append({"type": "text", "text": user_text})
+    payload = json.dumps({
+        "model":      client.model,
+        "max_tokens": 350,
+        "system":     system,
+        "messages":   messages,
+    }).encode("utf-8")
 
-        resp = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=350,
-            system=system,
-            messages=[{"role": "user", "content": content}],
+    # Mirror the auth logic from AnthropicAI._make_request
+    if client._is_azure:
+        url = client.endpoint
+        auth_candidates = [
+            {"api-key": client.key},
+            {"Authorization": f"Bearer {client.key}"},
+        ]
+    else:
+        url = "https://api.anthropic.com/v1/messages"
+        auth_candidates = [{"x-api-key": client.key}]
+
+    for auth_hdr in auth_candidates:
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={
+                **auth_hdr,
+                "anthropic-version": "2023-06-01",
+                "Content-Type":      "application/json",
+            },
+            method="POST",
         )
-        return resp.content[0].text.strip()
-    except Exception as _e:
-        return ""
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return ((data.get("content") or [{}])[0].get("text", "") or "").strip()
+        except urllib.error.HTTPError as he:
+            if he.code == 401:
+                continue
+            return ""
+        except Exception:
+            return ""
+    return ""
 
 
 def _render_training_tab():

@@ -3,6 +3,7 @@
 # ═══════════════════════════════════════════════════════════════════════
 
 import io
+import re
 from datetime import datetime
 
 import streamlit as st
@@ -1645,7 +1646,7 @@ def generate_monogram_excel(time_est, semantic, cost_est=None, risk_info=None, f
         pname  = safe_str(phase.get("name", f"Phase {pi+1}"))
         phours = safe_int(phase.get("hours", 0))
         tasks  = [safe_dict(t) for t in safe_list(phase.get("tasks", []))]
-        sname  = pname[:31]
+        sname  = re.sub(r'[:\\/?*\[\]]', '-', pname).strip()[:31]
         ws_p   = wb2.create_sheet(title=sname)
         ws_p.sheet_properties.tabColor = _tab_colors[pi % len(_tab_colors)]
         ws_p.sheet_view.showGridLines  = False

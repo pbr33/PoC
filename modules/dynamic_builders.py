@@ -156,6 +156,25 @@ def _build_dynamic_time(semantic, text="", rag=None):
     n_int   = len([r for r in reqs if isinstance(r, dict) and r.get("type") == "integration"])
     n_total = max(1, len(reqs))
 
+    # ── Classify functional reqs: AI/ML feature vs DevOps/infra ──────────
+    _DEVOPS_REQ_KEYS = (
+        "private endpoint", "key vault", "entra", "entra id", "encryption",
+        "cspm", "deploy resource", "deploy to prod", "production environment",
+        "network security", "log ingestion", "log analytics", "security baseline",
+        "prompt log", "configure private", "create secret", "rbac", "ssl", "tls",
+        "firewall", "nsg", "vnet", "defender", "compliance policy", "key rotation",
+        "backup", "disaster recovery", "monitoring alert", "log retention",
+    )
+    def _is_devops_req(r_dict):
+        tl = safe_str(r_dict.get("title", "")).lower()
+        dl = safe_str(r_dict.get("description", "")).lower()
+        return any(k in tl or k in dl for k in _DEVOPS_REQ_KEYS)
+
+    _devops_reqs = [
+        safe_dict(r) for r in reqs
+        if isinstance(r, dict) and r.get("type") == "functional" and _is_devops_req(safe_dict(r))
+    ]
+
     def _h(k): return k in tech_lower
 
     is_fabric     = _h("microsoft fabric") or _h("fabric lakehouse") or _h("onelake")
@@ -319,6 +338,7 @@ def _build_dynamic_time(semantic, text="", rag=None):
             ]
         # Per-req AI tasks: only when DE doesn't handle them (avoids double-count).
         # Only High/Medium complexity — Low reqs are covered by the base AI framework tasks.
+        # DevOps/infra reqs are excluded here and added to the DevOps stream instead.
         if not is_data_eng:
             for r in reqs:
                 r_dict = safe_dict(r)
@@ -327,11 +347,13 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 cplx = safe_str(r_dict.get("complexity", "Medium"))
                 if cplx == "Low":
                     continue
+                if _is_devops_req(r_dict):
+                    continue  # routed to DevOps stream
                 title = safe_str(r_dict.get("title"))
                 desc  = safe_str(r_dict.get("description", title))
                 base  = 10 if cplx == "High" else 6
-                ai_tasks.append(_task(f"Feature: {title} — AI implementation",    "ML Engineer", base, desc))
-                ai_tasks.append(_task(f"Feature: {title} — evaluation & testing", "ML Engineer", 3,    desc))
+                # Single combined task (do not split into implementation + testing rows)
+                ai_tasks.append(_task(f"Feature: {title}", "ML Engineer", base, desc))
 
         streams.append(_stream("AI / ML Stream", "AI / ML", ai_tasks, mult=1.0,
                                parallel_with=["Data Engineering"] if is_data_eng else []))
@@ -443,6 +465,16 @@ def _build_dynamic_time(semantic, text="", rag=None):
         ]
     if is_devops:   # only for dedicated DevOps projects, not every data project
         devops_tasks.append(_task("Advanced CI/CD — environment-specific pipelines", "DevOps", 6, "Multi-stage YAML, environment approvals, slot swap"))
+    # Per-req DevOps/infra tasks: requirements explicitly about security, infra, or deployment
+    _existing_devops_titles = {t["name"].lower() for t in devops_tasks}
+    for _dr in _devops_reqs:
+        _cplx  = safe_str(_dr.get("complexity", "Medium"))
+        _title = safe_str(_dr.get("title"))
+        _desc  = safe_str(_dr.get("description", _title))
+        _hrs   = 8 if _cplx == "High" else 5
+        _task_name = f"Configure: {_title}"
+        if _task_name.lower() not in _existing_devops_titles:
+            devops_tasks.append(_task(_task_name, "DevOps", _hrs, _desc))
     # Small infra multiplier: private endpoints and multi-env add real overhead
     devops_mult = round(min(1.0 * (1.10 if has_multi_env else 1.0) * (1.10 if _h("private endpoint") or _h("kubernetes") else 1.0), 1.30), 2)
     streams.append(_stream("DevOps & Platform", "DevOps", devops_tasks, mult=devops_mult,

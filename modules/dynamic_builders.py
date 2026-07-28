@@ -183,7 +183,12 @@ def _build_dynamic_time(semantic, text="", rag=None):
     is_adf        = _h("azure data factory") or _h("data factory")
     is_adls       = _h("adls") or _h("data lake storage")
     is_data_eng   = is_fabric or is_databricks or is_synapse or is_adf or is_adls or \
-                    "Data Engineering" in " ".join(domains)
+                    "Data Engineering" in " ".join(domains) or \
+                    any(k in tech_lower for k in [
+                        "data warehouse", "dwh", "sql server", "azure sql",
+                        "sql dw", "azure synapse", "power bi", "bi ", "analytics",
+                        "data lake", "data platform", "data mart", "medallion",
+                    ])
     is_ai         = _h("azure openai") or _h("openai") or _h("gpt") or _h("ai foundry") or \
                     _h("foundry") or _h("llm") or _h("ai search") or _h("azure ml") or \
                     "AI / ML" in " ".join(domains)
@@ -315,8 +320,7 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 title = safe_str(r_dict.get("title"))
                 desc  = safe_str(r_dict.get("description", title))
                 base  = 8 if cplx == "High" else 5
-                de_tasks.append(_task(f"Feature: {title} — data pipeline",  "Data Engineer", base, desc))
-                de_tasks.append(_task(f"Feature: {title} — output layer",   "Data Engineer", 2,   desc))
+                de_tasks.append(_task(f"Feature: {title}", "Data Engineer", base, desc))
 
         streams.append(_stream("Data Engineering", "Data Engineering", de_tasks, mult=1.0,
                                parallel_with=["AI / ML Stream"] if is_ai else []))

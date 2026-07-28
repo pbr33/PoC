@@ -1466,8 +1466,10 @@ class AzureAI:
 
     def _prune_streams_with_training(self, time_est: dict, semantic: dict, training_ctx: str) -> dict:
         """
-        Post-process algorithmically-generated work streams against training instructions.
-        Asks the AI which streams to KEEP; silently returns the original if the call fails.
+        Post-process work streams against training instructions using EXCLUSION:
+        ask the AI which streams to REMOVE (not which to keep).
+        Streams survive by default; only explicitly-violating ones are dropped.
+        Silently returns the original if the call fails.
         """
         phases = safe_list(time_est.get("phases", []))
         if not phases:
@@ -1478,52 +1480,71 @@ class AzureAI:
             f"({safe_int(safe_dict(p).get('hours',0))}h)"
             for p in phases
         )
+
+        # Streams the user explicitly requested must never be removed
+        _user_tags = safe_list(semantic.get("project_type_tags", []))
+        _protected_extra = set()
+        for _t in _user_tags:
+            _tl = _t.lower()
+            if "data" in _tl:
+                _protected_extra.add("data engineering")
+            if "ai" in _tl:
+                _protected_extra.add("ai / ml stream")
+            if "sharepoint" in _tl:
+                _protected_extra.add("sharepoint / m365")
+            if "custom app" in _tl or "app" == _tl:
+                _protected_extra.add("custom application")
+            if "cloud" in _tl:
+                _protected_extra.add("devops & platform")
+
         system = (
             training_ctx + "\n\n"
-            "You are reviewing work streams generated for a project estimate. "
-            "Read the training instructions above and decide which streams to KEEP. "
-            "Remove any stream that the instructions explicitly say should NOT be included. "
-            "Never remove Discovery & Design, Project Management, Documentation & Training, or DevOps & Platform. "
-            "Return ONLY valid JSON — no explanation:\n"
-            '{"keep": ["Stream Name A", "Stream Name B", ...]}'
+            "You are reviewing work streams for a project estimate. "
+            "ALL streams are kept by default. "
+            "Your ONLY job is to identify streams that a training instruction EXPLICITLY says must NOT be included. "
+            "If no instruction explicitly forbids a stream, leave it in. "
+            "Return ONLY valid JSON — no explanation, empty array if nothing to remove:\n"
+            '{"remove": ["Stream Name A", ...]}'
         )
         user = (
             f"Project type: {safe_str(semantic.get('project_type', ''))}\n"
-            f"Domains: {', '.join(safe_list(semantic.get('project_domains', [])))}\n"
+            f"User-selected types: {', '.join(_user_tags)}\n"
             f"Tech stack: {', '.join(safe_list(semantic.get('technology_stack', []))[:10])}\n\n"
-            f"Generated work streams:\n{phase_lines}\n\n"
-            "Which streams should be KEPT? Apply the training instructions strictly."
+            f"Work streams to review:\n{phase_lines}\n\n"
+            "List ONLY streams that a training instruction explicitly forbids. "
+            "If nothing is explicitly forbidden, return {\"remove\": []}."
         )
         try:
-            result = self._call(system, user, max_tokens=250)
-            if not (result and isinstance(result, dict) and "keep" in result):
+            result = self._call(system, user, max_tokens=200)
+            if not (result and isinstance(result, dict) and "remove" in result):
                 return time_est
-            keep_set = {s.lower().strip() for s in result["keep"]}
+            remove_set = {s.lower().strip() for s in result["remove"]}
+            # Never remove user-selected type streams or the four always-protected ones
+            _always_protect = {
+                "discovery & design", "project management",
+                "documentation & training", "devops & platform",
+            } | _protected_extra
+            remove_set -= _always_protect
+            if not remove_set:
+                return time_est
             filtered = [
                 p for p in phases
-                if safe_str(safe_dict(p).get("name", "")).lower().strip() in keep_set
+                if safe_str(safe_dict(p).get("name", "")).lower().strip() not in remove_set
             ]
-            if not filtered:  # safety: never return empty
+            if not filtered:
                 return time_est
             new_total = sum(safe_int(safe_dict(p).get("hours", 0)) for p in filtered)
             pruned = dict(time_est)
             pruned["phases"] = filtered
             pruned["total_hours"] = new_total
-            # Log what was removed so user can see it in the agent log
-            removed = [
-                safe_str(safe_dict(p).get("name", "")) for p in phases
-                if safe_str(safe_dict(p).get("name", "")).lower().strip() not in keep_set
-            ]
-            if removed:
-                try:
-                    import streamlit as _st
-                    from .pipeline import log_agent
-                    log_agent("Training", f"Pruned streams per instructions: {', '.join(removed)}")
-                except Exception:
-                    pass
+            try:
+                from .pipeline import log_agent
+                log_agent("Training", f"Pruned per instructions: {', '.join(remove_set)}")
+            except Exception:
+                pass
             return pruned
         except Exception:
-            return time_est  # never break estimation if pruning fails
+            return time_est
 
     def estimate_cost(self, semantic, time_est, rag):
         # ── 1. Build price reference from catalog (+ live prices where available) ──

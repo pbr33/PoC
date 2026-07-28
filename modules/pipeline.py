@@ -10602,6 +10602,77 @@ def show_results():
 #  TRAINING TAB helper (renders inside tab_admin at[1])
 # ═══════════════════════════════════════════════════════════════════════
 
+def _analyse_screenshot_feedback(img_bytes, filename: str, wrong_desc: str, fix_desc: str) -> str:
+    """
+    Call Claude Vision with a screenshot + user description → return a precise training instruction string.
+    Falls back to text-only analysis if no image supplied or vision unavailable.
+    """
+    import base64
+    api_key = (
+        st.session_state.get("anthropic_api_key", "")
+        or st.session_state.get("claude_api_key", "")
+    )
+    if not api_key:
+        try:
+            from .config_loader import load_config as _lc
+            api_key = _lc().get("providers", {}).get("claude", {}).get("api_key", "")
+        except Exception:
+            pass
+    if not api_key:
+        return ""
+
+    try:
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=api_key)
+
+        system = (
+            "You are a training data engineer for BELLA, an AI presales estimation tool used by ECI. "
+            "Your job is to convert a user's visual feedback about a wrong estimation into a short, precise, "
+            "actionable training instruction that will be prepended to the AI agents' system prompts. "
+            "The instruction must be:\n"
+            "  • Specific: name exact streams, technologies, or conditions involved\n"
+            "  • Prescriptive: say DO or DO NOT clearly\n"
+            "  • Concise: 2-5 sentences maximum\n"
+            "  • Generalisable: applicable to future similar projects, not just this one\n"
+            "Write ONLY the instruction text — no preamble, no bullet headers, no explanation."
+        )
+
+        content = []
+        if img_bytes:
+            ext = (filename or "").rsplit(".", 1)[-1].lower()
+            media_type = "image/png" if ext == "png" else "image/jpeg"
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64.b64encode(img_bytes).decode("utf-8"),
+                },
+            })
+
+        user_text = (
+            f"I am looking at a BELLA estimation output.\n\n"
+            f"PROBLEM: {wrong_desc}\n\n"
+        )
+        if fix_desc:
+            user_text += f"CORRECT BEHAVIOUR: {fix_desc}\n\n"
+        user_text += (
+            "Based on the screenshot (if provided) and the feedback above, "
+            "write a single training instruction for the AI agent."
+        )
+        content.append({"type": "text", "text": user_text})
+
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=350,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as _e:
+        return ""
+
+
 def _render_training_tab():
     """Agent training: text instructions + Excel comparison feedback."""
     from .training import (
@@ -10615,7 +10686,7 @@ def _render_training_tab():
         "Add instructions to guide behaviour, or upload your actual client Excel to compare against BELLA's output."
     )
 
-    tr1, tr2 = st.tabs(["📋 Instructions", "📊 Feedback (Excel vs BELLA)"])
+    tr1, tr2, tr3 = st.tabs(["📋 Instructions", "📊 Feedback (Excel vs BELLA)", "📸 Visual Feedback"])
 
     # ── TAB A: Text instructions ──────────────────────────────────────────
     with tr1:
@@ -10732,6 +10803,81 @@ def _render_training_tab():
                     if st.button("🗑️", key=f"del_fb_{_fb['id']}"):
                         delete_feedback(_fb["id"])
                         st.rerun()
+
+    # ── TAB C: Visual Feedback ─────────────────────────────────────────────
+    with tr3:
+        st.markdown("**Show BELLA a screenshot of its output and tell it what's wrong.**")
+        st.caption(
+            "Upload any screenshot of a BELLA estimation result, describe the problem, "
+            "and Claude Vision will turn your feedback into a precise training instruction automatically."
+        )
+        st.markdown("---")
+
+        _sc_img = st.file_uploader(
+            "Screenshot of BELLA output (PNG or JPG)",
+            type=["png", "jpg", "jpeg"],
+            key="sc_img",
+        )
+        if _sc_img:
+            st.image(_sc_img, use_container_width=True)
+
+        _sc_wrong = st.text_area(
+            "❌ What's wrong with this output?",
+            placeholder="e.g. It added a Data Engineering stream (318h) — this AI scope doesn't need that, the AI engineer handles data work.",
+            key="sc_wrong",
+            height=90,
+        )
+        _sc_fix = st.text_area(
+            "✅ What should it do instead?",
+            placeholder="e.g. For AI projects, keep all data work inside the AI/ML stream unless there is a full ETL platform like Fabric or Databricks.",
+            key="sc_fix",
+            height=80,
+        )
+        _sc_cat = st.selectbox(
+            "Category",
+            ["hours", "general", "cost", "risk", "scope", "architecture"],
+            key="sc_cat",
+        )
+
+        if st.button("🔍 Analyse & Generate Instruction", type="primary", key="sc_analyse"):
+            if not _sc_wrong.strip():
+                st.warning("Describe what's wrong before analysing.")
+            else:
+                with st.spinner("Claude is reading the screenshot and generating an instruction…"):
+                    _sc_gen = _analyse_screenshot_feedback(
+                        _sc_img.getvalue() if _sc_img else None,
+                        _sc_img.name if _sc_img else "screenshot.png",
+                        _sc_wrong.strip(),
+                        _sc_fix.strip(),
+                    )
+                if _sc_gen:
+                    st.session_state["_sc_generated"] = _sc_gen
+                    st.session_state["_sc_save_cat"] = _sc_cat
+                else:
+                    st.error("Could not generate instruction — check that Anthropic API key is configured in the sidebar.")
+
+        if st.session_state.get("_sc_generated"):
+            st.markdown("---")
+            st.markdown("**Generated instruction — review and edit before saving:**")
+            _sc_final = st.text_area(
+                "Instruction text",
+                value=st.session_state["_sc_generated"],
+                key="sc_final",
+                height=130,
+            )
+            _sc_save_cat = st.selectbox(
+                "Save under category",
+                ["hours", "general", "cost", "risk", "scope", "architecture"],
+                index=["hours", "general", "cost", "risk", "scope", "architecture"].index(
+                    st.session_state.get("_sc_save_cat", "hours")
+                ),
+                key="sc_save_cat_sel",
+            )
+            if st.button("✅ Save as Training Instruction", type="primary", key="sc_save"):
+                _iid = add_instruction(_sc_final.strip(), category=_sc_save_cat, created_by="admin")
+                st.success(f"✅ Saved as instruction #{_iid} — will be applied on every future estimation run.")
+                st.session_state.pop("_sc_generated", None)
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════

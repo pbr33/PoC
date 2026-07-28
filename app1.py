@@ -232,7 +232,7 @@ div[data-testid="stAlert"] {
         # ── Microsoft SSO button ──────────────────────────────────────
         msal_app = _msal_app()
         if msal_app and _AAD_CLIENT_ID:
-            scopes = ["openid", "profile", "email", "User.Read"]
+            scopes = ["email", "User.Read"]  # openid/profile are reserved — MSAL adds them automatically
             # Check for OAuth callback code in URL params
             params = st.query_params
             if "code" in params:

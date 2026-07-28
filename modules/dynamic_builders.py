@@ -197,6 +197,22 @@ def _build_dynamic_time(semantic, text="", rag=None):
         safe_str(r.get("description","")) for r in reqs if isinstance(r,dict)
     ).lower() or "dev/test" in tech_lower
 
+    # ── User-selected project type overrides (UI multiselect takes priority) ─
+    # If the user explicitly chose a project type, force the matching stream flag
+    # even when the document's tech stack doesn't mention the right keywords.
+    _upt = [t.strip().lower() for t in safe_list(semantic.get("project_type_tags", []))]
+    if _upt:
+        if any(t in ("ai", "ai/ml", "ml") for t in _upt):
+            is_ai = True
+        if any(t in ("data",) for t in _upt):
+            is_data_eng = True
+        if any(t in ("sharepoint",) for t in _upt):
+            is_sharepoint = True
+        if any(t in ("custom app", "app") for t in _upt):
+            is_custom_app = True   # remove the tech-keyword requirement
+        if any(t in ("cloud",) for t in _upt):
+            is_devops = True       # Cloud type = enhanced DevOps & Platform stream
+
     # ── PARALLEL WORK STREAMS ────────────────────────────────────────────
     streams: list[dict] = []
 

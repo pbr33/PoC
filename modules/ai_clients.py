@@ -1453,7 +1453,77 @@ class AzureAI:
 
         # Always use the calibrated dynamic builder — it produces tech-specific
         # parallel streams including a Feature Development stream per requirement.
-        return self._fb_time(semantic, rag)
+        result = self._fb_time(semantic, rag)
+
+        # ── Training-context stream pruning ──────────────────────────────────
+        # If the user has saved training instructions, run a lightweight AI pass
+        # to remove any work streams the instructions say shouldn't be there.
+        _tc = rag.get("training_context", "")
+        if _tc and result and safe_list(result.get("phases")):
+            result = self._prune_streams_with_training(result, semantic, _tc)
+
+        return result
+
+    def _prune_streams_with_training(self, time_est: dict, semantic: dict, training_ctx: str) -> dict:
+        """
+        Post-process algorithmically-generated work streams against training instructions.
+        Asks the AI which streams to KEEP; silently returns the original if the call fails.
+        """
+        phases = safe_list(time_est.get("phases", []))
+        if not phases:
+            return time_est
+
+        phase_lines = "\n".join(
+            f"  - {safe_str(safe_dict(p).get('name',''))} "
+            f"({safe_int(safe_dict(p).get('hours',0))}h)"
+            for p in phases
+        )
+        system = (
+            training_ctx + "\n\n"
+            "You are reviewing work streams generated for a project estimate. "
+            "Read the training instructions above and decide which streams to KEEP. "
+            "Remove any stream that the instructions explicitly say should NOT be included. "
+            "Never remove Discovery & Design, Project Management, Documentation & Training, or DevOps & Platform. "
+            "Return ONLY valid JSON — no explanation:\n"
+            '{"keep": ["Stream Name A", "Stream Name B", ...]}'
+        )
+        user = (
+            f"Project type: {safe_str(semantic.get('project_type', ''))}\n"
+            f"Domains: {', '.join(safe_list(semantic.get('project_domains', [])))}\n"
+            f"Tech stack: {', '.join(safe_list(semantic.get('technology_stack', []))[:10])}\n\n"
+            f"Generated work streams:\n{phase_lines}\n\n"
+            "Which streams should be KEPT? Apply the training instructions strictly."
+        )
+        try:
+            result = self._call(system, user, max_tokens=250)
+            if not (result and isinstance(result, dict) and "keep" in result):
+                return time_est
+            keep_set = {s.lower().strip() for s in result["keep"]}
+            filtered = [
+                p for p in phases
+                if safe_str(safe_dict(p).get("name", "")).lower().strip() in keep_set
+            ]
+            if not filtered:  # safety: never return empty
+                return time_est
+            new_total = sum(safe_int(safe_dict(p).get("hours", 0)) for p in filtered)
+            pruned = dict(time_est)
+            pruned["phases"] = filtered
+            pruned["total_hours"] = new_total
+            # Log what was removed so user can see it in the agent log
+            removed = [
+                safe_str(safe_dict(p).get("name", "")) for p in phases
+                if safe_str(safe_dict(p).get("name", "")).lower().strip() not in keep_set
+            ]
+            if removed:
+                try:
+                    import streamlit as _st
+                    from .pipeline import log_agent
+                    log_agent("Training", f"Pruned streams per instructions: {', '.join(removed)}")
+                except Exception:
+                    pass
+            return pruned
+        except Exception:
+            return time_est  # never break estimation if pruning fails
 
     def estimate_cost(self, semantic, time_est, rag):
         # ── 1. Build price reference from catalog (+ live prices where available) ──

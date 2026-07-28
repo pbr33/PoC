@@ -2780,10 +2780,9 @@ def tab_presale():
     _shdr_label = "📄 Upload Revised Scope Document" if _rev_parent else "📄 Document Ingestion"
     st.markdown(f'<div class="shdr"><span class="shdr-i">{"✏️" if _rev_parent else "📄"}</span> {_shdr_label.split(" ",1)[1]}</div>', unsafe_allow_html=True)
 
-    # ── Client name + Engagement Type + Complexity ───────────────────────
-    _cn_col, _et_col, _cx_col = st.columns([1.5, 2, 1.5])
+    # ── Client name + Engagement Type + Project Type ─────────────────────
+    _cn_col, _et_col, _pt_col = st.columns([1.5, 2, 2])
     with _cn_col:
-        # Pre-fill from proposal_client_name if already set (e.g. after analysis)
         _cn_default = (
             st.session_state.get("client_name")
             or st.session_state.get("proposal_client_name")
@@ -2813,19 +2812,61 @@ def tab_presale():
         )
         st.session_state["engagement_type"] = _engagement
 
-    with _cx_col:
-        _cx_opts = ["Low", "Medium", "High"]
-        _cx_default = st.session_state.get("complexity_hint", "Medium")
-        _cx_idx = _cx_opts.index(_cx_default) if _cx_default in _cx_opts else 1
-        _complexity_hint = st.radio(
-            "Complexity",
-            _cx_opts,
-            index=_cx_idx,
-            horizontal=True,
-            key="_complexity_hint_radio",
-            help="Low = familiar tech, small scope. Medium = some unknowns. High = new platform or large integration landscape.",
+    with _pt_col:
+        _PT_BASE = ["AI", "Data", "SharePoint", "Cloud", "Custom App"]
+        _pt_default = st.session_state.get("project_type_tags", [])
+        _project_type_tags = st.multiselect(
+            "Project Type",
+            _PT_BASE,
+            default=_pt_default,
+            key="_project_type_tags_ms",
+            help=(
+                "Select one or more types — combinations are supported (e.g. AI + Data, AI + SharePoint). "
+                "This scopes training instructions and guides effort estimation."
+            ),
         )
-        st.session_state["complexity_hint"] = _complexity_hint
+        st.session_state["project_type_tags"] = _project_type_tags
+
+    # ── Instruction box ───────────────────────────────────────────────────
+    _ri_col, _ri_btn_col = st.columns([5, 1])
+    with _ri_col:
+        _run_instr_default = st.session_state.get("run_instruction", "")
+        _run_instruction = st.text_area(
+            "📝 Additional Instructions for this Estimation",
+            value=_run_instr_default,
+            placeholder=(
+                "e.g. This is a fixed-price engagement. Focus on Azure-native services only. "
+                "Client has offshore delivery preference. Do not include front-end development. "
+                "Budget ceiling is $150k. Delivery must complete within 3 months."
+            ),
+            key="_run_instruction_input",
+            height=70,
+            help=(
+                "Passed to every AI agent for this run only — highest priority. "
+                "For rules that should apply to ALL future runs, use the Training tab instead."
+            ),
+        )
+        st.session_state["run_instruction"] = _run_instruction
+    with _ri_btn_col:
+        st.markdown("<div style='padding-top:28px'></div>", unsafe_allow_html=True)
+        if st.button(
+            "💾 Save to Training",
+            key="_save_run_instr_btn",
+            help="Save this instruction permanently to Agent Training (applies to all future runs)",
+            disabled=not (st.session_state.get("run_instruction", "")).strip(),
+        ):
+            try:
+                from .training import add_instruction as _add_ti
+                _ti_tags = st.session_state.get("project_type_tags", [])
+                _ti_id = _add_ti(
+                    st.session_state["run_instruction"].strip(),
+                    category="general",
+                    created_by="admin",
+                    project_types=_ti_tags,
+                )
+                st.success(f"Saved as training instruction #{_ti_id}")
+            except Exception as _ti_err:
+                st.error(f"Could not save: {_ti_err}")
 
     uc, tc = st.columns([3, 2])
     with uc:
@@ -3686,13 +3727,18 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 
     # Apply user-supplied hints to override AI extraction
     _eng_hint = st.session_state.get("engagement_type", "Implementation")
-    _cx_hint  = st.session_state.get("complexity_hint", "Medium")
-    _ai_score = safe_int(semantic.get("complexity_score", 5))
-    if _cx_hint == "Low":
-        semantic["complexity_score"] = min(_ai_score, 4)
-    elif _cx_hint == "High":
-        semantic["complexity_score"] = max(_ai_score, 7)
     semantic["engagement_type"] = _eng_hint
+
+    # Project type: user selection overrides / supplements AI-detected type
+    _user_pt_tags = safe_list(st.session_state.get("project_type_tags", []))
+    if _user_pt_tags:
+        _pt_label = " & ".join(_user_pt_tags)
+        semantic["project_type"] = _pt_label
+        semantic["project_type_tags"] = _user_pt_tags
+        log_agent("Semantic", f"Project type set by user: {_pt_label}")
+
+    # Store run-specific instruction for training context injection
+    _run_instr = (st.session_state.get("run_instruction", "") or "").strip()
 
     st.session_state["_last_semantic"] = semantic
     log_agent("Semantic", str(len(safe_list(semantic.get("requirements")))) + " requirements, " + str(len(safe_list(semantic.get("technology_stack")))) + " technologies detected")
@@ -3793,20 +3839,47 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     # ── Training context injection ─────────────────────────────────────────
     try:
         from .training import load_training_context as _ltc
-        # Detect project types from semantic analysis for scoped instruction filtering
-        _sem_pt  = (semantic.get("project_type") or "").lower()
-        _sem_ts  = " ".join(str(t).lower() for t in safe_list(semantic.get("technology_stack", [])))
-        _combined = f"{_sem_pt} {_sem_ts}"
-        _detected_types: list = []
-        if any(k in _combined for k in ["ai", "openai", "gpt", "claude", "llm", "ml", "machine learning", "copilot", "rag", "chatbot", "foundry"]):
-            _detected_types.append("AI")
-        if any(k in _combined for k in ["sharepoint", "teams", "m365", "office 365", "o365", "power automate", "power apps", "viva"]):
-            _detected_types.append("SharePoint")
-        if any(k in _combined for k in ["data", "databricks", "synapse", "fabric", "etl", "pipeline", "analytics", "bi", "warehouse", "lakehouse"]):
-            _detected_types.append("Data")
-        if any(k in _combined for k in ["cloud", "azure", "aws", "gcp", "kubernetes", "docker", "devops", "terraform", "migration", "infrastructure"]):
-            _detected_types.append("Cloud")
+        # Prefer user-selected project types; fall back to AI-detected types from semantic
+        _user_tags = safe_list(st.session_state.get("project_type_tags", []))
+        if _user_tags:
+            _detected_types = _user_tags
+        else:
+            _sem_pt   = (semantic.get("project_type") or "").lower()
+            _sem_ts   = " ".join(str(t).lower() for t in safe_list(semantic.get("technology_stack", [])))
+            _combined = f"{_sem_pt} {_sem_ts}"
+            _detected_types = []
+            if any(k in _combined for k in ["ai", "openai", "gpt", "claude", "llm", "ml", "machine learning", "copilot", "rag", "chatbot", "foundry"]):
+                _detected_types.append("AI")
+            if any(k in _combined for k in ["sharepoint", "teams", "m365", "office 365", "o365", "power automate", "power apps", "viva"]):
+                _detected_types.append("SharePoint")
+            if any(k in _combined for k in ["data", "databricks", "synapse", "fabric", "etl", "pipeline", "analytics", "bi", "warehouse", "lakehouse"]):
+                _detected_types.append("Data")
+            if any(k in _combined for k in ["cloud", "azure", "aws", "gcp", "kubernetes", "docker", "devops", "terraform", "migration", "infrastructure"]):
+                _detected_types.append("Cloud")
+            if any(k in _combined for k in ["custom", "web app", "portal", "application", "mobile", "react", "angular", ".net", "java"]):
+                _detected_types.append("Custom App")
+
         _tc = _ltc(project_types=_detected_types or None)
+
+        # Prepend run-specific instruction (highest priority — this run only)
+        if _run_instr:
+            _run_block = (
+                "═" * 60 + "\n"
+                "RUN-SPECIFIC INSTRUCTION (highest priority — follow exactly for this estimation):\n"
+                f"{_run_instr}\n"
+                + "═" * 60
+            )
+            _tc = _run_block + ("\n\n" + _tc if _tc else "")
+
+        # Prepend project-type context hint so agents know the type explicitly
+        if _detected_types:
+            _type_hint = (
+                f"PROJECT TYPE FOR THIS ESTIMATION: {' & '.join(_detected_types)}\n"
+                "Apply all estimation rules, work streams, and cost assumptions appropriate for this type. "
+                "Load only training instructions tagged for this project type or marked as general.\n"
+            )
+            _tc = _type_hint + ("\n" + _tc if _tc else "")
+
         if _tc:
             rag["training_context"] = _tc
             st.session_state["_training_context"] = _tc

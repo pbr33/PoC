@@ -1487,7 +1487,9 @@ class AzureAI:
             bm_hint += f"\n\nContext from similar past projects:\n{milvus_ctx[:1200]}"
 
         # ── 3. Call AI with anchored pricing ─────────────────────────────────────
+        _training_ctx = rag.get("training_context", "")
         system_prompt = (
+            (_training_ctx + "\n\n" if _training_ctx else "") +
             "You are an ECI Azure infrastructure cost estimator.\n"
             "Rules:\n"
             "1. Estimate ONLY Azure/cloud infra costs — NOT labor, NOT developer time.\n"
@@ -1569,8 +1571,10 @@ class AzureAI:
             for p in phases[:6]
         )
         svc_names = ", ".join(safe_str(safe_dict(s).get("service", "")) for s in azure_svcs[:10])
+        _training_ctx = st.session_state.get("_training_context", "")
 
         SYSTEM = (
+            (_training_ctx + "\n\n" if _training_ctx else "") +
             "You are a senior ECI risk manager and delivery assurance specialist. "
             "Produce a formal, comprehensive project risk register.\n\n"
             "For every risk include:\n"
@@ -1624,7 +1628,9 @@ class AzureAI:
         domain_block = (
             "\nProject domains: " + ", ".join(domains)
         ) if domains else ""
+        _training_ctx = rag.get("training_context", "")
         r = self._call(
+            (_training_ctx + "\n\n" if _training_ctx else "") +
             "You are an Azure Solutions Architect for ECI. Use Well-Architected Framework. "
             "Design the architecture to match the project's specific domain and technology requirements. "
             "Do NOT default to a generic web-app architecture — align components to the actual project type "

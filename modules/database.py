@@ -29,6 +29,35 @@ def _detect_category(project_type: str, tech_stack: list) -> str:
 
 def _db_init():
     con = sqlite3.connect(_DB_PATH)
+    # ── Training instructions ───────────────────────────────────────────
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS training_instructions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at   TEXT    NOT NULL,
+            instruction  TEXT    NOT NULL,
+            category     TEXT    DEFAULT 'general',
+            active       INTEGER DEFAULT 1,
+            created_by   TEXT    DEFAULT ''
+        )
+    """)
+    # ── Estimation feedback (Excel vs BELLA comparison) ─────────────────
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS estimation_feedback (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at      TEXT    NOT NULL,
+            proposal_id     TEXT    DEFAULT '',
+            client_name     TEXT    DEFAULT '',
+            bella_hours     INTEGER DEFAULT 0,
+            actual_hours    INTEGER DEFAULT 0,
+            bella_cost      INTEGER DEFAULT 0,
+            actual_cost     INTEGER DEFAULT 0,
+            phase_deltas    TEXT    DEFAULT '[]',
+            notes           TEXT    DEFAULT '',
+            active          INTEGER DEFAULT 1,
+            created_by      TEXT    DEFAULT ''
+        )
+    """)
+    con.commit()
     con.execute("""
         CREATE TABLE IF NOT EXISTS proposals (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,

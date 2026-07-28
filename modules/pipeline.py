@@ -3790,6 +3790,16 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     _mv_names = ", ".join(p["name"] for p in rag.get("similar_projects", [])[:_mv_hits]) if _mv_hits else ""
     log_agent("RAG", str(len(safe_list(rag.get("similar_projects")))) + " matches"
               + (f" — {_mv_hits} from Milvus: {_mv_names}" if _mv_hits else ""))
+    # ── Training context injection ─────────────────────────────────────────
+    try:
+        from .training import load_training_context as _ltc
+        _tc = _ltc()
+        if _tc:
+            rag["training_context"] = _tc
+            st.session_state["_training_context"] = _tc
+            log_agent("Training", f"Loaded {len(_tc)} chars of training context")
+    except Exception as _tc_exc:
+        log_agent("Training", f"Training context skipped: {_tc_exc}")
     _render_live_log(); time.sleep(0.2)
 
     _upd(4, "Estimating time & effort…", 40)
@@ -10589,6 +10599,142 @@ def show_results():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  TRAINING TAB helper (renders inside tab_admin at[1])
+# ═══════════════════════════════════════════════════════════════════════
+
+def _render_training_tab():
+    """Agent training: text instructions + Excel comparison feedback."""
+    from .training import (
+        add_instruction, list_instructions, toggle_instruction, delete_instruction,
+        add_feedback, list_feedback, delete_feedback, parse_excel_estimate,
+    )
+
+    st.markdown("### 🧠 Agent Training")
+    st.markdown(
+        "Everything entered here is injected into every agent's system prompt before each estimation run. "
+        "Add instructions to guide behaviour, or upload your actual client Excel to compare against BELLA's output."
+    )
+
+    tr1, tr2 = st.tabs(["📋 Instructions", "📊 Feedback (Excel vs BELLA)"])
+
+    # ── TAB A: Text instructions ──────────────────────────────────────────
+    with tr1:
+        with st.form("add_instr_form", clear_on_submit=True):
+            st.markdown("**Add a new instruction**")
+            i_cat = st.selectbox("Category", ["general", "hours", "cost", "risk", "scope", "architecture"], key="i_cat")
+            i_txt = st.text_area("Instruction", placeholder="e.g. Always add 15% contingency to SharePoint migration tasks.", key="i_txt", height=100)
+            if st.form_submit_button("➕ Save Instruction", type="primary"):
+                if i_txt.strip():
+                    _iid = add_instruction(i_txt.strip(), category=i_cat, created_by="admin")
+                    st.success(f"Saved instruction #{_iid}")
+                else:
+                    st.warning("Enter an instruction first.")
+
+        st.markdown("---")
+        st.markdown("**Saved instructions** (active ones are injected every run)")
+        _instrs = list_instructions()
+        if not _instrs:
+            st.info("No instructions yet.")
+        for _i in _instrs:
+            with st.container():
+                _ic1, _ic2, _ic3 = st.columns([6, 1, 1])
+                with _ic1:
+                    _badge = "🟢" if _i["active"] else "⚪"
+                    st.markdown(f"{_badge} **[{(_i['category'] or 'general').upper()}]** {_i['instruction']}")
+                    st.caption(f"#{_i['id']} · {_i['created_at'][:16]}")
+                with _ic2:
+                    _new_active = not bool(_i["active"])
+                    _lbl = "Disable" if _i["active"] else "Enable"
+                    if st.button(_lbl, key=f"tog_instr_{_i['id']}"):
+                        toggle_instruction(_i["id"], _new_active)
+                        st.rerun()
+                with _ic3:
+                    if st.button("🗑️", key=f"del_instr_{_i['id']}"):
+                        delete_instruction(_i["id"])
+                        st.rerun()
+
+    # ── TAB B: Excel feedback ──────────────────────────────────────────────
+    with tr2:
+        st.markdown(
+            "Upload the final Excel you sent to the client. "
+            "BELLA will compare it against its own estimate and store the delta as training data."
+        )
+        with st.form("add_feedback_form", clear_on_submit=True):
+            _fc1, _fc2 = st.columns(2)
+            with _fc1:
+                _fb_client = st.text_input("Client Name", placeholder="e.g. Contoso", key="fb_client")
+                _fb_bella_h = st.number_input("BELLA Hours (from last run)", min_value=0, value=0, key="fb_bella_h")
+                _fb_bella_c = st.number_input("BELLA Cost $/mo (from last run)", min_value=0, value=0, key="fb_bella_c")
+            with _fc2:
+                _fb_excel = st.file_uploader("Actual Excel (sent to client)", type=["xlsx", "xls"], key="fb_excel")
+                _fb_notes = st.text_area("Notes / Lessons Learned", placeholder="e.g. We missed the integration testing phase entirely.", key="fb_notes", height=100)
+
+            if st.form_submit_button("📥 Parse & Save Feedback", type="primary"):
+                if not _fb_client.strip():
+                    st.warning("Enter client name.")
+                elif not _fb_excel:
+                    st.warning("Upload the actual Excel file.")
+                else:
+                    _parsed = parse_excel_estimate(_fb_excel.read())
+                    if _parsed["total_hours"] == 0 and not _parsed["phases"]:
+                        st.warning(
+                            "Could not auto-detect hours in the Excel. "
+                            "The file may use an unusual layout — enter actual hours manually below."
+                        )
+                    # Build phase deltas
+                    _phase_deltas = []
+                    for _ph in _parsed["phases"]:
+                        _phase_deltas.append({
+                            "phase": _ph["phase"],
+                            "actual_hours": _ph["actual_hours"],
+                            "actual_cost":  _ph["actual_cost"],
+                            "bella_hours":  0,
+                            "bella_cost":   0,
+                        })
+                    _fid = add_feedback(
+                        client_name=_fb_client.strip(),
+                        bella_hours=int(_fb_bella_h),
+                        actual_hours=int(_parsed["total_hours"]) or int(_fb_bella_h),
+                        bella_cost=int(_fb_bella_c),
+                        actual_cost=int(_parsed["total_cost"]) or int(_fb_bella_c),
+                        phase_deltas=_phase_deltas,
+                        notes=_fb_notes.strip(),
+                        created_by="admin",
+                    )
+                    st.success(
+                        f"✅ Feedback #{_fid} saved — "
+                        f"BELLA: {_fb_bella_h}h | Actual: {_parsed['total_hours']}h "
+                        f"(delta: {_parsed['total_hours'] - int(_fb_bella_h):+}h)"
+                    )
+
+        st.markdown("---")
+        st.markdown("**Past feedback records**")
+        _fbs = list_feedback()
+        if not _fbs:
+            st.info("No feedback records yet.")
+        for _fb in _fbs:
+            _dh = _fb["actual_hours"] - _fb["bella_hours"]
+            _sign = "+" if _dh >= 0 else ""
+            _colour = "#ff6b6b" if abs(_dh) > _fb["bella_hours"] * 0.2 else "#00d4aa"
+            with st.container():
+                _fbc1, _fbc2 = st.columns([8, 1])
+                with _fbc1:
+                    st.markdown(
+                        f"**{_fb['client_name'] or 'Client'}** · "
+                        f"BELLA {_fb['bella_hours']}h → Actual {_fb['actual_hours']}h "
+                        f"<span style='color:{_colour};font-weight:700'>({_sign}{_dh}h)</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if _fb.get("notes"):
+                        st.caption(_fb["notes"])
+                    st.caption(f"#{_fb['id']} · {_fb['created_at'][:16]}")
+                with _fbc2:
+                    if st.button("🗑️", key=f"del_fb_{_fb['id']}"):
+                        delete_feedback(_fb["id"])
+                        st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  TAB 2: ADMIN
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -10631,27 +10777,7 @@ def tab_admin():
             st.plotly_chart(fig3, width="stretch")
 
     with at[1]:
-        st.file_uploader("Upload Historical Data", type=["json", "csv", "xlsx"], accept_multiple_files=True, key="tfu")
-        with st.expander("Add Project Manually"):
-            with st.form("mp"):
-                pn = st.text_input("Name")
-                pt = st.selectbox("Type", ["Data/Cloud/AI", "Web App", "Mobile", "SharePoint", "Integration"])
-                fc1, fc2 = st.columns(2)
-                with fc1:
-                    eh = st.number_input("Est Hours", 0, value=100)
-                    ah = st.number_input("Actual Hours", 0, value=0)
-                    ec = st.number_input("Est Cost", 0, value=10000)
-                with fc2:
-                    ac_val = st.number_input("Actual Cost", 0, value=0)
-                    out = st.selectbox("Outcome", ["Won", "Lost", "Pending"])
-                    ts = st.text_input("Tech Stack", "Azure, Python")
-                if st.form_submit_button("Add"):
-                    st.session_state.historical_projects.append({"name": pn, "type": pt, "estimated_hours": eh, "actual_hours": ah, "estimated_cost": ec, "actual_cost": ac_val, "outcome": out, "tech_stack": ts.split(", ")})
-                    st.success("Added: " + pn)
-        if st.session_state.historical_projects:
-            st.markdown("**" + str(len(st.session_state.historical_projects)) + " project(s) loaded**")
-            for p in st.session_state.historical_projects:
-                st.markdown("- **" + safe_str(p.get("name")) + "** — " + safe_str(p.get("type")) + " — " + safe_str(p.get("outcome")))
+        _render_training_tab()
 
     with at[2]:
         cc1, cc2 = st.columns(2)

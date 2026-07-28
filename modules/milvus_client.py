@@ -16,7 +16,8 @@ import logging
 
 log = logging.getLogger(__name__)
 
-_COLLECTION = "collection_demo_v1"
+_COLLECTION  = "collection_demo_v1"
+_COLLECTION2 = "collection_proposals_v1"   # Digital Proposals knowledge base
 
 # ── Cost parser: extract service costs from estimation document text ──────────
 _SVC_ALIASES = {
@@ -156,6 +157,7 @@ class MilvusRAG:
         self._emb_deployment = emb_deployment
         self._emb_api_ver = emb_api_version or "2025-01-01-preview"
         self._col = None
+        self._col2 = None                 # proposals knowledge base collection
         self._schema_fields: list = []   # field names from actual collection schema
         self._auto_id: bool = False       # whether primary key is auto-generated
 
@@ -210,6 +212,16 @@ class MilvusRAG:
                 except Exception as se:
                     log.debug("[MilvusRAG] Could not read schema: %s", se)
                     self._schema_fields = []
+            # Also load proposals collection if it exists
+            if self._col2 is None:
+                try:
+                    from pymilvus import utility
+                    if utility.has_collection(_COLLECTION2, using=alias):
+                        self._col2 = Collection(_COLLECTION2, using=alias)
+                        self._col2.load()
+                        log.debug("[MilvusRAG] Proposals collection loaded: %s", _COLLECTION2)
+                except Exception as e2:
+                    log.debug("[MilvusRAG] Proposals collection not available: %s", e2)
             return True
         except Exception as e:
             log.warning("[MilvusRAG] Connection failed: %s", e)
@@ -273,7 +285,23 @@ class MilvusRAG:
             limit=top_k,
             output_fields=out_fields,
         )
-        hits = results[0] if results else []
+        hits = list(results[0]) if results else []
+        # Also search the proposals knowledge base if available
+        if self._col2 is not None:
+            try:
+                res2 = self._col2.search(
+                    data=[vec],
+                    anns_field="vector",
+                    param={"metric_type": "COSINE", "params": {"nprobe": 10}},
+                    limit=top_k,
+                    output_fields=wanted,
+                )
+                hits = hits + list(res2[0] if res2 else [])
+                # Sort merged hits by score descending, keep top_k
+                hits = sorted(hits, key=lambda h: float(h.score), reverse=True)[:top_k]
+                log.debug("[MilvusRAG] Merged %d hits from proposals collection.", len(res2[0] if res2 else []))
+            except Exception as e2:
+                log.debug("[MilvusRAG] Proposals search skipped: %s", e2)
         similar_projects, context_parts = [], []
         all_benchmark_services = {}
         best_total = 0

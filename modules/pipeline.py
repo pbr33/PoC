@@ -10594,7 +10594,7 @@ def show_results():
 
 def tab_admin():
     st.markdown('<div class="shdr"><span class="shdr-i">🧠</span> Continuous Learning</div>', unsafe_allow_html=True)
-    at = st.tabs(["📊 Dashboard", "📚 Training", "🔧 Config", "📁 Sync", "🔄 Loop", "📚 Templates", "💬 Feedback"])
+    at = st.tabs(["📊 Dashboard", "📚 Training", "🔧 Config", "📁 Sync", "🔄 Loop", "📚 Templates", "💬 Feedback", "🧠 Knowledge Base"])
 
     with at[0]:
         m = st.session_state.model_metrics
@@ -10723,6 +10723,261 @@ def tab_admin():
     # ── Tab 7 : Presales Feedback ─────────────────────────────────────────
     with at[6]:
         render_feedback_admin_panel()
+
+    with at[7]:
+        _render_knowledge_base_tab()
+
+
+# ── Knowledge Base Ingestion UI ──────────────────────────────────────────
+def _render_knowledge_base_tab():
+    import io, uuid as _uuid, time as _time
+    st.markdown('<div class="shdr"><span class="shdr-i">🧠</span> Knowledge Base — Proposal Documents</div>', unsafe_allow_html=True)
+    st.caption(
+        "Upload past proposal / estimation documents (DOCX, PDF, PPTX). "
+        "Each file is chunked, embedded, and stored in the **`collection_proposals_v1`** Milvus collection "
+        "so the AI can reference them during future estimations."
+    )
+
+    # ── Collection status ────────────────────────────────────────────────
+    with st.expander("📦 Collection Status", expanded=True):
+        if st.button("🔍 Check / Create Collection", key="kb_check", type="primary"):
+            with st.spinner("Connecting to Milvus…"):
+                msg = _kb_ensure_collection()
+            st.success(msg) if "ready" in msg.lower() or "created" in msg.lower() or "exists" in msg.lower() else st.error(msg)
+
+    st.divider()
+
+    # ── Upload & ingest ──────────────────────────────────────────────────
+    st.markdown("#### Upload Documents")
+    uploaded = st.file_uploader(
+        "Select files from your Digital Proposals folder",
+        type=["docx", "pdf", "pptx"],
+        accept_multiple_files=True,
+        key="kb_upload",
+    )
+    if uploaded:
+        st.markdown(f"**{len(uploaded)} file(s) ready to ingest**")
+        for f in uploaded:
+            size_kb = round(len(f.getvalue()) / 1024, 1)
+            st.markdown(f"&nbsp;&nbsp;📄 `{f.name}` — {size_kb} KB")
+
+        col_go, col_clr = st.columns([2, 1])
+        with col_go:
+            if st.button("⚡ Ingest All into Knowledge Base", type="primary", key="kb_ingest", width="stretch"):
+                _kb_run_ingestion(uploaded)
+
+    st.divider()
+
+    # ── Browse stored docs ───────────────────────────────────────────────
+    st.markdown("#### Stored Documents")
+    if st.button("📋 List Knowledge Base Contents", key="kb_list"):
+        with st.spinner("Querying Milvus…"):
+            rows = _kb_list_documents()
+        if rows:
+            import pandas as pd
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, height=300)
+            st.caption(f"{len(rows)} chunk(s) stored")
+        else:
+            st.info("No documents found in collection_proposals_v1 yet.")
+
+
+def _kb_ensure_collection() -> str:
+    """Create collection_proposals_v1 if it doesn't exist. Returns status string."""
+    try:
+        from pymilvus import connections, Collection, CollectionSchema, FieldSchema, DataType, utility
+        import streamlit as st
+        ss = st.session_state
+        alias = "milvus_kb"
+        if not connections.has_connection(alias):
+            connections.connect(
+                alias=alias,
+                host=ss.get("milvus_host", "20.62.9.198"),
+                port=str(ss.get("milvus_port", "19530")),
+                user=ss.get("milvus_user", ""),
+                password=ss.get("milvus_password", ""),
+                db_name=ss.get("milvus_db", ""),
+            )
+        col_name = "collection_proposals_v1"
+        if utility.has_collection(col_name, using=alias):
+            col = Collection(col_name, using=alias)
+            col.load()
+            cnt = col.num_entities
+            return f"✅ Collection **{col_name}** already exists — {cnt} chunk(s) stored."
+        # Create schema matching collection_demo_v1
+        fields = [
+            FieldSchema("id",                       DataType.VARCHAR, max_length=100, is_primary=True),
+            FieldSchema("document_id",              DataType.INT64),
+            FieldSchema("vector",                   DataType.FLOAT_VECTOR, dim=1536),
+            FieldSchema("source",                   DataType.VARCHAR, max_length=500),
+            FieldSchema("document_type",            DataType.VARCHAR, max_length=100),
+            FieldSchema("text",                     DataType.VARCHAR, max_length=65535),
+            FieldSchema("estimation_reference_url", DataType.VARCHAR, max_length=3000),
+        ]
+        schema = CollectionSchema(fields, "Digital Proposals knowledge base")
+        col = Collection(col_name, schema=schema, using=alias)
+        col.create_index("vector", {"metric_type": "COSINE", "index_type": "IVF_FLAT", "params": {"nlist": 128}})
+        col.load()
+        return f"✅ Collection **{col_name}** created successfully with COSINE index."
+    except Exception as e:
+        return f"❌ Milvus error: {e}"
+
+
+def _kb_extract_text(file_bytes: bytes, filename: str) -> str:
+    """Extract raw text from DOCX, PDF, or PPTX."""
+    ext = filename.rsplit(".", 1)[-1].lower()
+    import io
+    try:
+        if ext == "docx":
+            from docx import Document as DocxDoc
+            doc = DocxDoc(io.BytesIO(file_bytes))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        elif ext == "pdf":
+            import PyPDF2
+            reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif ext == "pptx":
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(file_bytes))
+            parts = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        parts.append(shape.text)
+            return "\n".join(parts)
+    except Exception as e:
+        return ""
+    return ""
+
+
+def _kb_chunk_text(text: str, chunk_size: int = 1200, overlap: int = 150) -> list:
+    """Split text into overlapping chunks."""
+    words = text.split()
+    chunks, i = [], 0
+    while i < len(words):
+        chunk = " ".join(words[i:i + chunk_size])
+        if chunk.strip():
+            chunks.append(chunk)
+        i += chunk_size - overlap
+    return chunks
+
+
+def _kb_embed(text: str) -> list:
+    """Generate embedding via the configured Azure OpenAI embedding endpoint."""
+    from openai import AzureOpenAI
+    import streamlit as st
+    ss = st.session_state
+    client = AzureOpenAI(
+        azure_endpoint=ss.get("milvus_embedding_endpoint", ""),
+        api_key=ss.get("milvus_embedding_key", ""),
+        api_version=ss.get("milvus_embedding_api_version", "2025-01-01-preview"),
+    )
+    resp = client.embeddings.create(
+        model=ss.get("milvus_embedding_deployment", "text-embedding-3-small"),
+        input=text[:8000],
+    )
+    return resp.data[0].embedding
+
+
+def _kb_run_ingestion(uploaded_files):
+    import streamlit as st
+    import uuid as _uuid, time as _time
+    from pymilvus import connections, Collection, utility
+
+    ss = st.session_state
+    alias = "milvus_kb"
+
+    # Ensure connected
+    ensure_msg = _kb_ensure_collection()
+    if "❌" in ensure_msg:
+        st.error(ensure_msg)
+        return
+
+    try:
+        if not connections.has_connection(alias):
+            connections.connect(alias=alias, host=ss.get("milvus_host","20.62.9.198"),
+                                port=str(ss.get("milvus_port","19530")),
+                                user=ss.get("milvus_user",""), password=ss.get("milvus_password",""),
+                                db_name=ss.get("milvus_db",""))
+        col = Collection("collection_proposals_v1", using=alias)
+    except Exception as e:
+        st.error(f"Cannot connect to Milvus: {e}")
+        return
+
+    total_chunks = 0
+    for uf in uploaded_files:
+        file_bytes = uf.getvalue()
+        fname = uf.name
+        with st.status(f"Processing **{fname}**…", expanded=True) as status:
+            # Extract
+            st.write("📖 Extracting text…")
+            text = _kb_extract_text(file_bytes, fname)
+            if not text.strip():
+                st.warning(f"No text extracted from {fname} — skipping.")
+                status.update(label=f"⚠️ {fname} — no text extracted", state="error")
+                continue
+            st.write(f"✅ Extracted {len(text.split())} words")
+
+            # Chunk
+            st.write("✂️ Chunking…")
+            chunks = _kb_chunk_text(text)
+            st.write(f"✅ {len(chunks)} chunk(s)")
+
+            # Embed + store
+            st.write("🔗 Embedding and storing…")
+            stored = 0
+            prog = st.progress(0)
+            for idx, chunk in enumerate(chunks):
+                try:
+                    vec = _kb_embed(chunk)
+                    row = {
+                        "id":                       str(_uuid.uuid4())[:100],
+                        "document_id":              int(_time.time()),
+                        "vector":                   vec,
+                        "source":                   fname[:250],
+                        "document_type":            "proposal",
+                        "text":                     chunk[:65000],
+                        "estimation_reference_url": "",
+                    }
+                    col.insert([row])
+                    stored += 1
+                    prog.progress((idx + 1) / len(chunks))
+                except Exception as e:
+                    st.warning(f"Chunk {idx+1} error: {e}")
+            col.flush()
+            total_chunks += stored
+            status.update(label=f"✅ {fname} — {stored} chunk(s) stored", state="complete")
+
+    st.success(f"🎉 Ingestion complete — **{total_chunks} chunk(s)** stored across {len(uploaded_files)} file(s) in `collection_proposals_v1`")
+
+
+def _kb_list_documents() -> list:
+    """List distinct documents stored in collection_proposals_v1."""
+    try:
+        import streamlit as st
+        from pymilvus import connections, Collection, utility
+        ss = st.session_state
+        alias = "milvus_kb"
+        if not connections.has_connection(alias):
+            connections.connect(alias=alias, host=ss.get("milvus_host","20.62.9.198"),
+                                port=str(ss.get("milvus_port","19530")),
+                                user=ss.get("milvus_user",""), password=ss.get("milvus_password",""),
+                                db_name=ss.get("milvus_db",""))
+        if not utility.has_collection("collection_proposals_v1", using=alias):
+            return []
+        col = Collection("collection_proposals_v1", using=alias)
+        col.load()
+        rows = col.query(expr='id != ""', output_fields=["id","source","document_type","text"], limit=500)
+        # Summarise by source
+        by_source = {}
+        for r in rows:
+            src = r.get("source","Unknown")
+            by_source.setdefault(src, {"Document": src, "Chunks": 0, "Type": r.get("document_type","")})
+            by_source[src]["Chunks"] += 1
+            if "Preview" not in by_source[src]:
+                by_source[src]["Preview"] = (r.get("text") or "")[:120] + "…"
+        return list(by_source.values())
+    except Exception as e:
+        return []
 
 
 # ── Template Library admin UI ────────────────────────────────────────────

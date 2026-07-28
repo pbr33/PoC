@@ -10602,12 +10602,11 @@ def show_results():
 #  TRAINING TAB helper (renders inside tab_admin at[1])
 # ═══════════════════════════════════════════════════════════════════════
 
-def _analyse_screenshot_feedback(img_bytes, filename: str, wrong_desc: str, fix_desc: str) -> str:
+def _claude_raw_call(system: str, content_blocks: list, max_tokens: int = 500) -> str:
     """
-    Generate a training instruction from user feedback, using the already-configured
-    Claude client (handles Azure AI Services endpoint automatically).
-    With image: sends via raw HTTP so vision content blocks work.
-    Without image: delegates to the existing AnthropicAI._call().
+    Shared helper: calls Claude via raw HTTP (supports vision content blocks).
+    Mirrors AnthropicAI._make_request auth pattern.
+    Returns response text or "" on any failure.
     """
     import json, urllib.request, urllib.error
 
@@ -10619,6 +10618,56 @@ def _analyse_screenshot_feedback(img_bytes, filename: str, wrong_desc: str, fix_
     client = _AntAI.from_session()
     if not client.is_live:
         return ""
+
+    # Text-only optimisation: use the faster _call path
+    if all(b.get("type") == "text" for b in content_blocks):
+        user_text = "\n".join(b.get("text", "") for b in content_blocks)
+        try:
+            result = client._call(system, user_text, max_tokens=max_tokens)
+            return (result or "").strip() if isinstance(result, str) else ""
+        except Exception:
+            return ""
+
+    # Vision path: raw HTTP
+    payload = json.dumps({
+        "model":      client.model,
+        "max_tokens": max_tokens,
+        "system":     system,
+        "messages":   [{"role": "user", "content": content_blocks}],
+    }).encode("utf-8")
+
+    if client._is_azure:
+        url = client.endpoint
+        auth_candidates = [{"api-key": client.key}, {"Authorization": f"Bearer {client.key}"}]
+    else:
+        url = "https://api.anthropic.com/v1/messages"
+        auth_candidates = [{"x-api-key": client.key}]
+
+    for auth_hdr in auth_candidates:
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={**auth_hdr, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return ((data.get("content") or [{}])[0].get("text", "") or "").strip()
+        except urllib.error.HTTPError as he:
+            if he.code == 401:
+                continue
+            return ""
+        except Exception:
+            return ""
+    return ""
+
+
+def _analyse_screenshot_feedback(images: list, wrong_desc: str, fix_desc: str) -> str:
+    """
+    Generate a training instruction from user feedback with optional screenshots.
+    images: list of (bytes, filename) tuples — can be empty for text-only.
+    """
+    import base64
 
     system = (
         "You are a training data engineer for BELLA, an AI presales estimation tool used by ECI. "
@@ -10636,73 +10685,85 @@ def _analyse_screenshot_feedback(img_bytes, filename: str, wrong_desc: str, fix_
         user_text += f"CORRECT BEHAVIOUR: {fix_desc}\n\n"
     user_text += "Write a single, precise training instruction for the AI agent."
 
-    # ── Text-only path: reuse existing _call (handles Azure auth internally) ──
-    if not img_bytes:
-        try:
-            result = client._call(system, user_text, max_tokens=350)
-            return (result or "").strip() if isinstance(result, str) else ""
-        except Exception:
-            return ""
-
-    # ── Vision path: raw HTTP so we can send image content blocks ────────────
-    import base64
-    ext = (filename or "screenshot.png").rsplit(".", 1)[-1].lower()
-    media_type = "image/png" if ext == "png" else "image/jpeg"
-
-    messages = [{
-        "role": "user",
-        "content": [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": media_type,
-                    "data": base64.b64encode(img_bytes).decode("utf-8"),
-                },
+    content_blocks = []
+    for img_bytes, filename in (images or []):
+        ext = (filename or "screenshot.png").rsplit(".", 1)[-1].lower()
+        media_type = "image/png" if ext == "png" else "image/jpeg"
+        content_blocks.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": base64.b64encode(img_bytes).decode("utf-8"),
             },
-            {"type": "text", "text": user_text},
-        ],
-    }]
+        })
+    content_blocks.append({"type": "text", "text": user_text})
 
-    payload = json.dumps({
-        "model":      client.model,
-        "max_tokens": 350,
-        "system":     system,
-        "messages":   messages,
-    }).encode("utf-8")
+    return _claude_raw_call(system, content_blocks, max_tokens=400)
 
-    # Mirror the auth logic from AnthropicAI._make_request
-    if client._is_azure:
-        url = client.endpoint
-        auth_candidates = [
-            {"api-key": client.key},
-            {"Authorization": f"Bearer {client.key}"},
-        ]
-    else:
-        url = "https://api.anthropic.com/v1/messages"
-        auth_candidates = [{"x-api-key": client.key}]
 
-    for auth_hdr in auth_candidates:
-        req = urllib.request.Request(
-            url, data=payload,
-            headers={
-                **auth_hdr,
-                "anthropic-version": "2023-06-01",
-                "Content-Type":      "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return ((data.get("content") or [{}])[0].get("text", "") or "").strip()
-        except urllib.error.HTTPError as he:
-            if he.code == 401:
-                continue
-            return ""
-        except Exception:
-            return ""
-    return ""
+def _detect_instruction_conflicts(instructions: list) -> str:
+    """
+    Send all active instructions to Claude and ask it to identify contradictions.
+    Returns a markdown-formatted report with conflicts + suggested resolutions.
+    """
+    if not instructions:
+        return ""
+
+    instr_block = "\n".join(
+        f"[#{i['id']} · {(i['category'] or 'general').upper()}] {i['instruction']}"
+        for i in instructions
+        if i.get("active")
+    )
+    if not instr_block.strip():
+        return ""
+
+    system = (
+        "You are a quality engineer reviewing training instructions for BELLA, an AI presales estimation tool. "
+        "Your job is to find contradictions, conflicts, or ambiguities between instructions that would confuse the AI agents."
+    )
+    user_text = (
+        f"Here are the active training instructions:\n\n{instr_block}\n\n"
+        "Identify every pair of instructions that contradict or conflict with each other. "
+        "For each conflict:\n"
+        "1. Name the conflicting instruction IDs\n"
+        "2. Explain the contradiction in one sentence\n"
+        "3. Write a single merged instruction that resolves the conflict\n\n"
+        "Format each conflict as:\n"
+        "CONFLICT: #ID1 vs #ID2\n"
+        "ISSUE: <explanation>\n"
+        "RESOLUTION: <merged instruction>\n\n"
+        "If there are no conflicts, respond with exactly: NO CONFLICTS FOUND"
+    )
+
+    return _claude_raw_call(system, [{"type": "text", "text": user_text}], max_tokens=1000)
+
+
+def _analyse_scope_vs_output(scope_text: str, bella_output: str, what_wrong: str) -> str:
+    """
+    Compare what the scope document says vs what BELLA generated.
+    Produces a training instruction that captures the mismatch rule.
+    """
+    system = (
+        "You are a training data engineer for BELLA, an AI presales estimation tool used by ECI. "
+        "The user will show you what a scope document says and what BELLA estimated instead. "
+        "Generate a precise, actionable training instruction that will prevent this mismatch in future. "
+        "Rules:\n"
+        "  • Reference the exact difference between scope and BELLA output\n"
+        "  • Use DO / DO NOT language\n"
+        "  • 2-5 sentences maximum\n"
+        "  • Make it generalisable, not specific to one client\n"
+        "Write ONLY the instruction text — no preamble, no explanation."
+    )
+    user_text = (
+        f"SCOPE DOCUMENT SAYS:\n{scope_text}\n\n"
+        f"WHAT BELLA GENERATED:\n{bella_output}\n\n"
+    )
+    if what_wrong:
+        user_text += f"ADDITIONAL CONTEXT (what's specifically wrong):\n{what_wrong}\n\n"
+    user_text += "Write a training instruction to fix this mismatch."
+
+    return _claude_raw_call(system, [{"type": "text", "text": user_text}], max_tokens=400)
 
 
 def _render_training_tab():
@@ -10715,17 +10776,31 @@ def _render_training_tab():
     st.markdown("### 🧠 Agent Training")
     st.markdown(
         "Everything entered here is injected into every agent's system prompt before each estimation run. "
-        "Add instructions to guide behaviour, or upload your actual client Excel to compare against BELLA's output."
+        "Use any combination of methods below to teach BELLA how to estimate better."
     )
 
-    tr1, tr2, tr3 = st.tabs(["📋 Instructions", "📊 Feedback (Excel vs BELLA)", "📸 Visual Feedback"])
+    tr1, tr2, tr3, tr4 = st.tabs([
+        "📋 Instructions",
+        "📸 Visual Feedback",
+        "📄 Scope vs Output",
+        "📊 Excel Feedback",
+    ])
 
-    # ── TAB A: Text instructions ──────────────────────────────────────────
+    # ── TAB 1: Text instructions + Conflict Detector ──────────────────────
     with tr1:
         with st.form("add_instr_form", clear_on_submit=True):
             st.markdown("**Add a new instruction**")
-            i_cat = st.selectbox("Category", ["general", "hours", "cost", "risk", "scope", "architecture"], key="i_cat")
-            i_txt = st.text_area("Instruction", placeholder="e.g. Always add 15% contingency to SharePoint migration tasks.", key="i_txt", height=100)
+            i_cat = st.selectbox(
+                "Category",
+                ["general", "hours", "cost", "risk", "scope", "architecture"],
+                key="i_cat",
+            )
+            i_txt = st.text_area(
+                "Instruction",
+                placeholder="e.g. Always add 15% contingency to SharePoint migration tasks.",
+                key="i_txt",
+                height=100,
+            )
             if st.form_submit_button("➕ Save Instruction", type="primary"):
                 if i_txt.strip():
                     _iid = add_instruction(i_txt.strip(), category=i_cat, created_by="admin")
@@ -10734,16 +10809,71 @@ def _render_training_tab():
                     st.warning("Enter an instruction first.")
 
         st.markdown("---")
-        st.markdown("**Saved instructions** (active ones are injected every run)")
-        _instrs = list_instructions()
-        if not _instrs:
+
+        # Conflict Detector
+        _all_instrs = list_instructions()
+        _active_instrs = [i for i in _all_instrs if i.get("active")]
+
+        _cd_col1, _cd_col2 = st.columns([3, 1])
+        with _cd_col1:
+            st.markdown(
+                f"**Saved instructions** — {len(_active_instrs)} active · "
+                f"{len(_all_instrs) - len(_active_instrs)} disabled"
+            )
+        with _cd_col2:
+            if st.button(
+                "🔎 Check for Conflicts",
+                key="conflict_detect_btn",
+                help="Reads all active instructions and identifies contradictions",
+                disabled=len(_active_instrs) < 2,
+            ):
+                with st.spinner("Analysing instructions for conflicts…"):
+                    _conflict_report = _detect_instruction_conflicts(_active_instrs)
+                st.session_state["_conflict_report"] = _conflict_report
+
+        if st.session_state.get("_conflict_report"):
+            _report = st.session_state["_conflict_report"]
+            if "NO CONFLICTS FOUND" in _report.upper():
+                st.success("✅ No conflicts found — all instructions are consistent.")
+            else:
+                st.warning("⚠️ Conflicts detected between your instructions:")
+                # Parse and display each conflict block
+                _blocks = [b.strip() for b in _report.split("\n\n") if b.strip()]
+                for _blk in _blocks:
+                    lines = _blk.splitlines()
+                    _conflict_id = next((l for l in lines if l.startswith("CONFLICT:")), "")
+                    _issue_line  = next((l for l in lines if l.startswith("ISSUE:")), "")
+                    _res_line    = next((l for l in lines if l.startswith("RESOLUTION:")), "")
+                    if not _conflict_id:
+                        st.markdown(_blk)
+                        continue
+                    with st.expander(_conflict_id, expanded=True):
+                        if _issue_line:
+                            st.markdown(f"**Problem:** {_issue_line.replace('ISSUE:', '').strip()}")
+                        if _res_line:
+                            _res_text = _res_line.replace("RESOLUTION:", "").strip()
+                            st.info(f"**Suggested fix:** {_res_text}")
+                            _res_key = f"resolve_{hash(_conflict_id) % 99999}"
+                            if st.button("✅ Save resolved instruction", key=_res_key):
+                                _iid = add_instruction(_res_text, category="general", created_by="admin")
+                                st.success(f"Saved as instruction #{_iid}")
+                                st.session_state.pop("_conflict_report", None)
+                                st.rerun()
+            if st.button("✖ Clear report", key="clear_conflict_report"):
+                st.session_state.pop("_conflict_report", None)
+                st.rerun()
+
+        st.markdown("---")
+        if not _all_instrs:
             st.info("No instructions yet.")
-        for _i in _instrs:
+        for _i in _all_instrs:
             with st.container():
                 _ic1, _ic2, _ic3 = st.columns([6, 1, 1])
                 with _ic1:
                     _badge = "🟢" if _i["active"] else "⚪"
-                    st.markdown(f"{_badge} **[{(_i['category'] or 'general').upper()}]** {_i['instruction']}")
+                    st.markdown(
+                        f"{_badge} **[{(_i['category'] or 'general').upper()}]** {_i['instruction']}"
+                    )
                     st.caption(f"#{_i['id']} · {_i['created_at'][:16]}")
                 with _ic2:
                     _new_active = not bool(_i["active"])
@@ -10756,8 +10886,176 @@ def _render_training_tab():
                         delete_instruction(_i["id"])
                         st.rerun()
 
-    # ── TAB B: Excel feedback ──────────────────────────────────────────────
+    # ── TAB 2: Visual Feedback (multiple screenshots) ─────────────────────
     with tr2:
+        st.markdown("**Show BELLA screenshots of its output and tell it what's wrong.**")
+        st.caption(
+            "Upload one or more screenshots of a BELLA estimation result. "
+            "Claude Vision reads all of them together and generates a precise training instruction."
+        )
+        st.markdown("---")
+
+        _sc_imgs = st.file_uploader(
+            "Screenshots of BELLA output (PNG or JPG) — multiple allowed",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="sc_imgs",
+        )
+        if _sc_imgs:
+            _img_cols = st.columns(min(len(_sc_imgs), 3))
+            for _idx, _f in enumerate(_sc_imgs):
+                with _img_cols[_idx % 3]:
+                    st.image(_f, caption=_f.name, use_container_width=True)
+
+        _sc_wrong = st.text_area(
+            "❌ What's wrong with this output?",
+            placeholder=(
+                "e.g. It added a Data Engineering stream (318h) — "
+                "this AI scope doesn't need that, the AI engineer handles data work."
+            ),
+            key="sc_wrong",
+            height=90,
+        )
+        _sc_fix = st.text_area(
+            "✅ What should it do instead?",
+            placeholder=(
+                "e.g. For AI projects, keep all data work inside the AI/ML stream "
+                "unless there is a full ETL platform like Fabric or Databricks."
+            ),
+            key="sc_fix",
+            height=80,
+        )
+        _sc_cat = st.selectbox(
+            "Category",
+            ["hours", "general", "cost", "risk", "scope", "architecture"],
+            key="sc_cat",
+        )
+
+        if st.button("🔍 Analyse & Generate Instruction", type="primary", key="sc_analyse"):
+            if not _sc_wrong.strip():
+                st.warning("Describe what's wrong before analysing.")
+            else:
+                _images = [(f.getvalue(), f.name) for f in (_sc_imgs or [])]
+                with st.spinner(
+                    f"Claude is reading {len(_images)} screenshot(s) and generating an instruction…"
+                    if _images else "Claude is generating an instruction…"
+                ):
+                    _sc_gen = _analyse_screenshot_feedback(_images, _sc_wrong.strip(), _sc_fix.strip())
+                if _sc_gen:
+                    st.session_state["_sc_generated"] = _sc_gen
+                    st.session_state["_sc_save_cat"] = _sc_cat
+                else:
+                    st.error(
+                        "Could not generate instruction — check that Anthropic API key is configured in the sidebar."
+                    )
+
+        if st.session_state.get("_sc_generated"):
+            st.markdown("---")
+            st.markdown("**Generated instruction — review and edit before saving:**")
+            _sc_final = st.text_area(
+                "Instruction text",
+                value=st.session_state["_sc_generated"],
+                key="sc_final",
+                height=130,
+            )
+            _cats = ["hours", "general", "cost", "risk", "scope", "architecture"]
+            _sc_save_cat = st.selectbox(
+                "Save under category",
+                _cats,
+                index=_cats.index(st.session_state.get("_sc_save_cat", "hours")),
+                key="sc_save_cat_sel",
+            )
+            if st.button("✅ Save as Training Instruction", type="primary", key="sc_save"):
+                _iid = add_instruction(_sc_final.strip(), category=_sc_save_cat, created_by="admin")
+                st.success(f"✅ Saved as instruction #{_iid} — will be applied on every future estimation run.")
+                st.session_state.pop("_sc_generated", None)
+                st.rerun()
+
+    # ── TAB 3: Scope vs Output ────────────────────────────────────────────
+    with tr3:
+        st.markdown("**Compare what the scope document says vs what BELLA generated.**")
+        st.caption(
+            "Paste the relevant section from your scope document and paste BELLA's incorrect output. "
+            "Claude will identify the mismatch and write a training instruction to fix it."
+        )
+        st.markdown("---")
+
+        _svo_col1, _svo_col2 = st.columns(2)
+        with _svo_col1:
+            _svo_scope = st.text_area(
+                "📄 What the scope/SOW document says",
+                placeholder=(
+                    "e.g. 'The project requires integration with Salesforce CRM via REST API. "
+                    "No ETL or data warehousing is in scope. The AI solution uses Azure OpenAI only.'"
+                ),
+                key="svo_scope",
+                height=180,
+            )
+        with _svo_col2:
+            _svo_bella = st.text_area(
+                "🤖 What BELLA generated (copy from estimation output)",
+                placeholder=(
+                    "e.g. 'Custom Application Development: 240h, Data Engineering & ETL: 318h, "
+                    "Salesforce Integration: 80h, AI/ML Development: 120h'"
+                ),
+                key="svo_bella",
+                height=180,
+            )
+
+        _svo_context = st.text_area(
+            "💬 Additional context (optional — what specifically is wrong?)",
+            placeholder="e.g. Data Engineering stream should not be here at all — this is a pure AI project with no ETL.",
+            key="svo_context",
+            height=70,
+        )
+        _svo_cat = st.selectbox(
+            "Category",
+            ["scope", "hours", "general", "cost", "risk", "architecture"],
+            key="svo_cat",
+        )
+
+        if st.button("🔍 Generate Training Instruction from Mismatch", type="primary", key="svo_analyse"):
+            if not _svo_scope.strip() or not _svo_bella.strip():
+                st.warning("Paste both the scope document text and BELLA's output before analysing.")
+            else:
+                with st.spinner("Claude is comparing scope vs BELLA output…"):
+                    _svo_gen = _analyse_scope_vs_output(
+                        _svo_scope.strip(),
+                        _svo_bella.strip(),
+                        _svo_context.strip(),
+                    )
+                if _svo_gen:
+                    st.session_state["_svo_generated"] = _svo_gen
+                    st.session_state["_svo_save_cat"] = _svo_cat
+                else:
+                    st.error(
+                        "Could not generate instruction — check that Anthropic API key is configured in the sidebar."
+                    )
+
+        if st.session_state.get("_svo_generated"):
+            st.markdown("---")
+            st.markdown("**Generated instruction — review and edit before saving:**")
+            _svo_final = st.text_area(
+                "Instruction text",
+                value=st.session_state["_svo_generated"],
+                key="svo_final",
+                height=130,
+            )
+            _svo_cats = ["scope", "hours", "general", "cost", "risk", "architecture"]
+            _svo_save_cat = st.selectbox(
+                "Save under category",
+                _svo_cats,
+                index=_svo_cats.index(st.session_state.get("_svo_save_cat", "scope")),
+                key="svo_save_cat_sel",
+            )
+            if st.button("✅ Save as Training Instruction", type="primary", key="svo_save"):
+                _iid = add_instruction(_svo_final.strip(), category=_svo_save_cat, created_by="admin")
+                st.success(f"✅ Saved as instruction #{_iid} — will be applied on every future estimation run.")
+                st.session_state.pop("_svo_generated", None)
+                st.rerun()
+
+    # ── TAB 4: Excel Feedback ──────────────────────────────────────────────
+    with tr4:
         st.markdown(
             "Upload the final Excel you sent to the client. "
             "BELLA will compare it against its own estimate and store the delta as training data."
@@ -10766,11 +11064,22 @@ def _render_training_tab():
             _fc1, _fc2 = st.columns(2)
             with _fc1:
                 _fb_client = st.text_input("Client Name", placeholder="e.g. Contoso", key="fb_client")
-                _fb_bella_h = st.number_input("BELLA Hours (from last run)", min_value=0, value=0, key="fb_bella_h")
-                _fb_bella_c = st.number_input("BELLA Cost $/mo (from last run)", min_value=0, value=0, key="fb_bella_c")
+                _fb_bella_h = st.number_input(
+                    "BELLA Hours (from last run)", min_value=0, value=0, key="fb_bella_h"
+                )
+                _fb_bella_c = st.number_input(
+                    "BELLA Cost $/mo (from last run)", min_value=0, value=0, key="fb_bella_c"
+                )
             with _fc2:
-                _fb_excel = st.file_uploader("Actual Excel (sent to client)", type=["xlsx", "xls"], key="fb_excel")
-                _fb_notes = st.text_area("Notes / Lessons Learned", placeholder="e.g. We missed the integration testing phase entirely.", key="fb_notes", height=100)
+                _fb_excel = st.file_uploader(
+                    "Actual Excel (sent to client)", type=["xlsx", "xls"], key="fb_excel"
+                )
+                _fb_notes = st.text_area(
+                    "Notes / Lessons Learned",
+                    placeholder="e.g. We missed the integration testing phase entirely.",
+                    key="fb_notes",
+                    height=100,
+                )
 
             if st.form_submit_button("📥 Parse & Save Feedback", type="primary"):
                 if not _fb_client.strip():
@@ -10784,7 +11093,6 @@ def _render_training_tab():
                             "Could not auto-detect hours in the Excel. "
                             "The file may use an unusual layout — enter actual hours manually below."
                         )
-                    # Build phase deltas
                     _phase_deltas = []
                     for _ph in _parsed["phases"]:
                         _phase_deltas.append({
@@ -10835,81 +11143,6 @@ def _render_training_tab():
                     if st.button("🗑️", key=f"del_fb_{_fb['id']}"):
                         delete_feedback(_fb["id"])
                         st.rerun()
-
-    # ── TAB C: Visual Feedback ─────────────────────────────────────────────
-    with tr3:
-        st.markdown("**Show BELLA a screenshot of its output and tell it what's wrong.**")
-        st.caption(
-            "Upload any screenshot of a BELLA estimation result, describe the problem, "
-            "and Claude Vision will turn your feedback into a precise training instruction automatically."
-        )
-        st.markdown("---")
-
-        _sc_img = st.file_uploader(
-            "Screenshot of BELLA output (PNG or JPG)",
-            type=["png", "jpg", "jpeg"],
-            key="sc_img",
-        )
-        if _sc_img:
-            st.image(_sc_img, use_container_width=True)
-
-        _sc_wrong = st.text_area(
-            "❌ What's wrong with this output?",
-            placeholder="e.g. It added a Data Engineering stream (318h) — this AI scope doesn't need that, the AI engineer handles data work.",
-            key="sc_wrong",
-            height=90,
-        )
-        _sc_fix = st.text_area(
-            "✅ What should it do instead?",
-            placeholder="e.g. For AI projects, keep all data work inside the AI/ML stream unless there is a full ETL platform like Fabric or Databricks.",
-            key="sc_fix",
-            height=80,
-        )
-        _sc_cat = st.selectbox(
-            "Category",
-            ["hours", "general", "cost", "risk", "scope", "architecture"],
-            key="sc_cat",
-        )
-
-        if st.button("🔍 Analyse & Generate Instruction", type="primary", key="sc_analyse"):
-            if not _sc_wrong.strip():
-                st.warning("Describe what's wrong before analysing.")
-            else:
-                with st.spinner("Claude is reading the screenshot and generating an instruction…"):
-                    _sc_gen = _analyse_screenshot_feedback(
-                        _sc_img.getvalue() if _sc_img else None,
-                        _sc_img.name if _sc_img else "screenshot.png",
-                        _sc_wrong.strip(),
-                        _sc_fix.strip(),
-                    )
-                if _sc_gen:
-                    st.session_state["_sc_generated"] = _sc_gen
-                    st.session_state["_sc_save_cat"] = _sc_cat
-                else:
-                    st.error("Could not generate instruction — check that Anthropic API key is configured in the sidebar.")
-
-        if st.session_state.get("_sc_generated"):
-            st.markdown("---")
-            st.markdown("**Generated instruction — review and edit before saving:**")
-            _sc_final = st.text_area(
-                "Instruction text",
-                value=st.session_state["_sc_generated"],
-                key="sc_final",
-                height=130,
-            )
-            _sc_save_cat = st.selectbox(
-                "Save under category",
-                ["hours", "general", "cost", "risk", "scope", "architecture"],
-                index=["hours", "general", "cost", "risk", "scope", "architecture"].index(
-                    st.session_state.get("_sc_save_cat", "hours")
-                ),
-                key="sc_save_cat_sel",
-            )
-            if st.button("✅ Save as Training Instruction", type="primary", key="sc_save"):
-                _iid = add_instruction(_sc_final.strip(), category=_sc_save_cat, created_by="admin")
-                st.success(f"✅ Saved as instruction #{_iid} — will be applied on every future estimation run.")
-                st.session_state.pop("_sc_generated", None)
-                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════

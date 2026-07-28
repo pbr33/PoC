@@ -1394,3 +1394,388 @@ def generate_lenox_excel(time_est, semantic, cost_est=None, risk_info=None, full
     wb.save(buf)
     buf.seek(0)
     return buf.getvalue()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  ECI STANDARD TEMPLATE (matches Monogram format)
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_monogram_excel(time_est, semantic, cost_est=None, risk_info=None, full_results=None):
+    """
+    Generate estimation Excel in the ECI standard Monogram template format.
+    Sheets: Summary | one sheet per phase | Infra Cost | Version History
+    """
+    if not Workbook:
+        return None
+
+    # ── Colours (matching Monogram template exactly) ─────────────────────
+    C_NAVY   = "1F3864"   # title banner + section headers
+    C_BLUE   = "2E75B6"   # column header rows
+    C_LBLUE  = "5B9BD5"   # team allocation table header
+    C_VLIGHT = "BDD7EE"   # phase group rows in detail sheets
+    C_DCOL   = "D9E1F2"   # detail sheet col header bg
+    C_YELLOW = "FFFFF2CC" # pre-req / out-of-scope / assumption headers
+    C_WHITE  = "FFFFFF"
+    C_GREEN  = "00B050"   # Yes (in scope)
+
+    # ── Style helpers ────────────────────────────────────────────────────
+    def _fill(hex6):
+        return PatternFill(start_color=hex6, end_color=hex6, fill_type="solid")
+
+    def _font(bold=False, size=10, color=C_NAVY, italic=False):
+        return Font(name="Calibri", bold=bold, size=size, color=color, italic=italic)
+
+    _thin = Side(style="thin", color="CCCCCC")
+    def _bdr():
+        return Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+
+    def _aln(h="left", v="center", wrap=False):
+        return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
+
+    def _cell(ws, row, col, value=None, bold=False, size=10, color=C_NAVY,
+              fill_hex=None, halign="left", wrap=False, italic=False, border=True):
+        c = ws.cell(row=row, column=col)
+        if value is not None:
+            c.value = value
+        c.font = _font(bold=bold, size=size, color=color, italic=italic)
+        c.alignment = _aln(h=halign, wrap=wrap)
+        if border:
+            c.border = _bdr()
+        if fill_hex:
+            c.fill = _fill(fill_hex)
+        return c
+
+    def _merge_row(ws, row, c1, c2, value="", bold=True, size=10,
+                   color=C_WHITE, fill_hex=C_NAVY, halign="left", height=None):
+        ws.merge_cells(start_row=row, start_column=c1, end_row=row, end_column=c2)
+        c = ws.cell(row=row, column=c1, value=value)
+        c.font = _font(bold=bold, size=size, color=color)
+        c.fill = _fill(fill_hex)
+        c.alignment = _aln(h=halign)
+        if height:
+            ws.row_dimensions[row].height = height
+
+    # ── Data ─────────────────────────────────────────────────────────────
+    phases      = [safe_dict(p) for p in safe_list(time_est.get("phases", []))]
+    total_hours = safe_int(time_est.get("total_hours", 0))
+    dur_weeks_raw = safe_str(time_est.get("duration_weeks", ""))
+    try:
+        dur_weeks = float(str(dur_weeks_raw).split()[0])
+    except Exception:
+        dur_weeks = round(total_hours / 35, 1) or 1
+
+    client_name  = safe_str(semantic.get("client_name", "ECI Client"))
+    project_type = safe_str(semantic.get("project_type", "Digital Transformation"))
+    tech_str     = ", ".join(str(t) for t in safe_list(semantic.get("technology_stack", []))[:5])
+
+    # Roles for Team Allocation section
+    raw_roles = safe_list(time_est.get("roles", []))
+    if raw_roles:
+        roles = [(safe_str(r.get("name", "Developer")), float(r.get("allocation_pct", 0.5)))
+                 for r in [safe_dict(x) for x in raw_roles]]
+    else:
+        roles = [
+            ("Project Manager",     0.15),
+            ("Solution Architect",  0.25),
+            ("Lead Engineer",       1.00),
+            ("QA Engineer",         0.35),
+            ("DevOps Engineer",     0.25),
+        ]
+
+    DAYS_PER_WEEK = 5.0
+    HOURS_PER_DAY = 7.0
+    def _days(h):  return round(h / HOURS_PER_DAY, 2)
+    def _wks(h):   return round(h / (HOURS_PER_DAY * DAYS_PER_WEEK), 2)
+
+    # Contextual pre-req / out-of-scope / assumption content
+    prereqs = [safe_str(r) for r in safe_list(semantic.get("prerequisites", []))]
+    oos     = [safe_str(r) for r in (safe_list(semantic.get("out_of_scope", []))
+                                      or safe_list(semantic.get("exclusions", [])))]
+    assump  = [safe_str(r) for r in safe_list(semantic.get("assumptions", []))]
+
+    if not prereqs:
+        prereqs = [
+            "Azure subscription with Contributor/Owner access on the solution resource group",
+            f"Access credentials for {tech_str or 'target systems'} (admin / API access)",
+            "Named UAT group with pilot users confirmed before go-live",
+            "IT/Security team available for security review and sign-off",
+            "Stakeholder availability for weekly check-ins and decision gates",
+        ]
+    if not oos:
+        oos = [
+            "Custom end-user portal / UI unless separately scoped",
+            "Full CI/CD pipeline automation beyond basic deployment support",
+            "Major data migration or source data cleansing",
+            "Multi-region active-active deployment unless explicitly requested",
+            "SIEM / Sentinel integration unless separately agreed",
+        ]
+    if not assump:
+        assump = [
+            "Client environment meets minimum Azure region and licensing requirements",
+            f"Technology stack is finalised: {tech_str or 'as discussed in scoping'}",
+            "Test / staging environment mirrors production configuration",
+            "Named SMEs available for requirements validation sessions",
+            "Go-live includes production readiness review and operational runbook handover",
+        ]
+
+    # ════════════════════════════════════════════════════════════════════
+    # SHEET 1: Summary  (matches Monogram Summary sheet layout)
+    # ════════════════════════════════════════════════════════════════════
+    wb2 = Workbook()
+    ws = wb2.active
+    ws.title = "Summary"
+    ws.sheet_properties.tabColor = C_NAVY
+    ws.sheet_view.showGridLines = False
+
+    for col, w in [(1,8),(2,28),(3,8),(4,14),(5,4),(6,7),(7,26),(8,14),(9,12),(10,3),(11,3),(12,55)]:
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    # Row 1: Title banner
+    title = (f"{client_name.upper()}  |  {project_type.upper()}  |  "
+             f"ECI ESTIMATION  |  {datetime.now().strftime('%B %Y')}")
+    _merge_row(ws, 1, 1, 12, title, bold=True, size=14, color=C_WHITE,
+               fill_hex=C_NAVY, halign="center", height=36)
+
+    # Row 2: Team Allocation sub-header | Pre-Req header
+    _merge_row(ws, 2, 7, 9, "Team Allocation", bold=True, size=10,
+               fill_hex=C_LBLUE, color=C_WHITE, halign="center")
+    _cell(ws, 2, 12, "S.N. | Pre-Requisites (Client Responsibility)",
+          bold=True, fill_hex=C_YELLOW, color=C_NAVY, wrap=True)
+
+    # Row 3: Variables section header | Team Alloc col headers | pre-req 0
+    _merge_row(ws, 3, 1, 4, "Variables", bold=True, fill_hex=C_NAVY, color=C_WHITE)
+    for ci, lbl in [(6,"SNO"),(7,"Role"),(8,"Allocation %"),(9,"Est. Days")]:
+        _cell(ws, 3, ci, lbl, bold=True, fill_hex=C_LBLUE, color=C_WHITE, halign="center")
+    _cell(ws, 3, 12, prereqs[0] if prereqs else "", wrap=True, color="333333")
+
+    # Row 4: Variables col headers | Team Alloc data row 0 | pre-req 1
+    for ci, lbl in [(1,"SNO"),(2,"Variables"),(3,"#")]:
+        _cell(ws, 4, ci, lbl, bold=True, fill_hex=C_BLUE, color=C_WHITE, halign="center")
+    if roles:
+        rn, rp = roles[0]
+        ed = round(dur_weeks * DAYS_PER_WEEK * rp, 2)
+        for ci, val in [(6,1),(7,rn),(8,f"{int(rp*100)}%"),(9,ed)]:
+            _cell(ws, 4, ci, val, halign="left" if ci == 7 else "center")
+    _cell(ws, 4, 12, prereqs[1] if len(prereqs) > 1 else "", wrap=True, color="333333")
+
+    # Rows 5-N: one row per BELLA phase (Variables + Team Alloc + pre-req)
+    for idx, phase in enumerate(phases[:8], 1):
+        r = 4 + idx
+        pname = safe_str(phase.get("name", f"Phase {idx}"))
+        _cell(ws, r, 1, idx, halign="center")
+        _cell(ws, r, 2, pname)
+        sc = ws.cell(row=r, column=3, value="Yes")
+        sc.font      = _font(bold=True, color=C_WHITE)
+        sc.fill      = _fill(C_GREEN)
+        sc.alignment = _aln(h="center")
+        sc.border    = _bdr()
+        # Team alloc row
+        ri = idx  # role index
+        if ri < len(roles):
+            rn2, rp2 = roles[ri]
+            ed2 = round(dur_weeks * DAYS_PER_WEEK * rp2, 2)
+            for ci, val in [(6, ri+1),(7,rn2),(8,f"{int(rp2*100)}%"),(9,ed2)]:
+                _cell(ws, r, ci, val, halign="left" if ci == 7 else "center")
+        _cell(ws, r, 12, prereqs[idx+1] if idx+1 < len(prereqs) else "",
+              wrap=True, color="333333")
+
+    # Activities section
+    act_hdr = 4 + len(phases[:8]) + 2
+    ws.row_dimensions[act_hdr - 1].height = 6
+    _merge_row(ws, act_hdr, 1, 4, "Activities", bold=True, fill_hex=C_NAVY, color=C_WHITE, height=20)
+
+    ach = act_hdr + 1
+    for ci, lbl in [(1,"SNO"),(2,"Activities"),(4,"DevTime (hrs)")]:
+        _cell(ws, ach, ci, lbl, bold=True, fill_hex=C_BLUE, color=C_WHITE, halign="center")
+
+    ads = ach + 1
+    for idx, phase in enumerate(phases, 1):
+        r = ads + idx - 1
+        _cell(ws, r, 1, idx, halign="center")
+        _cell(ws, r, 2, safe_str(phase.get("name", f"Phase {idx}")))
+        _cell(ws, r, 4, safe_int(phase.get("hours", 0)), halign="center")
+
+    tot_row = ads + len(phases)
+    _cell(ws, tot_row, 4, total_hours, bold=True, halign="center", fill_hex=C_DCOL)
+
+    # Timeline section
+    tl = tot_row + 2
+    ws.row_dimensions[tl - 1].height = 6
+    for ci, lbl in [(2,"Component"),(3,"Days"),(4,"Weeks")]:
+        _cell(ws, tl, ci, lbl, bold=True, fill_hex=C_BLUE, color=C_WHITE, halign="center")
+    for idx, phase in enumerate(phases, 1):
+        r = tl + idx
+        ph = safe_int(phase.get("hours", 0))
+        _cell(ws, r, 2, safe_str(phase.get("name", f"Phase {idx}")))
+        _cell(ws, r, 3, _days(ph), halign="center")
+        _cell(ws, r, 4, _wks(ph),  halign="center")
+
+    # Duration summary
+    dur_r = tl + len(phases) + 1
+    uat_ph = next((p for p in phases if any(k in safe_str(p.get("name","")).lower()
+                   for k in ["uat","training","acceptance"])), None)
+    uat_h  = safe_int(uat_ph.get("hours", 0)) if uat_ph else 0
+    now_wks = _wks(total_hours - uat_h)
+    uat_wks = _wks(uat_h) if uat_h else 1.0
+    for lbl, val in [
+        ("Project Duration without UAT", now_wks),
+        ("UAT & Training",               uat_wks),
+        ("Project Duration with UAT",    now_wks + uat_wks),
+    ]:
+        _cell(ws, dur_r, 2, lbl, bold=True)
+        _cell(ws, dur_r, 4, val, bold=True, halign="center")
+        dur_r += 1
+
+    # Column L: Out of Scope + Assumptions
+    lr = act_hdr + 2
+    _cell(ws, lr, 12, "S.N. | Out of Scope", bold=True, fill_hex=C_YELLOW, color=C_NAVY)
+    for i, item in enumerate(oos, 1):
+        lr += 1; _cell(ws, lr, 12, f"{i}.  {item}", wrap=True, color="333333")
+    lr += 2
+    _cell(ws, lr, 12, "S.N. | Assumptions", bold=True, fill_hex=C_YELLOW, color=C_NAVY)
+    for i, item in enumerate(assump, 1):
+        lr += 1; _cell(ws, lr, 12, f"{i}.  {item}", wrap=True, color="333333")
+
+    # ════════════════════════════════════════════════════════════════════
+    # SHEETS 2-N: one per BELLA phase (matching AI-Backend Engineer style)
+    # ════════════════════════════════════════════════════════════════════
+    _tab_colors = ["2E75B6","00B4D8","00D4AA","7B61FF","FFD166","FF6B6B","1F3864","5B9BD5"]
+
+    for pi, phase in enumerate(phases):
+        pname  = safe_str(phase.get("name", f"Phase {pi+1}"))
+        phours = safe_int(phase.get("hours", 0))
+        tasks  = [safe_dict(t) for t in safe_list(phase.get("tasks", []))]
+        sname  = pname[:31]
+        ws_p   = wb2.create_sheet(title=sname)
+        ws_p.sheet_properties.tabColor = _tab_colors[pi % len(_tab_colors)]
+        ws_p.sheet_view.showGridLines  = False
+
+        for col, w in [(1,6),(2,28),(3,34),(4,13),(5,13),(6,12),(7,50)]:
+            ws_p.column_dimensions[get_column_letter(col)].width = w
+
+        # Title banner
+        _merge_row(ws_p, 1, 1, 7,
+                   f"{client_name.upper()}  |  {project_type.upper()}  |  {pname.upper()}",
+                   bold=True, size=12, fill_hex=C_NAVY, color=C_WHITE, height=32)
+        ws_p.row_dimensions[2].height = 8
+
+        # Column headers
+        for ci, lbl in [(1,"#"),(2,"Task / Phase"),(3,"Sub-task"),
+                        (4,"Dev Low (hrs)"),(5,"Dev High (hrs)"),(6,"Avg (hrs)"),(7,"Comments")]:
+            _cell(ws_p, 3, ci, lbl, bold=True, fill_hex=C_DCOL, color=C_NAVY, halign="center")
+
+        row = 4
+        gl = gh = ga = 0
+
+        # Phase header row
+        _cell(ws_p, row, 2, pname, bold=True, fill_hex=C_VLIGHT, color=C_NAVY)
+        _cell(ws_p, row, 6, phours, bold=True, fill_hex=C_VLIGHT, color=C_NAVY, halign="center")
+        for ci in [1,3,4,5,7]:
+            _cell(ws_p, row, ci, fill_hex=C_VLIGHT)
+        ws_p.row_dimensions[row].height = 18
+        row += 1
+
+        if tasks:
+            for ti, task in enumerate(tasks, 1):
+                ta  = safe_int(task.get("hours", 0))
+                tl  = safe_int(task.get("low_hours",  int(ta * 0.8)))
+                th  = safe_int(task.get("high_hours", int(ta * 1.35)))
+                _cell(ws_p, row, 1, ti, halign="center")
+                _cell(ws_p, row, 3, safe_str(task.get("name", f"Task {ti}")), wrap=True)
+                _cell(ws_p, row, 4, tl, halign="center")
+                _cell(ws_p, row, 5, th, halign="center")
+                _cell(ws_p, row, 6, ta, halign="center")
+                _cell(ws_p, row, 7, safe_str(task.get("justification", "")), wrap=True)
+                ws_p.row_dimensions[row].height = 20
+                gl += tl; gh += th; ga += ta
+                row += 1
+        else:
+            pl = safe_int(phase.get("low_hours",  int(phours * 0.8)))
+            ph2 = safe_int(phase.get("high_hours", int(phours * 1.35)))
+            _cell(ws_p, row, 1, 1, halign="center")
+            _cell(ws_p, row, 3, f"All {pname} tasks")
+            _cell(ws_p, row, 4, pl,     halign="center")
+            _cell(ws_p, row, 5, ph2,    halign="center")
+            _cell(ws_p, row, 6, phours, halign="center")
+            gl = pl; gh = ph2; ga = phours
+            row += 1
+
+        # Total row
+        _cell(ws_p, row, 2, f"Total {pname} Hours", bold=True, fill_hex=C_VLIGHT, color=C_NAVY)
+        for ci in [1, 3]: _cell(ws_p, row, ci, fill_hex=C_VLIGHT)
+        _cell(ws_p, row, 4, gl,     bold=True, fill_hex=C_VLIGHT, halign="center")
+        _cell(ws_p, row, 5, gh,     bold=True, fill_hex=C_VLIGHT, halign="center")
+        _cell(ws_p, row, 6, phours, bold=True, fill_hex=C_VLIGHT, halign="center")
+        _cell(ws_p, row, 7, "Sum of all tasks", italic=True, fill_hex=C_VLIGHT, color="555555")
+
+    # ════════════════════════════════════════════════════════════════════
+    # Infra Cost sheet
+    # ════════════════════════════════════════════════════════════════════
+    ws_i = wb2.create_sheet("Infra Cost")
+    ws_i.sheet_properties.tabColor = "00D4AA"
+    ws_i.sheet_view.showGridLines  = False
+    for col, w in [(1,32),(2,38),(3,12),(4,45)]:
+        ws_i.column_dimensions[get_column_letter(col)].width = w
+
+    _merge_row(ws_i, 1, 1, 4,
+               f"MONTHLY INFRA COST (EST.)  |  {project_type.upper()}  |  {client_name.upper()}",
+               bold=True, size=12, fill_hex=C_NAVY, color=C_WHITE, height=30)
+    for ci, lbl in [(1,"Resource"),(2,"Tier / Cost Driver"),(3,"Est. $/mo"),(4,"Notes")]:
+        _cell(ws_i, 2, ci, lbl, bold=True, fill_hex=C_BLUE, color=C_WHITE, halign="center")
+
+    ir = 3
+    azure_svcs = safe_list(safe_dict(cost_est).get("azure_costs", [])) if cost_est else []
+    tp_svcs    = safe_list(safe_dict(cost_est).get("third_party_costs", [])) if cost_est else []
+    total_mc   = safe_int(safe_dict(cost_est).get("total_monthly_cost", 0)) if cost_est else 0
+
+    all_svcs = list(azure_svcs) + list(tp_svcs)
+    if all_svcs:
+        for svc in all_svcs:
+            svc = safe_dict(svc)
+            _cell(ws_i, ir, 1, safe_str(svc.get("service", svc.get("name", ""))))
+            _cell(ws_i, ir, 2, safe_str(svc.get("tier", svc.get("description", ""))), wrap=True)
+            _cell(ws_i, ir, 3, safe_int(svc.get("monthly_cost", 0)), halign="center")
+            _cell(ws_i, ir, 4, safe_str(svc.get("notes", svc.get("justification", ""))), wrap=True)
+            ws_i.row_dimensions[ir].height = 22
+            ir += 1
+    else:
+        _cell(ws_i, ir, 1, "Azure Compute / App Services")
+        _cell(ws_i, ir, 2, "Standard tier; scaled to project requirements")
+        _cell(ws_i, ir, 3, 0, halign="center")
+        _cell(ws_i, ir, 4, "Confirm exact tier with client Azure subscription details")
+        ir += 1
+
+    _cell(ws_i, ir, 1, "Total (Est.)", bold=True, fill_hex=C_DCOL)
+    _cell(ws_i, ir, 3, total_mc or 0, bold=True, halign="center", fill_hex=C_DCOL)
+    for ci in [2, 4]: _cell(ws_i, ir, ci, fill_hex=C_DCOL)
+    ir += 2
+    _cell(ws_i, ir, 1,
+          "All figures are US list-price estimates. Actual costs depend on usage, reserved pricing, and negotiated rates.",
+          italic=True, color="666666", size=9, border=False)
+
+    # ════════════════════════════════════════════════════════════════════
+    # Version History sheet
+    # ════════════════════════════════════════════════════════════════════
+    ws_v = wb2.create_sheet("Version History")
+    ws_v.sheet_properties.tabColor = "7B61FF"
+    ws_v.sheet_view.showGridLines  = False
+    ws_v.merge_cells("A1:D1")
+    c = ws_v.cell(row=1, column=1,
+                  value=f"Version History — {project_type} Estimation — {client_name}")
+    c.font      = _font(bold=True, size=12, color=C_WHITE)
+    c.fill      = _fill(C_NAVY)
+    c.alignment = _aln(h="center")
+    ws_v.row_dimensions[1].height = 28
+    for ci, lbl in [(1,"Version"),(2,"Date"),(3,"Author"),(4,"Changes")]:
+        _cell(ws_v, 2, ci, lbl, bold=True, fill_hex=C_BLUE, color=C_WHITE, halign="center")
+    _cell(ws_v, 3, 1, "V1.0")
+    _cell(ws_v, 3, 2, datetime.now().strftime("%d-%b-%Y"))
+    _cell(ws_v, 3, 3, "BELLA — ECI AI Estimation Agent")
+    _cell(ws_v, 3, 4, "Initial estimation generated automatically")
+    for col, w in [(1,12),(2,16),(3,30),(4,60)]:
+        ws_v.column_dimensions[get_column_letter(col)].width = w
+
+    buf2 = io.BytesIO()
+    wb2.save(buf2)
+    buf2.seek(0)
+    return buf2.getvalue()

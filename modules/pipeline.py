@@ -51,7 +51,7 @@ from .text_analysis import _analyze_text_dynamic
 from .document_processor import DocProcessor
 from .ai_clients import AnthropicAI, AzureAI, CodexAI, DeepSeekAI, GeminiAI, GrokAI, NanoAI, QwenAI, VertexAnthropicAI
 from .external_services import SP, Mailer, ArchitectNarrator
-from .excel_generators import generate_time_excel, generate_cost_excel, generate_lenox_excel
+from .excel_generators import generate_time_excel, generate_cost_excel, generate_lenox_excel, generate_monogram_excel
 from .pdf_generators import generate_proposal_pdf, generate_sow_pdf, HAS_REPORTLAB
 from .pptx_generator import generate_proposal_pptx, HAS_PPTX, build_premium_pptx_preview_html
 from .final_estimation import generate_final_estimation
@@ -10376,7 +10376,7 @@ def show_results():
         _r_edits         = _build_r_with_edits(_del_r)
         _final_est_bytes = generate_final_estimation(_del_r, project_name=proj_name)
         _xl_data         = generate_time_excel(_del_te, _del_se)
-        _lenox_data      = generate_lenox_excel(_del_te, _del_se, _del_ce, _del_ri, _del_r)
+        _lenox_data      = generate_monogram_excel(_del_te, _del_se, _del_ce, _del_ri, _del_r)
         _cost_xl         = generate_cost_excel(_del_ce, _del_te, _del_se)
         _pdf_data        = generate_proposal_pdf(_r_edits)
         _pptx_dl         = generate_proposal_pptx(_r_edits)
@@ -10445,12 +10445,12 @@ def show_results():
                 st.button("⏱️ Time Estimate", disabled=True, width="stretch", key="del_xl_dis")
         with est_cols[1]:
             if _lenox_data:
-                st.download_button("📋 Full Estimation (Lenox)", data=_lenox_data,
+                st.download_button("📊 Estimation (ECI Standard)", data=_lenox_data,
                     file_name="ECI_Estimation" + _ver_suffix + "_" + ts + ".xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     width="stretch", type="primary", key="del_lenox")
             else:
-                st.button("📋 Lenox Estimation", disabled=True, width="stretch", key="del_lenox_dis")
+                st.button("📊 Estimation (ECI Standard)", disabled=True, width="stretch", key="del_lenox_dis")
         with est_cols[2]:
             if _cost_xl:
                 st.download_button("💰 Cost Estimate (Excel)", data=_cost_xl,
@@ -10569,7 +10569,7 @@ def show_results():
             if _xl_data:
                 _zf.writestr("ECI_Time_Estimate.xlsx", _xl_data)
             if _lenox_data:
-                _zf.writestr("ECI_Estimation_Lenox.xlsx", _lenox_data)
+                _zf.writestr("ECI_Estimation_Standard.xlsx", _lenox_data)
             if _cost_xl:
                 _zf.writestr("ECI_Cost_Estimate.xlsx", _cost_xl)
             if _pdf_data:

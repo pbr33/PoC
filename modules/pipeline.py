@@ -8670,6 +8670,265 @@ def _tab_placeholder(icon: str, heading: str, detail: str = "") -> None:
     )
 
 
+def _render_correct_and_train_tab(r: dict, se: dict, te: dict):
+    """
+    In-context estimation correction → training rule extraction.
+    User sees what BELLA generated, types what's wrong, AI extracts rules,
+    rules are saved and optionally the estimate is re-run immediately.
+    """
+    import json as _j
+
+    st.markdown("""
+<style>
+.train-stream-row{display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  margin-bottom:6px}
+.train-stream-name{flex:1;font-size:.85rem;color:#e2e8f0;font-weight:600}
+.train-stream-hrs{font-size:.8rem;color:#7b61ff;font-weight:700;min-width:48px;text-align:right}
+.train-rule-card{padding:10px 14px;border-radius:8px;background:rgba(123,97,255,.08);
+  border:1px solid rgba(123,97,255,.25);margin-bottom:8px}
+.train-section-hdr{font-size:.78rem;font-weight:700;color:#94a3b8;text-transform:uppercase;
+  letter-spacing:.8px;margin:14px 0 8px}
+</style>""", unsafe_allow_html=True)
+
+    phases      = safe_list(te.get("phases", []))
+    proj_type   = safe_str(se.get("project_type", "Unknown"))
+    saved_types = safe_list(se.get("project_type_tags") or st.session_state.get("project_type_tags", []))
+    _PT_BASE    = ["AI", "Data", "SharePoint", "Cloud", "Custom App"]
+
+    # ── Header ───────────────────────────────────────────────────────────
+    st.markdown("""
+<div style="padding:16px 20px;border-radius:12px;background:linear-gradient(135deg,
+  rgba(123,97,255,.12),rgba(0,212,170,.08));border:1px solid rgba(123,97,255,.25);margin-bottom:18px">
+  <div style="font-size:1.1rem;font-weight:800;color:#e2e8f0">🎓 Correct This Estimate & Train BELLA</div>
+  <div style="font-size:.82rem;color:#94a3b8;margin-top:4px">
+    See what BELLA generated → describe what's wrong → AI extracts rules → save & re-run.
+    No need to visit the Training tab. Every correction becomes a permanent rule.
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    left_col, right_col = st.columns([1, 1], gap="large")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # LEFT: What BELLA generated + inline hour adjustments
+    # ══════════════════════════════════════════════════════════════════════
+    with left_col:
+        st.markdown('<div class="train-section-hdr">📊 What BELLA Generated</div>', unsafe_allow_html=True)
+        st.caption(f"Project: **{proj_type}** — {len(phases)} work streams, "
+                   f"{safe_int(te.get('total_hours', 0))}h total")
+
+        _hour_changes = {}   # stream name → (original_hrs, corrected_hrs)
+        _remove_flags = {}   # stream name → bool
+
+        for i, phase in enumerate(phases):
+            p = safe_dict(phase)
+            name  = safe_str(p.get("name", f"Stream {i+1}"))
+            hours = safe_int(p.get("hours", 0))
+            domain = safe_str(p.get("domain", ""))
+
+            row_col, hrs_col, del_col = st.columns([4, 2, 1])
+            with row_col:
+                st.markdown(
+                    f'<div style="font-size:.85rem;font-weight:600;color:#e2e8f0;'
+                    f'padding:4px 0">{name}</div>'
+                    f'<div style="font-size:.7rem;color:#64748b">{domain}</div>',
+                    unsafe_allow_html=True,
+                )
+            with hrs_col:
+                new_hrs = st.number_input(
+                    "h", value=hours, min_value=0, step=8,
+                    key=f"_ct_hrs_{i}", label_visibility="collapsed",
+                )
+                if new_hrs != hours:
+                    _hour_changes[name] = (hours, new_hrs)
+            with del_col:
+                if st.button("✕", key=f"_ct_rem_{i}", help="Mark: shouldn't exist for this project"):
+                    _remove_flags[name] = True
+
+        # Missing stream adder
+        st.markdown('<div class="train-section-hdr" style="margin-top:18px">➕ Missing Stream?</div>',
+                    unsafe_allow_html=True)
+        _missing_options = [
+            "(not missing)", "Data Engineering", "AI / ML Stream",
+            "SharePoint / M365", "Custom Application", "Integration",
+            "Security & Compliance", "Analytics & Reporting",
+        ]
+        _existing_names = {safe_str(safe_dict(p).get("name","")).lower() for p in phases}
+        _missing_options = [o for o in _missing_options
+                            if o == "(not missing)" or o.lower() not in _existing_names]
+        _add_stream = st.selectbox("Select a stream that should have been included:",
+                                   _missing_options, key="_ct_add_stream")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # RIGHT: Free-text correction + rule extraction
+    # ══════════════════════════════════════════════════════════════════════
+    with right_col:
+        st.markdown('<div class="train-section-hdr">✏️ Describe What\'s Wrong</div>',
+                    unsafe_allow_html=True)
+        correction_text = st.text_area(
+            "correction_text",
+            placeholder=(
+                "Write corrections in plain English. Examples:\n\n"
+                "• Data Engineering hours are too low — should be 200h+ for a data warehouse\n"
+                "• Remove the AI / ML Stream — this is a pure data project with no AI component\n"
+                "• DevOps hours should not exceed 60h for projects under 500h total\n"
+                "• Always add a Synapse Analytics stream for data warehouse projects\n"
+                "• Discovery phase needs a data profiling workshop (at least 16h)"
+            ),
+            height=190,
+            key="_ct_correction_text",
+            label_visibility="collapsed",
+        )
+
+        st.markdown('<div class="train-section-hdr">🏷️ Scope These Rules To</div>',
+                    unsafe_allow_html=True)
+        _ct_types = st.multiselect(
+            "scope_types",
+            _PT_BASE,
+            default=saved_types,
+            key="_ct_project_types",
+            help="Rules are only applied to estimations of these project types. "
+                 "Leave empty = applies to all projects.",
+            label_visibility="collapsed",
+        )
+
+        # ── Generate Rules button ─────────────────────────────────────────
+        _has_input = bool(correction_text.strip() or _hour_changes or
+                          any(_remove_flags.values()) or
+                          (_add_stream != "(not missing)"))
+
+        if st.button("🤖 Generate Training Rules", key="_ct_extract_btn",
+                     disabled=not _has_input, type="primary"):
+            with st.spinner("Extracting rules from your corrections…"):
+
+                # Build extra context from inline edits
+                _inline_notes = []
+                for sname, (orig, new) in _hour_changes.items():
+                    _inline_notes.append(
+                        f"User corrected '{sname}' from {orig}h to {new}h"
+                    )
+                for sname, flagged in _remove_flags.items():
+                    if flagged:
+                        _inline_notes.append(
+                            f"User flagged '{sname}' as should NOT exist for this project"
+                        )
+                if _add_stream != "(not missing)":
+                    _inline_notes.append(
+                        f"User says '{_add_stream}' stream was MISSING and should have been included"
+                    )
+                _inline_ctx = ("\n".join(_inline_notes) + "\n\n") if _inline_notes else ""
+
+                stream_summary = "\n".join(
+                    f"  - {safe_str(safe_dict(p).get('name',''))} "
+                    f"({safe_int(safe_dict(p).get('hours',0))}h)"
+                    for p in phases
+                )
+                system = (
+                    "You are a training data engineer for BELLA, an AI presales estimation tool at ECI. "
+                    "Convert the user's corrections into clear, reusable training rules. "
+                    "Rules must be specific and actionable — tell BELLA exactly what to do differently. "
+                    "Use imperative language (DO / DO NOT / ALWAYS / NEVER / MINIMUM / MAXIMUM). "
+                    "Return ONLY valid JSON:\n"
+                    '{"rules": [{"instruction": "...", "category": "hours|streams|tasks|general"}, ...]}'
+                )
+                user_msg = (
+                    f"Project type: {proj_type}\n"
+                    f"Scoped to types: {', '.join(_ct_types) if _ct_types else 'All'}\n\n"
+                    f"BELLA generated these work streams:\n{stream_summary}\n\n"
+                    f"User inline corrections:\n{_inline_ctx}"
+                    f"User free-text correction:\n{correction_text or '(none)'}\n\n"
+                    "Extract 1-6 specific training rules. "
+                    "Make each rule precise enough that BELLA can follow it on the next run."
+                )
+                raw = _claude_raw_call(system, [{"type": "text", "text": user_msg}], max_tokens=800)
+                try:
+                    extracted = _j.loads(raw)
+                    rules = [r for r in extracted.get("rules", []) if r.get("instruction", "").strip()]
+                except Exception:
+                    rules = [{"instruction": raw.strip(), "category": "general"}] if raw.strip() else []
+
+                st.session_state["_ct_extracted_rules"] = rules
+
+        # ── Show + edit extracted rules ───────────────────────────────────
+        extracted_rules = st.session_state.get("_ct_extracted_rules", [])
+        if extracted_rules:
+            st.markdown('<div class="train-section-hdr" style="margin-top:14px">'
+                        '✅ Extracted Rules — Edit Before Saving</div>', unsafe_allow_html=True)
+
+            final_rules = []
+            _cats = ["general", "hours", "streams", "tasks"]
+            for i, rule in enumerate(extracted_rules):
+                with st.container():
+                    edited_instr = st.text_area(
+                        f"Rule {i + 1}",
+                        value=safe_str(rule.get("instruction", "")),
+                        key=f"_ct_rule_txt_{i}",
+                        height=68,
+                    )
+                    edited_cat = st.selectbox(
+                        "Category",
+                        _cats,
+                        index=_cats.index(rule.get("category", "general"))
+                               if rule.get("category", "general") in _cats else 0,
+                        key=f"_ct_rule_cat_{i}",
+                        label_visibility="collapsed",
+                    )
+                    final_rules.append({"instruction": edited_instr, "category": edited_cat})
+                    st.markdown("<hr style='margin:4px 0;border-color:rgba(255,255,255,.06)'>",
+                                unsafe_allow_html=True)
+
+            # ── Save / Save+Rerun ─────────────────────────────────────────
+            btn_save, btn_rerun = st.columns(2)
+            with btn_save:
+                if st.button("💾 Save Rules", key="_ct_save_btn", use_container_width=True):
+                    try:
+                        from .training import add_instruction as _add_ti
+                        saved = 0
+                        for rule in final_rules:
+                            instr = rule.get("instruction", "").strip()
+                            if instr:
+                                _add_ti(instr, category=rule.get("category", "general"),
+                                        created_by="admin", project_types=_ct_types)
+                                saved += 1
+                        st.success(f"✅ {saved} rule{'s' if saved != 1 else ''} saved to Agent Training.")
+                        st.session_state["_ct_extracted_rules"] = []
+                    except Exception as _e:
+                        st.error(f"Save failed: {_e}")
+
+            with btn_rerun:
+                if st.button("🔄 Save & Re-run", key="_ct_rerun_btn",
+                             use_container_width=True, type="primary"):
+                    try:
+                        from .training import add_instruction as _add_ti
+                        for rule in final_rules:
+                            instr = rule.get("instruction", "").strip()
+                            if instr:
+                                _add_ti(instr, category=rule.get("category", "general"),
+                                        created_by="admin", project_types=_ct_types)
+                        st.session_state["_ct_extracted_rules"] = []
+                        if _ct_types:
+                            st.session_state["project_type_tags"] = _ct_types
+                        # Signal auto-rerun
+                        st.session_state["_ct_rerun_pending"] = True
+                        st.success("Rules saved! Click **Run BELLA** to regenerate with these rules applied.")
+                    except Exception as _e:
+                        st.error(f"Failed: {_e}")
+
+        # ── Pro-tip when nothing yet ──────────────────────────────────────
+        elif not _has_input:
+            st.info(
+                "**How to use this tab:**\n\n"
+                "1. On the left, adjust hours for any stream that's wrong, "
+                "or click ✕ to mark a stream that shouldn't exist.\n"
+                "2. Type corrections in plain English above — "
+                "be specific about what should change and why.\n"
+                "3. Click **Generate Training Rules** — BELLA converts your corrections into rules.\n"
+                "4. Review and edit the extracted rules, then **Save & Re-run**.\n\n"
+                "Every correction becomes a permanent training rule scoped to the project type you select.",
+                icon="🎓",
+            )
+
+
 def show_results():
     r = st.session_state.processing_results
     st.markdown("---")
@@ -8774,7 +9033,7 @@ def show_results():
     # ── Human Review & Feedback Panel hidden (duplicate of inline feedback) ──
     # _render_feedback_panel(r)
 
-    tab_list = st.tabs(["📋 Requirements", "⏱️ Time", "💰 Infra Cost", "📋 Scope & Risk", "🏗️ Architecture", "📐 Diagrams", "📄 Proposal", "👥 Team & Roles", "🎯 Discovery Prep", "🔀 Scenarios", "🎮 3D View", "💬 Chat", "📚 History", "🎯 Live Demo", "📦 Delivery", "🔄 Review"])
+    tab_list = st.tabs(["📋 Requirements", "⏱️ Time", "💰 Infra Cost", "📋 Scope & Risk", "🏗️ Architecture", "📐 Diagrams", "📄 Proposal", "👥 Team & Roles", "🎯 Discovery Prep", "🔀 Scenarios", "🎮 3D View", "💬 Chat", "📚 History", "🎯 Live Demo", "📦 Delivery", "🔄 Review", "🎓 Train"])
 
     # ── INSTANT PRE-RENDER ────────────────────────────────────────────────────
     # Write a placeholder into every tab RIGHT NOW before any heavy computation.
@@ -8798,6 +9057,7 @@ def show_results():
         (bool(se),                            "🎯 Live Demo"),
         (True,                                "📦 Delivery"),
         (True,                                "🔄 Review"),
+        (bool(te),                            "🎓 Correct & Train"),
     ]
     for _pi, (_has, _lbl) in enumerate(_pre_info):
         with tab_list[_pi]:
@@ -10683,6 +10943,10 @@ def show_results():
         st.markdown('<div class="eci-tab-hdr"><span class="eci-tab-hdr-icon">⭐</span>'
                     '<span class="eci-tab-hdr-title">Review & Feedback</span></div>', unsafe_allow_html=True)
         render_review_feedback_tab(r, se, te, ce, ri, ar, _pick_ai())
+
+    with tab_list[16]:
+        _pre[16].empty()
+        _render_correct_and_train_tab(r, se, te)
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -11421,6 +11421,7 @@ def _render_training_tab():
     from .training import (
         add_instruction, list_instructions, toggle_instruction, delete_instruction,
         add_feedback, list_feedback, delete_feedback, parse_excel_estimate,
+        extract_structural_patterns, generate_instructions_from_excel,
     )
 
     _PROJ_TYPES = ["AI", "SharePoint", "Data", "Cloud"]
@@ -11795,6 +11796,94 @@ def _render_training_tab():
 
     # ── TAB 4: Excel Feedback ──────────────────────────────────────────────
     with tr4:
+        # ── NEW: Extract training instructions from a real client Excel ──
+        with st.expander("📋 Extract Training Instructions from Real Excel", expanded=True):
+            st.markdown(
+                "Upload a real estimation Excel (like one you sent to a client). "
+                "BELLA will scan the **role sheets, phase names, and technology keywords** "
+                "and generate structural training rules — not hours."
+            )
+            _xi_c1, _xi_c2 = st.columns([2, 1])
+            with _xi_c1:
+                _xi_file = st.file_uploader(
+                    "Estimation Excel", type=["xlsx", "xls"], key="xi_excel_upload",
+                    help="Any real estimate you've built — sheet names are used as role/stream names",
+                )
+            with _xi_c2:
+                _xi_ctx = st.text_input(
+                    "Project type hint (optional)",
+                    placeholder="e.g. Power BI, Data Platform, RPA",
+                    key="xi_ctx",
+                )
+
+            _xi_btn = st.button(
+                "🔍 Analyze Excel → Generate Instructions",
+                type="primary",
+                key="xi_analyze_btn",
+                disabled=(_xi_file is None),
+            )
+
+            if _xi_btn and _xi_file:
+                with st.spinner("Reading Excel structure — identifying roles, technologies, phases…"):
+                    _xi_patterns = extract_structural_patterns(_xi_file.read())
+                with st.spinner("Asking Claude to generate training instructions from patterns…"):
+                    _xi_instrs = generate_instructions_from_excel(_xi_patterns, _xi_ctx)
+                st.session_state["_xi_patterns"] = _xi_patterns
+                st.session_state["_xi_instrs"] = _xi_instrs
+
+            # Show results if available
+            if st.session_state.get("_xi_patterns"):
+                _xp = st.session_state["_xi_patterns"]
+                _xic1, _xic2, _xic3 = st.columns(3)
+                with _xic1:
+                    st.metric("Role/Estimation sheets", len(_xp.get("estimation_sheets", [])))
+                with _xic2:
+                    st.metric("Roles identified", len(_xp.get("roles", [])))
+                with _xic3:
+                    st.metric("Technologies found", len(_xp.get("technologies", [])))
+
+                if _xp.get("roles"):
+                    st.markdown(f"**Roles:** {', '.join(_xp['roles'])}")
+                if _xp.get("technologies"):
+                    st.markdown(f"**Technologies:** {', '.join(_xp['technologies'])}")
+
+                st.markdown("---")
+
+            if st.session_state.get("_xi_instrs"):
+                _xi_results = st.session_state["_xi_instrs"]
+                st.markdown(f"**{len(_xi_results)} instructions extracted — select which to save:**")
+
+                _xi_sel_types = st.multiselect(
+                    "Tag all selected instructions with project types (optional)",
+                    _PROJ_TYPES, key="xi_proj_types",
+                )
+                _xi_checks = {}
+                for _ii, _instr in enumerate(_xi_results):
+                    _cat_badge = f"`{_instr['category']}`"
+                    _xi_checks[_ii] = st.checkbox(
+                        f"{_cat_badge}  {_instr['text']}",
+                        value=True,
+                        key=f"xi_chk_{_ii}",
+                    )
+
+                if st.button("💾 Save Selected Instructions", type="primary", key="xi_save_btn"):
+                    _xi_saved = 0
+                    for _ii, _instr in enumerate(_xi_results):
+                        if _xi_checks.get(_ii):
+                            _iid = add_instruction(
+                                _instr["text"],
+                                category=_instr["category"],
+                                created_by="admin",
+                                project_types=_xi_sel_types,
+                            )
+                            _xi_saved += 1
+                    st.success(f"✅ Saved {_xi_saved} instruction(s) — BELLA will apply them on every future run.")
+                    st.session_state.pop("_xi_patterns", None)
+                    st.session_state.pop("_xi_instrs", None)
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Record numerical feedback** (how many hours BELLA vs how many you actually used)")
         st.markdown(
             "Upload the final Excel you sent to the client. "
             "BELLA stores the delta and can auto-generate a training instruction from it."
@@ -11826,7 +11915,8 @@ def _render_training_tab():
                 elif not _fb_excel:
                     st.warning("Upload the actual Excel file.")
                 else:
-                    _parsed = parse_excel_estimate(_fb_excel.read())
+                    with st.spinner("Parsing Excel file…"):
+                        _parsed = parse_excel_estimate(_fb_excel.read())
                     if _parsed["total_hours"] == 0 and not _parsed["phases"]:
                         st.warning(
                             "Could not auto-detect hours in the Excel. "

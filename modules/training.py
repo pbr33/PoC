@@ -388,6 +388,168 @@ def consolidate_instructions(project_types: list = None) -> dict:
     return {"before": len(rows), "after": after, "groups_merged": len(new_entries)}
 
 
+def extract_structural_patterns(file_bytes: bytes) -> dict:
+    """
+    Read an Excel estimation file and extract STRUCTURAL patterns (not hours).
+    Returns a dict with sheet names, roles, technologies, and per-stream task samples.
+    Feed the result into generate_instructions_from_excel().
+    """
+    import io, re as _re
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception:
+        return {}
+
+    sheet_names = wb.sheetnames
+
+    # Estimation sheets: any sheet whose name contains these substrings
+    estimation_sheets = [
+        s for s in sheet_names
+        if any(k in s.lower() for k in ["estimat", "effort", "dev", "qa", "infra", "visual", "platform"])
+    ]
+
+    _TECH_KW = [
+        "power bi", "power automate", "power apps", "power platform",
+        "microsoft fabric", "fabric", "lakehouse", "dataflow", "data factory", "adf",
+        "azure sql", "azure blob", "azure vm", "azure data", "azure",
+        "sql server", "synapse", "databricks", "spark",
+        "sharepoint", "teams", "copilot", "viva",
+        "react", "angular", "vue", "node.js", ".net", "python",
+        "tableau", "qlik", "looker",
+        "rpa", "automate desktop", "uipath", "blue prism",
+        "entra id", "entra", "active directory", "key vault", "devops",
+        "kubernetes", "docker", "container",
+        "snowflake", "dbt", "redshift", "bigquery",
+        "openai", "llm", "machine learning",
+        "rest api", "graphql", "api integration",
+    ]
+
+    tech_found: set = set()
+    streams: dict = {}
+
+    for sname in estimation_sheets:
+        ws = wb[sname]
+        tasks = []
+        for row in ws.iter_rows(min_row=1, max_row=250):
+            cell_val = str(row[0].value or "").strip()
+            # Skip empty, numeric-only, or header-like cells
+            if not cell_val or _re.match(r'^[\d.,\s]+$', cell_val) or len(cell_val) <= 2:
+                continue
+            if cell_val.lower() in ("task", "phase", "activity", "module", "#", "no", "no.", "sr"):
+                continue
+            tasks.append(cell_val)
+            # Scan full row for tech keywords
+            row_text = " ".join(str(c.value or "").lower() for c in row)
+            for kw in _TECH_KW:
+                if kw in row_text:
+                    tech_found.add(kw)
+        if tasks:
+            streams[sname] = tasks[:25]
+
+    # Scan ALL sheets for tech keywords (architecture, flow diagrams have text too)
+    for sname in sheet_names:
+        if sname in estimation_sheets:
+            continue
+        ws = wb[sname]
+        for row in ws.iter_rows(max_row=100):
+            row_text = " ".join(str(c.value or "").lower() for c in row)
+            for kw in _TECH_KW:
+                if kw in row_text:
+                    tech_found.add(kw)
+
+    # Extract roles from Summary / Team sheet
+    team_roles: list = []
+    _role_kw = ["engineer", "developer", "architect", "manager", "lead", "analyst", "qa", "tester", "consultant"]
+    for sname in sheet_names:
+        if not any(k in sname.lower() for k in ["summary", "team", "resource", "allocation"]):
+            continue
+        ws = wb[sname]
+        for row in ws.iter_rows(max_row=60):
+            first = str(row[0].value or "").strip()
+            if not first or len(first) < 4:
+                continue
+            if any(k in first.lower() for k in _role_kw):
+                if first not in team_roles:
+                    team_roles.append(first)
+
+    # Fallback: infer roles from estimation sheet names
+    inferred_roles = []
+    for sname in estimation_sheets:
+        cleaned = _re.sub(r'(?i)estimation|estimate|effort', '', sname).strip(" -_")
+        if cleaned and cleaned not in inferred_roles:
+            inferred_roles.append(cleaned)
+
+    roles = list(dict.fromkeys(team_roles + inferred_roles))
+
+    return {
+        "sheet_names": sheet_names,
+        "estimation_sheets": estimation_sheets,
+        "roles": roles,
+        "streams": streams,
+        "technologies": sorted(tech_found),
+    }
+
+
+def generate_instructions_from_excel(patterns: dict, project_context: str = "") -> list:
+    """
+    Call Claude to turn structural Excel patterns into training instructions for BELLA.
+    Returns [{"text": str, "category": str}].
+    """
+    if not patterns:
+        return []
+    try:
+        from .ai_clients import AnthropicAI
+        client = AnthropicAI.from_session()
+        if not client.is_live:
+            return []
+    except Exception:
+        return []
+
+    lines = []
+    if patterns.get("sheet_names"):
+        lines.append(f"Excel sheets: {', '.join(patterns['sheet_names'])}")
+    if patterns.get("estimation_sheets"):
+        lines.append(f"Role/estimation sheets (one sheet per role/team): {', '.join(patterns['estimation_sheets'])}")
+    if patterns.get("roles"):
+        lines.append(f"Team roles identified: {', '.join(patterns['roles'][:15])}")
+    if patterns.get("technologies"):
+        lines.append(f"Technologies mentioned in the file: {', '.join(patterns['technologies'][:25])}")
+    for sname, tasks in (patterns.get("streams") or {}).items():
+        lines.append(f"\n[{sname}] phases/tasks:\n  " + "\n  ".join(tasks[:10]))
+    if project_context:
+        lines.append(f"\nProject context: {project_context}")
+
+    system = (
+        "You are a presales estimation expert analyzing a real client Excel file. "
+        "Extract TRAINING INSTRUCTIONS for an AI estimation tool called BELLA. "
+        "Instructions must describe STRUCTURE, ROLES, STREAMS, and METHODOLOGY — NOT specific hours or costs.\n\n"
+        "GOOD instruction examples:\n"
+        "• 'For Power BI projects, always include a Visualization Developer stream separate from Data Engineering'\n"
+        "• 'For Power Automate Desktop/RPA projects, include a Power Platform Developer stream with bot dev phases'\n"
+        "• 'Use Bronze/Silver/Gold medallion architecture phases in Data Engineering stream for Fabric/Lakehouse projects'\n"
+        "• 'ETL QA is always a separate stream — never bundle it with the development stream'\n"
+        "• 'For projects with 4+ data sources, list a per-source ingestion task in the Data Engineering stream'\n"
+        "• 'Always include a Wireframes & UX phase before dashboard development in BI projects'\n\n"
+        "BAD instructions (do NOT generate):\n"
+        "• 'Power BI development takes 70 hours' — this is an hours estimate, not a structural rule\n"
+        "• 'Allocate 50% to Data Engineer' — too specific to one project\n\n"
+        "Return ONLY valid JSON (no markdown fence, no extra text):\n"
+        '{"instructions": [{"text": "...", "category": "streams|tasks|roles|general"}]}'
+    )
+
+    result = client._call(system, "\n".join(lines), max_tokens=1800)
+
+    if not (result and isinstance(result, dict) and "instructions" in result):
+        return []
+
+    return [
+        {"text": i.get("text", "").strip(), "category": i.get("category", "general")}
+        for i in result.get("instructions", [])
+        if i.get("text", "").strip()
+    ]
+
+
 def _parse_df(df) -> dict:
     total_hours = 0
     total_cost  = 0

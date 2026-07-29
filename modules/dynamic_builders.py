@@ -197,7 +197,9 @@ def _build_dynamic_time(semantic, text="", rag=None):
                     "AI / ML" in " ".join(domains)
     is_rag        = _h("ai search") or _h("rag") or _h("vector") or _h("embedding")
     is_teams      = _h("microsoft teams") or _h("teams bot") or _h("teams app")
-    is_sharepoint = _h("sharepoint") or "SharePoint" in " ".join(domains)
+    # SharePoint: ONLY fire when tech stack explicitly says "sharepoint".
+    # The domains list can misclassify AI/data projects — never use it alone.
+    is_sharepoint = _h("sharepoint")
     is_custom_app = (_h("react") or _h("angular") or _h("app service") or _h("fastapi") or \
                      _h(".net") or _h("blazor")) and not is_data_eng
     is_devops     = _h("devops") or _h("ci/cd") or _h("kubernetes") or _h("github actions")
@@ -205,21 +207,20 @@ def _build_dynamic_time(semantic, text="", rag=None):
         safe_str(r.get("description","")) for r in reqs if isinstance(r,dict)
     ).lower() or "dev/test" in tech_lower
 
-    # ── NEW: Power Platform Developer stream flag ─────────────────────────
-    # Triggered by Power Automate, Power Apps, RPA, or bot automation keywords
+    # ── Power Platform Developer stream ───────────────────────────────────
+    # Only fires on explicit Power Platform / RPA keywords in tech or scope text.
+    # "platform", "automate", "app" alone are too generic — require compound phrase.
     is_power_platform = _th("power automate") or _th("power apps") or \
                         _th("power platform") or _th("rpa") or \
                         _th("automate desktop") or _th("canvas app") or \
-                        _th("model-driven app") or _th("model driven app") or \
-                        _th("cloud flow") or _th("pa flow")
+                        _th("model-driven app") or _th("model driven app")
 
-    # ── NEW: Visualization Developer stream flag ──────────────────────────
-    # Triggered by Power BI, dashboards, or any BI reporting tool
+    # ── Visualization Developer stream ─────────────────────────────────────
+    # Only fires on explicit BI tool names. Generic words like "dashboard",
+    # "analytics", "reporting" would fire on almost every AI project — excluded.
     is_visualization  = _th("power bi") or _th("bi report") or _th("bi dashboard") or \
                         _th("tableau") or _th("qlik") or _th("looker") or \
-                        any(k in tech_lower for k in [
-                            "analytics", "bi ", "reporting", "visualization", "dashboard",
-                        ])
+                        any(k in tech_lower for k in ["power bi", "bi reporting", "bi dashboard"])
 
     # ── User-selected project type overrides (UI multiselect takes priority) ─
     # If the user explicitly chose a project type, force the matching stream flag

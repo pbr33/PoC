@@ -176,6 +176,9 @@ def _build_dynamic_time(semantic, text="", rag=None):
     ]
 
     def _h(k): return k in tech_lower
+    # Also scan raw scope text for keywords the AI may have missed in tech_stack
+    _text_lower = (text or "").lower()
+    def _th(k): return k in tech_lower or k in _text_lower
 
     is_fabric     = _h("microsoft fabric") or _h("fabric lakehouse") or _h("onelake")
     is_databricks = _h("azure databricks") or _h("databricks")
@@ -186,8 +189,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
                     "Data Engineering" in " ".join(domains) or \
                     any(k in tech_lower for k in [
                         "data warehouse", "dwh", "sql server", "azure sql",
-                        "sql dw", "azure synapse", "power bi", "bi ", "analytics",
-                        "data lake", "data platform", "data mart", "medallion",
+                        "sql dw", "azure synapse", "data lake", "data platform",
+                        "data mart", "medallion",
                     ])
     is_ai         = _h("azure openai") or _h("openai") or _h("gpt") or _h("ai foundry") or \
                     _h("foundry") or _h("llm") or _h("ai search") or _h("azure ml") or \
@@ -202,6 +205,22 @@ def _build_dynamic_time(semantic, text="", rag=None):
         safe_str(r.get("description","")) for r in reqs if isinstance(r,dict)
     ).lower() or "dev/test" in tech_lower
 
+    # ── NEW: Power Platform Developer stream flag ─────────────────────────
+    # Triggered by Power Automate, Power Apps, RPA, or bot automation keywords
+    is_power_platform = _th("power automate") or _th("power apps") or \
+                        _th("power platform") or _th("rpa") or \
+                        _th("automate desktop") or _th("canvas app") or \
+                        _th("model-driven app") or _th("model driven app") or \
+                        _th("cloud flow") or _th("pa flow")
+
+    # ── NEW: Visualization Developer stream flag ──────────────────────────
+    # Triggered by Power BI, dashboards, or any BI reporting tool
+    is_visualization  = _th("power bi") or _th("bi report") or _th("bi dashboard") or \
+                        _th("tableau") or _th("qlik") or _th("looker") or \
+                        any(k in tech_lower for k in [
+                            "analytics", "bi ", "reporting", "visualization", "dashboard",
+                        ])
+
     # ── User-selected project type overrides (UI multiselect takes priority) ─
     # If the user explicitly chose a project type, force the matching stream flag
     # even when the document's tech stack doesn't mention the right keywords.
@@ -211,12 +230,16 @@ def _build_dynamic_time(semantic, text="", rag=None):
             is_ai = True
         if any(t in ("data",) for t in _upt):
             is_data_eng = True
+            is_visualization = True   # data projects almost always include dashboards
         if any(t in ("sharepoint",) for t in _upt):
             is_sharepoint = True
         if any(t in ("custom app", "app") for t in _upt):
             is_custom_app = True   # remove the tech-keyword requirement
         if any(t in ("cloud",) for t in _upt):
             is_devops = True       # Cloud type = enhanced DevOps & Platform stream
+
+    # Shared source-count (used by DE and Power Platform streams)
+    n_src = max(1, n_int)
 
     # ── PARALLEL WORK STREAMS ────────────────────────────────────────────
     streams: list[dict] = []
@@ -239,7 +262,6 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # ── Stream 1: Data Engineering ────────────────────────────────────────
     if is_data_eng:
         de_tasks: list[dict] = []
-        n_src = max(1, n_int)   # number of source system connections
 
         if is_fabric:
             de_tasks += [
@@ -324,6 +346,50 @@ def _build_dynamic_time(semantic, text="", rag=None):
 
         streams.append(_stream("Data Engineering", "Data Engineering", de_tasks, mult=1.0,
                                parallel_with=["AI / ML Stream"] if is_ai else []))
+
+    # ── Stream: Power Platform Developer ─────────────────────────────────
+    if is_power_platform:
+        _has_rpa = _th("rpa") or _th("automate desktop") or _th("robot") or _th("bot")
+        pp_tasks: list[dict] = []
+        if _has_rpa:
+            pp_tasks += [
+                _task("RPA process analysis and bot specification",        "Power Platform Dev", 8,  "AS-IS process mapping, exception paths, bot architecture spec"),
+                _task("Power Automate Desktop bot — environment and infra setup", "Power Platform Dev", 6, "Unattended bot VM, credential store, connection config"),
+            ]
+            for _bi in range(min(n_src, 5)):
+                pp_tasks.append(_task(f"Power Automate Desktop bot — process {_bi + 1}",
+                                      "Power Platform Dev", 12,
+                                      "UI automation, web scraping / data extraction, exception handling"))
+            pp_tasks += [
+                _task("Bot error handling, retry logic, and alerting",     "Power Platform Dev", 6,  "Exception flows, alert emails, re-queue logic"),
+                _task("Bot testing — unit and integration",                "Power Platform Dev", 8,  "Dry-run validation, mock data, exception path testing"),
+            ]
+        # Cloud flows and apps (always in Power Platform stream)
+        pp_tasks += [
+            _task("Power Automate Cloud flows — design and mapping",       "Power Platform Dev", 6,  "Trigger/action design, connector selection, data mapping"),
+            _task("Power Automate Cloud flows — development",              "Power Platform Dev", 10, "Flow implementation, approvals, notifications, error branches"),
+            _task("Power Apps canvas / model-driven app — UX design",     "Power Platform Dev", 6,  "Screen wireframes, navigation, component layout"),
+            _task("Power Apps canvas / model-driven app — development",   "Power Platform Dev", 12, "Data connections, formulas, business rules, offline mode"),
+            _task("Power Apps testing and UAT",                            "Power Platform Dev", 6,  "Functional testing, user acceptance, defect fixes"),
+            _task("Power Platform deployment and governance",              "Power Platform Dev", 4,  "Solution packaging, DLP policy, environment promotion"),
+        ]
+        streams.append(_stream("Power Platform Developer", "Power Platform", pp_tasks, mult=1.0,
+                               parallel_with=["Data Engineering", "Visualization Developer"]))
+
+    # ── Stream: Visualization Developer ──────────────────────────────────
+    if is_visualization:
+        viz_tasks = [
+            _task("Dashboard UX wireframes and mockups",                   "Visualization Dev", 6,  "Screen layouts, visual hierarchy, stakeholder sign-off"),
+            _task("Power BI data model review and connection setup",       "Visualization Dev", 4,  "Import vs DirectQuery, gateway, semantic model review"),
+            _task("Power BI report development — report pages",            "Visualization Dev", max(6, min(16, n_func * 2)),
+                  str(n_func) + " functional requirements → report pages"),
+            _task("DAX measures and calculated columns",                   "Visualization Dev", 8,  "KPI measures, time intelligence, % calculations"),
+            _task("Power BI Row-Level Security (RLS) configuration",       "Visualization Dev", 4,  "RLS roles, rules, testing across user personas"),
+            _task("Power BI Service deployment and workspace setup",       "Visualization Dev", 4,  "Dataset scheduled refresh, gateway, workspace permissions"),
+            _task("Report testing and stakeholder UAT",                    "Visualization Dev", 6,  "Accuracy checks, layout review, sign-off"),
+        ]
+        streams.append(_stream("Visualization Developer", "Visualization", viz_tasks, mult=1.0,
+                               parallel_with=["Data Engineering", "Power Platform Developer"]))
 
     # ── Stream 2: AI / ML ─────────────────────────────────────────────────
     if is_ai:

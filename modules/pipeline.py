@@ -8877,6 +8877,28 @@ def _render_correct_and_train_tab(r: dict, se: dict, te: dict):
                     st.markdown("<hr style='margin:4px 0;border-color:rgba(255,255,255,.06)'>",
                                 unsafe_allow_html=True)
 
+            # ── Dedup warnings ────────────────────────────────────────────
+            try:
+                from .training import find_similar_instructions as _fsi
+                _dedup_warnings = []
+                for _fr in final_rules:
+                    _instr = _fr.get("instruction", "").strip()
+                    if _instr:
+                        _matches = _fsi(_instr)
+                        if _matches:
+                            _dedup_warnings.append((_instr[:60] + "…", _matches[0]))
+                if _dedup_warnings:
+                    with st.expander(f"⚠️ {len(_dedup_warnings)} similar instruction(s) already exist — review before saving", expanded=True):
+                        for _new_short, _match in _dedup_warnings:
+                            st.markdown(
+                                f"**New:** {_new_short}  \n"
+                                f"**Existing (ID {_match['id']}, {int(_match['overlap']*100)}% overlap):** "
+                                f"{_match['instruction'][:120]}",
+                            )
+                        st.caption("Saving will ADD alongside the existing one. Use the Training tab to delete the old rule if you want to replace it.")
+            except Exception:
+                pass
+
             # ── Save / Save+Rerun ─────────────────────────────────────────
             btn_save, btn_rerun = st.columns(2)
             with btn_save:
@@ -8908,7 +8930,6 @@ def _render_correct_and_train_tab(r: dict, se: dict, te: dict):
                         st.session_state["_ct_extracted_rules"] = []
                         if _ct_types:
                             st.session_state["project_type_tags"] = _ct_types
-                        # Signal auto-rerun
                         st.session_state["_ct_rerun_pending"] = True
                         st.success("Rules saved! Click **Run BELLA** to regenerate with these rules applied.")
                     except Exception as _e:
@@ -8927,6 +8948,195 @@ def _render_correct_and_train_tab(r: dict, se: dict, te: dict):
                 "Every correction becomes a permanent training rule scoped to the project type you select.",
                 icon="🎓",
             )
+
+    # ══════════════════════════════════════════════════════════════════════
+    # EXCEL UPLOAD — compare real estimate vs BELLA, extract learning rules
+    # ══════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    with st.expander("📂 Upload Your Real Excel Estimate — Learn from the Gap", expanded=False):
+        st.caption(
+            "Upload the Excel you actually delivered to the client. "
+            "BELLA will compare it phase-by-phase against what it generated, "
+            "identify gaps, and propose training rules to close them."
+        )
+        _xl_file = st.file_uploader(
+            "Real estimate Excel (.xlsx / .xls)",
+            type=["xlsx", "xls"],
+            key="_ct_xl_upload",
+            label_visibility="collapsed",
+        )
+        if _xl_file:
+            from .training import parse_excel_estimate as _pxl
+            _xl_data = _pxl(_xl_file.read())
+            _xl_phases = _xl_data.get("phases", [])
+            _xl_total  = _xl_data.get("total_hours", 0)
+            _bella_total = safe_int(te.get("total_hours", 0))
+
+            if not _xl_phases:
+                st.warning("Could not parse phases from this Excel. Make sure it has phase/task names and hour columns.")
+            else:
+                # ── Summary KPIs ──────────────────────────────────────
+                kc1, kc2, kc3 = st.columns(3)
+                _delta_total = _xl_total - _bella_total
+                _delta_pct   = round(_delta_total / max(_bella_total, 1) * 100)
+                _delta_clr   = "#f87171" if _delta_total > 0 else "#06d6a0" if _delta_total < 0 else "#94a3b8"
+                with kc1:
+                    st.metric("BELLA Estimated", f"{_bella_total}h")
+                with kc2:
+                    st.metric("You Actually Delivered", f"{_xl_total}h")
+                with kc3:
+                    st.metric("Gap", f"{'+' if _delta_total >= 0 else ''}{_delta_total}h ({_delta_pct:+}%)")
+
+                # ── Phase comparison table ────────────────────────────
+                st.markdown('<div class="train-section-hdr" style="margin-top:14px">Phase-by-Phase Comparison</div>',
+                            unsafe_allow_html=True)
+
+                # Fuzzy-match BELLA phases to real phases by name overlap
+                _bella_phases_d = [safe_dict(p) for p in phases]
+
+                def _best_match(real_name, bella_phases):
+                    rw = set(real_name.lower().split())
+                    best, best_score = None, 0.0
+                    for bp in bella_phases:
+                        bw = set(safe_str(bp.get("name","")).lower().split())
+                        s  = len(rw & bw) / max(len(rw | bw), 1)
+                        if s > best_score:
+                            best, best_score = bp, s
+                    return best, best_score
+
+                _comp_rows = []
+                for xp in _xl_phases:
+                    rname = xp.get("phase", "")
+                    rh    = safe_int(xp.get("actual_hours", 0))
+                    bm, bscore = _best_match(rname, _bella_phases_d)
+                    bh = safe_int(bm.get("hours", 0)) if bm and bscore > 0.20 else 0
+                    bname = safe_str(bm.get("name", "—")) if bm and bscore > 0.20 else "— (not in BELLA)"
+                    delta = rh - bh
+                    _comp_rows.append({
+                        "Real Phase": rname, "BELLA Match": bname,
+                        "Real (h)": rh, "BELLA (h)": bh,
+                        "Gap (h)": delta,
+                    })
+
+                # Highlight missing BELLA phases (in BELLA but not matched by any real phase)
+                _matched_bella = {r["BELLA Match"] for r in _comp_rows if r["BELLA Match"] != "— (not in BELLA)"}
+                for bp in _bella_phases_d:
+                    bname = safe_str(bp.get("name",""))
+                    if bname not in _matched_bella:
+                        _comp_rows.append({
+                            "Real Phase": "— (you didn't include this)",
+                            "BELLA Match": bname,
+                            "Real (h)": 0,
+                            "BELLA (h)": safe_int(bp.get("hours", 0)),
+                            "Gap (h)": -safe_int(bp.get("hours", 0)),
+                        })
+
+                import pandas as _pd
+                _df = _pd.DataFrame(_comp_rows)
+
+                def _color_gap(val):
+                    if val > 0:   return "color:#f87171;font-weight:700"   # under-estimated
+                    if val < 0:   return "color:#06d6a0;font-weight:700"   # over-estimated
+                    return "color:#94a3b8"
+
+                st.dataframe(
+                    _df.style.applymap(_color_gap, subset=["Gap (h)"]),
+                    use_container_width=True, hide_index=True,
+                )
+
+                # ── Auto-generate rules from the comparison ───────────
+                st.markdown('<div class="train-section-hdr" style="margin-top:14px">🤖 Learn from This Gap</div>',
+                            unsafe_allow_html=True)
+
+                _xl_note = st.text_input(
+                    "Optional context (e.g. 'Client added scope mid-project' or 'We used offshore team')",
+                    key="_ct_xl_note",
+                    placeholder="Any context that explains the gap…",
+                )
+
+                if st.button("🎓 Extract Rules from Gap", key="_ct_xl_learn_btn", type="primary"):
+                    with st.spinner("Analysing gaps and extracting training rules…"):
+                        _gap_summary = "\n".join(
+                            f"  {r['Real Phase']} | BELLA: {r['BELLA (h)']}h | Actual: {r['Real (h)']}h | Gap: {r['Gap (h)']:+}h"
+                            for r in _comp_rows
+                        )
+                        _system = (
+                            "You are a training data engineer for BELLA, an AI presales estimation tool at ECI. "
+                            "Given a comparison between BELLA's estimate and the real estimate delivered, "
+                            "extract actionable training rules that would make BELLA more accurate next time. "
+                            "Focus on patterns: consistent under/over-estimation, missing phases, wrong roles. "
+                            "Rules must use DO / DO NOT / ALWAYS / MINIMUM / MAXIMUM language. "
+                            "Return ONLY valid JSON:\n"
+                            '{"rules": [{"instruction": "...", "category": "hours|streams|tasks|general"}]}'
+                        )
+                        _user_msg = (
+                            f"Project type: {proj_type}\n"
+                            f"Additional context: {_xl_note or 'none'}\n\n"
+                            f"Phase comparison (Real vs BELLA):\n{_gap_summary}\n\n"
+                            f"Overall gap: BELLA {_bella_total}h vs actual {_xl_total}h "
+                            f"({_delta_pct:+}%).\n\n"
+                            "Extract 2-6 specific training rules to improve future estimates."
+                        )
+                        _raw = _claude_raw_call(
+                            _system, [{"type": "text", "text": _user_msg}], max_tokens=900
+                        )
+                        try:
+                            _extracted = _j.loads(_raw)
+                            _xl_rules = [r for r in _extracted.get("rules", [])
+                                         if r.get("instruction", "").strip()]
+                        except Exception:
+                            _xl_rules = [{"instruction": _raw.strip(), "category": "general"}] if _raw.strip() else []
+
+                        st.session_state["_ct_xl_rules"] = _xl_rules
+
+                # ── Show extracted rules for review + save ────────────
+                _xl_rules_out = st.session_state.get("_ct_xl_rules", [])
+                if _xl_rules_out:
+                    st.markdown("**Extracted Rules — edit, then save:**")
+                    _xl_final = []
+                    _cats = ["general", "hours", "streams", "tasks"]
+                    for i, rule in enumerate(_xl_rules_out):
+                        _e = st.text_area(f"Rule {i+1}", value=rule.get("instruction",""),
+                                          key=f"_xl_rule_{i}", height=60)
+                        _c = st.selectbox("Category", _cats,
+                                          index=_cats.index(rule.get("category","general"))
+                                                if rule.get("category","general") in _cats else 0,
+                                          key=f"_xl_cat_{i}", label_visibility="collapsed")
+                        _xl_final.append({"instruction": _e, "category": _c})
+
+                    # Dedup check
+                    try:
+                        from .training import find_similar_instructions as _fsi
+                        for _fr in _xl_final:
+                            _ms = _fsi(_fr.get("instruction",""))
+                            if _ms:
+                                st.warning(
+                                    f"Similar existing rule (ID {_ms[0]['id']}, "
+                                    f"{int(_ms[0]['overlap']*100)}% overlap): "
+                                    f"_{_ms[0]['instruction'][:100]}_"
+                                )
+                    except Exception:
+                        pass
+
+                    _xl_types = st.multiselect(
+                        "Apply to project type:", _PT_BASE,
+                        default=saved_types, key="_ct_xl_types",
+                    )
+                    if st.button("💾 Save Rules from Excel Comparison", key="_ct_xl_save",
+                                 type="primary", use_container_width=True):
+                        try:
+                            from .training import add_instruction as _add_ti
+                            _saved = 0
+                            for rule in _xl_final:
+                                _instr = rule.get("instruction","").strip()
+                                if _instr:
+                                    _add_ti(_instr, category=rule.get("category","general"),
+                                            created_by="admin", project_types=_xl_types)
+                                    _saved += 1
+                            st.success(f"✅ {_saved} rules saved. Re-run BELLA to see the improvement.")
+                            st.session_state["_ct_xl_rules"] = []
+                        except Exception as _xe:
+                            st.error(f"Save failed: {_xe}")
 
 
 def show_results():
@@ -11317,7 +11527,7 @@ def _render_training_tab():
             _filtered = _tmp
 
         # Conflict detector
-        _cdc1, _cdc2 = st.columns([4, 1])
+        _cdc1, _cdc2, _cdc3 = st.columns([3, 1, 1])
         with _cdc1:
             st.caption(
                 f"Showing **{len(_filtered)}** of {len(_all_instrs)} instructions · "
@@ -11332,6 +11542,32 @@ def _render_training_tab():
             ):
                 with st.spinner("Analysing for conflicts…"):
                     _conflict_report = _detect_instruction_conflicts(_active_instrs)
+        with _cdc3:
+            if st.button(
+                "🔄 Consolidate",
+                key="_consolidate_btn",
+                disabled=len(_active_instrs) < 6,
+                help="AI merges similar/redundant instructions into one canonical rule per group. "
+                     "Requires at least 6 active instructions.",
+            ):
+                with st.spinner("Consolidating similar instructions…"):
+                    try:
+                        from .training import consolidate_instructions as _consol
+                        _cr = _consol()
+                        if _cr.get("skipped"):
+                            st.info("Not enough instructions to consolidate yet (need 6+).")
+                        elif _cr.get("error"):
+                            st.error(f"Consolidation failed: {_cr['error']}")
+                        elif _cr.get("groups_merged", 0) == 0:
+                            st.success("✅ No redundant groups found — instructions are already clean.")
+                        else:
+                            st.success(
+                                f"✅ Consolidated: {_cr['before']} → {_cr['after']} instructions "
+                                f"({_cr['groups_merged']} group{'s' if _cr['groups_merged'] != 1 else ''} merged)."
+                            )
+                            st.rerun()
+                    except Exception as _ce:
+                        st.error(f"Consolidation error: {_ce}")
                 st.session_state["_conflict_report"] = _conflict_report
 
         if st.session_state.get("_conflict_report"):

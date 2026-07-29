@@ -278,6 +278,116 @@ def parse_excel_estimate(file_bytes: bytes) -> dict:
     return {"total_hours": total_hours, "total_cost": total_cost, "phases": phases}
 
 
+def find_similar_instructions(new_text: str, project_types: list = None) -> list:
+    """
+    Fast text-overlap check — no AI call, no latency.
+    Returns list of existing instructions with word-overlap > 50% with new_text.
+    Each entry: {"id": int, "instruction": str, "overlap": float}
+    """
+    new_words = set(new_text.lower().split())
+    if len(new_words) < 4:
+        return []
+    con = sqlite3.connect(_DB_PATH)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute(
+        "SELECT id, instruction, project_types FROM training_instructions WHERE active=1"
+    ).fetchall()]
+    con.close()
+    matches = []
+    for row in rows:
+        ex_words = set(row["instruction"].lower().split())
+        if not ex_words:
+            continue
+        overlap = len(new_words & ex_words) / max(len(new_words | ex_words), 1)
+        if overlap > 0.50:
+            matches.append({"id": row["id"], "instruction": row["instruction"], "overlap": round(overlap, 2)})
+    return sorted(matches, key=lambda x: x["overlap"], reverse=True)
+
+
+def consolidate_instructions(project_types: list = None) -> dict:
+    """
+    AI pass: group similar/overlapping instructions and replace each group
+    with one canonical merged rule. Returns {"before": int, "after": int, "groups_merged": int}.
+    Skips if fewer than 6 instructions (nothing useful to consolidate).
+    """
+    con = sqlite3.connect(_DB_PATH)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute(
+        "SELECT id, instruction, category, project_types FROM training_instructions WHERE active=1 ORDER BY id ASC"
+    ).fetchall()]
+    con.close()
+
+    if len(rows) < 6:
+        return {"before": len(rows), "after": len(rows), "groups_merged": 0, "skipped": True}
+
+    try:
+        from .ai_clients import AnthropicAI
+        client = AnthropicAI.from_session()
+        if not client.is_live:
+            return {"before": len(rows), "after": len(rows), "groups_merged": 0, "error": "AI offline"}
+    except Exception as e:
+        return {"before": len(rows), "after": len(rows), "groups_merged": 0, "error": str(e)}
+
+    instrs_text = "\n".join(
+        f"[ID:{r['id']}][{r['category']}] {r['instruction']}" for r in rows
+    )
+    system = (
+        "You consolidate training instructions for an AI estimation tool. "
+        "Find groups of instructions that are redundant, overlapping, or say the same thing differently. "
+        "For each group, write ONE canonical instruction that captures the intent of all members. "
+        "DO NOT group instructions about different topics just because they are related. "
+        "Only group if two+ instructions are genuinely redundant (merging them loses no information). "
+        "Singleton instructions (no overlap with others) must NOT appear in any group. "
+        "Return ONLY valid JSON (no markdown):\n"
+        '{"groups": [{"canonical": "...", "category": "general|hours|streams|tasks", '
+        '"ids_to_replace": [int, ...]}]}'
+    )
+    result = client._call(system, instrs_text, max_tokens=1200)
+
+    if not (result and isinstance(result, dict) and "groups" in result):
+        return {"before": len(rows), "after": len(rows), "groups_merged": 0, "error": "AI returned no groups"}
+
+    groups = [g for g in result.get("groups", []) if len(g.get("ids_to_replace", [])) >= 2]
+    if not groups:
+        return {"before": len(rows), "after": len(rows), "groups_merged": 0}
+
+    ids_by_row = {r["id"]: r for r in rows}
+    ids_to_disable = []
+    new_entries = []
+    for g in groups:
+        canonical = (g.get("canonical") or "").strip()
+        cat = g.get("category", "general")
+        ids = [i for i in g.get("ids_to_replace", []) if i in ids_by_row]
+        if not canonical or len(ids) < 2:
+            continue
+        # Inherit project_types from the first matched instruction
+        pts = []
+        try:
+            pts = json.loads(ids_by_row[ids[0]].get("project_types") or "[]")
+        except Exception:
+            pass
+        ids_to_disable.extend(ids)
+        new_entries.append((canonical, cat, pts))
+
+    if not ids_to_disable:
+        return {"before": len(rows), "after": len(rows), "groups_merged": 0}
+
+    con = sqlite3.connect(_DB_PATH)
+    for id_ in set(ids_to_disable):
+        con.execute("UPDATE training_instructions SET active=0 WHERE id=?", (id_,))
+    for canonical, cat, pts in new_entries:
+        con.execute(
+            "INSERT INTO training_instructions (created_at, instruction, category, created_by, project_types) "
+            "VALUES (?,?,?,?,?)",
+            (datetime.utcnow().isoformat(), canonical, cat, "system-consolidation", json.dumps(pts))
+        )
+    con.commit()
+    con.close()
+
+    after = len(rows) - len(set(ids_to_disable)) + len(new_entries)
+    return {"before": len(rows), "after": after, "groups_merged": len(new_entries)}
+
+
 def _parse_df(df) -> dict:
     total_hours = 0
     total_cost  = 0

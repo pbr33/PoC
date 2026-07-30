@@ -8436,11 +8436,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     _state = st.session_state.get(f"{_RK}_state", "idle")
     _busy  = _state in ("reviewing", "fixing", "fix_selected", "ask_agent")
 
-    # ── Auto-trigger fallback: if pipeline didn't launch review (e.g. Claude was blocked
-    #    at pipeline time but is now live), try once from here ──
-    if not st.session_state.get("est_review_auto_done", True) and _state == "idle" and not _busy:
-        _launch_bg_review(te, se)
-        _state = st.session_state.get(f"{_RK}_state", "idle")
+    # Review is manual-only after results load — no auto-trigger here.
 
     # ── Header row (always visible) ───────────────────────────────────
     _h1, _h2 = st.columns([5, 2])
@@ -8485,36 +8481,19 @@ def _render_estimate_review(te: dict, se: dict) -> None:
         _is_auto_review = not st.session_state.get(f"{_RK}_manual", False)
 
         if _is_auto_review:
-            # ── Auto-review: running silently in background during pipeline ──
-            # Thread writes directly to est_review_result/est_review_state when done.
+            # ── Auto-review: background thread launched during pipeline ──
+            # If thread already finished → rerun once to show results.
+            # If still running → fall through to idle so user sees "Review Now"
+            # button normally; results will appear on the next natural interaction.
             if not st.session_state.get(f"{_RK}_thread_active", False):
-                # Thread finished — rerun once to display results
                 try:
                     st.rerun(scope="fragment")
                 except Exception:
                     st.rerun()
                 return
-            # Still running — show status badge, then check again in 1 s
-            # (1 s is short enough to feel responsive, light enough not to hammer)
-            st.markdown(
-                '<div style="display:inline-flex;align-items:center;gap:8px;'
-                'font-size:.72rem;color:#94a3b8;padding:5px 12px;margin-bottom:10px;'
-                'background:rgba(123,97,255,.07);border:1px solid rgba(123,97,255,.18);'
-                'border-radius:20px;">'
-                '<span style="width:7px;height:7px;border-radius:50%;background:#7b61ff;'
-                'animation:_rv_pulse 1.4s ease-in-out infinite"></span>'
-                '<span>AI review running in background — results appear here automatically</span>'
-                '<style>@keyframes _rv_pulse{0%,100%{opacity:.25;transform:scale(.8)}'
-                '50%{opacity:1;transform:scale(1.15)}}</style>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            time.sleep(1)
-            try:
-                st.rerun(scope="fragment")
-            except Exception:
-                st.rerun()
-            return
+            # Thread still running — reset to idle so results tab is unblocked
+            _state = "idle"
+            st.session_state[f"{_RK}_state"] = "idle"
 
         # ── Manual "Review Now" — show full loader, run single-pass thread ──
         if not st.session_state.get(f"{_RK}_thread_active"):

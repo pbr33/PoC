@@ -8509,11 +8509,16 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                 except Exception:
                     st.rerun()
                 return
-            # Thread still running — reset to idle and fall through to idle body.
-            # Do NOT fall through to the loader block below (that's manual-only).
-            _state = "idle"
+            # Thread still running — reset to idle and rerun immediately.
+            # _busy was already computed as True in this pass (state was "reviewing"),
+            # so the button is disabled in this render. Rerun so next pass computes
+            # _busy=False and renders the button as enabled.
             st.session_state[f"{_RK}_state"] = "idle"
-            # intentional: no return here; fall through to idle/done body below
+            try:
+                st.rerun(scope="fragment")
+            except Exception:
+                st.rerun()
+            return
 
         else:
             # ── Manual "Review Now" only — show full loader, run single-pass thread ──

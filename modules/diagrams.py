@@ -3606,7 +3606,41 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
 
     # ── Diagram available ─────────────────────────────────────────────
     if _cv_html:
-        st.components.v1.html(_cv_html, height=1080, scrolling=True)
+        # Inject a floating "Save as PNG" button using html2canvas (CDN loaded by browser)
+        _PNG_BTN = (
+            '<script>(function(){'
+            'var s=document.createElement("script");'
+            's.src="https://html2canvas.hertzen.com/dist/html2canvas.min.js";'
+            's.onload=function(){'
+            'var btn=document.createElement("button");'
+            'btn.innerHTML="&#128248; Save as PNG";'
+            'btn.title="Download diagram as PNG image (2\xd7 resolution)";'
+            'btn.style.cssText="position:fixed;bottom:20px;right:20px;z-index:99999;'
+            'background:linear-gradient(135deg,#7b61ff,#00b4d8);color:#fff;border:none;'
+            'padding:10px 16px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;'
+            'letter-spacing:.3px;box-shadow:0 4px 15px rgba(123,97,255,.5);'
+            'font-family:Segoe UI,system-ui,sans-serif;transition:opacity .2s";'
+            'btn.onmouseenter=function(){this.style.opacity=".8"};'
+            'btn.onmouseleave=function(){this.style.opacity="1"};'
+            'btn.onclick=function(){'
+            'var me=this;me.disabled=true;me.innerHTML="&#9203; Capturing&hellip;";'
+            'var ts=new Date().toISOString().replace(/[:.]/g,"").slice(0,15);'
+            'html2canvas(document.body,{scale:2,useCORS:true,allowTaint:true,'
+            'backgroundColor:"#080c18",logging:false}).then(function(c){'
+            'var a=document.createElement("a");'
+            'a.download="ECI_Vision_"+ts+".png";'
+            'a.href=c.toDataURL("image/png");a.click();'
+            'me.disabled=false;me.innerHTML="&#128248; Save as PNG";'
+            '}).catch(function(){me.disabled=false;me.innerHTML="&#128248; Save as PNG";});'
+            '};document.body.appendChild(btn);};'
+            'document.head.appendChild(s);'
+            '})();</script>'
+        )
+        _cv_html_png = (
+            _cv_html.replace("</body>", _PNG_BTN + "</body>", 1)
+            if "</body>" in _cv_html else _cv_html + _PNG_BTN
+        )
+        st.components.v1.html(_cv_html_png, height=1080, scrolling=True)
         from datetime import datetime as _dt2
         _cv1, _cv2, _cv3, _cv4 = st.columns(4)
         with _cv1:
@@ -3645,6 +3679,8 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
                 st.session_state["_arch_vision_show_loader"] = True
                 st.rerun(scope="fragment")
         st.info(
+            "**📸 Save as PNG:** Click the floating **Save as PNG** button in the bottom-right "
+            "corner of the diagram above (requires internet access to load the export library).  \n"
             "**To import into Lucidchart:** Download the `.drawio` file → "
             "in Lucidchart go to **File → Import → diagrams.net** and select the file.",
             icon="💡",

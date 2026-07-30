@@ -916,8 +916,8 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
             for _c in azure_costs:
                 if _c.get("service") == "Azure API Management" and _c.get("tier") != "Premium":
                     _c["tier"]         = "Premium"
-                    _c["monthly_cost"] = 936
-                    _c["description"]  = "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"
+                    _c["monthly_cost"] = 2795
+                    _c["description"]  = "~$3.83/hr × 730 hrs; Premium tier, 1 unit (Azure list price)"
                     _c["_locked_cost"] = True
                     break
 

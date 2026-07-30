@@ -171,7 +171,7 @@ _INFRA_COST_CATALOG = {
     "Azure Key Vault":        ("Standard",              1,    "$0.03/10K operations; secrets + managed identities"),
     "Azure AD / Entra ID":    ("Premium P1",            6,    "$6/user/mo; conditional access + MFA"),
     # ── Integration / Messaging ──────────────────────────────────────────────
-    "Azure API Management":   ("Basic",                 147,  "$0.201/hr x 730 hrs; Basic tier, 1 unit"),
+    "Azure API Management":   ("Basic",                 147,  "$0.201/hr × 730 hrs; Basic v2 tier, 1 unit"),
     "Azure Service Bus":      ("Standard",              10,   "$10/mo base; first 13M operations/mo included"),
     "Azure Event Hubs":       ("Standard 1 TU",         40,   "$10/TU/mo + $0.028/million events; 1 TU standard"),
     "Azure Logic Apps":       ("Consumption",           15,   "$0.000025/action; ~600K actions/mo typical"),
@@ -195,14 +195,11 @@ _INFRA_COST_CATALOG = {
 # First matching rule wins (ordered high→low tier).
 _TIER_UPGRADE_SIGNALS: dict = {
     "Azure API Management": [
-        (["premium apim", "apim premium", "api management premium", "zone redundan",
-          "multi-region apim", "vnet injection", "internal mode apim", "private endpoint apim",
-          "apim v2 premium", "apim enterprise", "api management - premium",
-          "api management (premium", "apim - premium", "premium tier apim",
-          "apim premium tier", "management premium tier"],
-         "Premium", 936, "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"),
+        (["premium", "zone redundan", "multi-region", "vnet injection", "internal mode",
+          "private endpoint apim", "apim premium", "apim enterprise", "apim v2 premium"],
+         "Premium", 2795, "~$3.83/hr × 730 hrs; Premium tier, 1 unit (Azure list price)"),
         (["apim standard", "apim v2 standard", "api management standard", "standard apim"],
-         "Standard", 224, "~$0.307/hr × 730 hrs; Standard tier, 1 unit"),
+         "Standard", 449, "~$0.615/hr × 730 hrs; Standard v2 tier, 1 unit"),
     ],
     "Azure AI Search": [
         (["s2 ", "standard s2", "semantic ranker high", "high throughput search"],

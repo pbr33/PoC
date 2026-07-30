@@ -188,7 +188,6 @@ _INFRA_COST_CATALOG = {
     "Power Apps":             ("Per-app plan",          10,   "$10/user/mo × 1 app per user"),
     # ── Misc ─────────────────────────────────────────────────────────────────
     "SignalR":                ("Standard S1",           50,   "$50/mo; 1 unit, 1K concurrent connections"),
-    "Azure API Management":   ("Basic",                 147,  "$0.201/hr x 730 hrs; Basic tier, 1 unit"),
 }
 
 # Tier upgrade rules: when scope text contains any signal keyword, use higher tier + price.

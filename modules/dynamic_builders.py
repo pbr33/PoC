@@ -798,15 +798,28 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
     # Build from mandated if available; otherwise use full stack minus confirmed source systems
     build_tech  = mandated if mandated else [t for t in all_tech if t not in source_sys]
 
+    def _tech_matches_catalog(tech_name: str, catalog_name: str) -> bool:
+        """True when tech_name refers to catalog_name via exact match, keyword overlap, or tech-catalog aliases."""
+        tn = tech_name.lower()
+        cn = catalog_name.lower()
+        if tn == cn:
+            return True
+        # Catalog key words (>3 chars) all present in tech name
+        if all(w in tn for w in cn.split() if len(w) > 3):
+            return True
+        # Tech-catalog alias keywords (e.g. "apim", "api management" → "Azure API Management")
+        aliases = _TECH_CATALOG.get(catalog_name, [])
+        if any(alias in tn for alias in aliases):
+            return True
+        return False
+
     azure_costs = []
     seen = set()
     for tech_name in build_tech:
         for catalog_name, (tier, base_monthly, desc) in _INFRA_COST_CATALOG.items():
             if catalog_name in seen:
                 continue
-            # Exact match preferred, then keyword overlap
-            if tech_name.lower() == catalog_name.lower() or \
-               all(w in tech_name.lower() for w in catalog_name.lower().split() if len(w) > 3):
+            if _tech_matches_catalog(tech_name, catalog_name):
                 _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
                 azure_costs.append({"service": catalog_name, "tier": _tier,
                                     "monthly_cost": _monthly, "description": _desc,
@@ -820,8 +833,7 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
         for catalog_name, (tier, base_monthly, desc) in _INFRA_COST_CATALOG.items():
             if catalog_name in seen:
                 continue
-            if tech_name.lower() == catalog_name.lower() or \
-               all(w in tech_name.lower() for w in catalog_name.lower().split() if len(w) > 3):
+            if _tech_matches_catalog(tech_name, catalog_name):
                 _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
                 azure_costs.append({"service": catalog_name, "tier": _tier,
                                     "monthly_cost": _monthly, "description": _desc,

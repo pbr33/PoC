@@ -8527,7 +8527,10 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                     st.session_state[f"{_RK}_state"]         = "reviewing"
                     st.session_state[f"{_RK}_thread_active"] = False
                     st.session_state.pop(f"{_RK}_result_holder", None)
-                    st.rerun(scope="fragment")
+                    try:
+                        st.rerun(scope="fragment")
+                    except Exception:
+                        st.rerun()
                 elif _cur_auto_pass == 2:
                     # Pass 2 done — merge with pass 1 and show final result
                     _p1 = safe_dict(st.session_state.pop(f"{_RK}_pass1_result", {}))
@@ -8537,14 +8540,20 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                     st.session_state[f"{_RK}_auto_pass"]     = 0
                     st.session_state[f"{_RK}_thread_active"] = False
                     st.session_state.pop(f"{_RK}_result_holder", None)
-                    st.rerun(scope="fragment")
+                    try:
+                        st.rerun(scope="fragment")
+                    except Exception:
+                        st.rerun()
                 else:
                     # Manual single-pass review
                     st.session_state[f"{_RK}_result"]        = _holder[1]
                     st.session_state[f"{_RK}_state"]         = "done"
                     st.session_state[f"{_RK}_thread_active"] = False
                     st.session_state.pop(f"{_RK}_result_holder", None)
-                    st.rerun(scope="fragment")
+                    try:
+                        st.rerun(scope="fragment")
+                    except Exception:
+                        st.rerun()
             else:
                 st.session_state[f"{_RK}_error"]         = _holder[1]
                 st.session_state[f"{_RK}_state"]         = "idle"
@@ -8552,13 +8561,19 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                 st.session_state[f"{_RK}_thread_active"] = False
                 st.session_state.pop(f"{_RK}_result_holder", None)
                 st.session_state.pop(f"{_RK}_pass1_result", None)
-                st.rerun(scope="fragment")
+                try:
+                    st.rerun(scope="fragment")
+                except Exception:
+                    st.rerun()
             return
 
         # Thread still running — sleep(0.3) releases GIL so the asyncio
         # event loop can flush the loader delta to the browser before waking
         time.sleep(0.3)
-        st.rerun(scope="fragment")
+        try:
+            st.rerun(scope="fragment")
+        except Exception:
+            st.rerun()
         return
 
     # ── STATE: fixing ─────────────────────────────────────────────────

@@ -3917,6 +3917,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 
     # ── Launch estimate review in background now (runs during cost/risk/arch steps) ──
     _launch_bg_review(time_est, semantic)
+    log_agent("Review", "⟳ 2-pass AI review running in background…")
 
     _upd(5, "Calculating infrastructure cost…", 50)
     cost_est = ai_cost.estimate_cost(semantic, time_est, rag)
@@ -3999,6 +4000,14 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     except Exception as _fin_ex:
         log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
 
+    # ── Review status at pipeline end ────────────────────────────────────
+    if st.session_state.get("est_review_state") == "done":
+        _rv = safe_dict(st.session_state.get("est_review_result", {}))
+        _sc = safe_int(_rv.get("score", 0))
+        _nf = len(safe_list(_rv.get("findings", [])))
+        log_agent("Review", f"✓ Complete — score {_sc}/100, {_nf} finding{'s' if _nf != 1 else ''}")
+    elif st.session_state.get("est_review_thread_active"):
+        log_agent("Review", "⟳ Still running — see Time tab when ready")
     _render_live_log(); time.sleep(0.2)
 
     pb.progress(100)
@@ -8198,9 +8207,13 @@ def _launch_bg_review(te: dict, se: dict) -> None:
             merged = _merge_review_passes(p1, p2)
             st.session_state[f"{_RK}_result"]        = merged
             st.session_state[f"{_RK}_state"]         = "done"
+            _n_findings = len(safe_list(merged.get("findings", [])))
+            _score = safe_int(merged.get("score", 0))
+            log_agent("Review", f"✓ Done — score {_score}/100, {_n_findings} finding{'s' if _n_findings != 1 else ''} — see Time tab")
         except Exception as _ex:
             st.session_state[f"{_RK}_error"]         = str(_ex)
             st.session_state[f"{_RK}_state"]         = "idle"
+            log_agent("Review", f"⚠ Review failed: {str(_ex)[:80]}")
         finally:
             st.session_state[f"{_RK}_auto_pass"]     = 0
             st.session_state[f"{_RK}_thread_active"] = False
@@ -8473,31 +8486,30 @@ def _render_estimate_review(te: dict, se: dict) -> None:
 
         if _is_auto_review:
             # ── Auto-review: running silently in background during pipeline ──
-            # The _launch_bg_review thread handles both passes and writes directly
-            # to est_review_result/est_review_state when done.
-            # Check if it finished; if not, show a small non-blocking badge and
-            # poll every 5 s (not 300 ms) so the UI stays fully usable.
+            # Thread writes directly to est_review_result/est_review_state when done.
             if not st.session_state.get(f"{_RK}_thread_active", False):
-                # Thread finished — transition happened inside the thread; rerun once to display
+                # Thread finished — rerun once to display results
                 try:
                     st.rerun(scope="fragment")
                 except Exception:
                     st.rerun()
                 return
-            # Still running — tiny status chip, no blocking loader
+            # Still running — show status badge, then check again in 1 s
+            # (1 s is short enough to feel responsive, light enough not to hammer)
             st.markdown(
-                '<div style="display:inline-flex;align-items:center;gap:6px;'
-                'font-size:.7rem;color:#64748b;padding:4px 10px;margin-bottom:8px;'
-                'background:rgba(123,97,255,.06);border:1px solid rgba(123,97,255,.15);'
+                '<div style="display:inline-flex;align-items:center;gap:8px;'
+                'font-size:.72rem;color:#94a3b8;padding:5px 12px;margin-bottom:10px;'
+                'background:rgba(123,97,255,.07);border:1px solid rgba(123,97,255,.18);'
                 'border-radius:20px;">'
-                '<span style="width:6px;height:6px;border-radius:50%;background:#7b61ff;'
-                'animation:erv_b 1.2s ease-in-out infinite"></span>'
-                'Estimate review running in background…'
-                '<style>@keyframes erv_b{0%,60%,100%{opacity:.3}30%{opacity:1}}</style>'
+                '<span style="width:7px;height:7px;border-radius:50%;background:#7b61ff;'
+                'animation:_rv_pulse 1.4s ease-in-out infinite"></span>'
+                '<span>AI review running in background — results appear here automatically</span>'
+                '<style>@keyframes _rv_pulse{0%,100%{opacity:.25;transform:scale(.8)}'
+                '50%{opacity:1;transform:scale(1.15)}}</style>'
                 '</div>',
                 unsafe_allow_html=True,
             )
-            time.sleep(5)
+            time.sleep(1)
             try:
                 st.rerun(scope="fragment")
             except Exception:

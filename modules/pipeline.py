@@ -3503,7 +3503,7 @@ def run_pipeline(files, pre_extracted_text: str = "", source_label: str = ""):
     _PIPE_STEPS = [
         "Ingest", "Intelligence", "Semantic", "RAG",
         "Time", "Cost", "Risk", "Architecture",
-        "Scope", "Proposal", "Diagrams", "Discovery", "Finalize",
+        "Scope", "Proposal", "Diagrams", "Discovery", "Finalize", "Review",
     ]
     pb      = st.progress(0)
     stepper = st.empty()
@@ -4000,14 +4000,30 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     except Exception as _fin_ex:
         log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
 
-    # ── Review status at pipeline end ────────────────────────────────────
+    # ── Step 13: Wait for background review before showing results ───────
+    _upd(13, "Waiting for estimate review to complete…", 99)
+    _rv_wait_max = 120   # seconds
+    _rv_waited   = 0
+    while st.session_state.get("est_review_thread_active", False) and _rv_waited < _rv_wait_max:
+        stepper.markdown(
+            _pipeline_stepper_html(_PIPE_STEPS, 13),
+            unsafe_allow_html=True,
+        )
+        status.markdown(
+            f'<div style="font-family:\'DM Sans\',sans-serif;font-size:.82rem;color:var(--t2);'
+            f'padding:4px 0">⟳ Estimate review in progress… ({_rv_waited}s elapsed)</div>',
+            unsafe_allow_html=True,
+        )
+        time.sleep(2)
+        _rv_waited += 2
+
     if st.session_state.get("est_review_state") == "done":
         _rv = safe_dict(st.session_state.get("est_review_result", {}))
         _sc = safe_int(_rv.get("score", 0))
         _nf = len(safe_list(_rv.get("findings", [])))
         log_agent("Review", f"✓ Complete — score {_sc}/100, {_nf} finding{'s' if _nf != 1 else ''}")
-    elif st.session_state.get("est_review_thread_active"):
-        log_agent("Review", "⟳ Still running — see Time tab when ready")
+    else:
+        log_agent("Review", "⚠ Review did not complete in time — click Review Now in Time tab")
     _render_live_log(); time.sleep(0.2)
 
     pb.progress(100)

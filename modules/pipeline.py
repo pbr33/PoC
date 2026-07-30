@@ -7264,6 +7264,201 @@ def _render_estimate_chat(te: dict, se: dict) -> None:
                 st.rerun(scope="fragment")
 
 
+@st.fragment
+def _render_estimate_patch_chat(te: dict, se: dict) -> None:
+    """Conversational chat that lets the user type corrections and immediately patches the estimate."""
+    _RK = "epatch"
+    _state = st.session_state.get(f"{_RK}_state", "idle")
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    st.markdown(
+        '<div style="margin:22px 0 0;padding:14px 18px;'
+        'background:rgba(0,212,170,.06);border:1px solid rgba(0,212,170,.18);'
+        'border-radius:12px 12px 0 0">'
+        '<div style="font-size:.8rem;font-weight:800;color:#00d4aa;letter-spacing:.5px">'
+        '✏️ EDIT ESTIMATE WITH CHAT</div>'
+        '<div style="font-size:.7rem;color:#64748b;margin-top:2px">'
+        'Type a correction and the agent updates the estimate instantly — no full re-run needed.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div style="background:rgba(0,212,170,.03);border:1px solid rgba(0,212,170,.12);'
+        'border-left:none;border-top:none;border-radius:0 0 12px 12px;padding:16px 18px 10px">',
+        unsafe_allow_html=True,
+    )
+
+    # ── STATE: interpreting ────────────────────────────────────────────────────
+    if _state == "interpreting":
+        _pending_msg = safe_str(st.session_state.get(f"{_RK}_pending_msg", ""))
+        st.markdown(
+            f'<div style="background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.22);'
+            f'border-radius:10px;padding:22px 20px;text-align:center;margin-bottom:12px">'
+            f'<div style="font-size:1.5rem;margin-bottom:8px">✏️</div>'
+            f'<div style="font-size:.88rem;font-weight:800;color:#00d4aa;margin-bottom:5px">'
+            f'Agent Updating Estimate…</div>'
+            f'<div style="font-size:.72rem;color:#64748b;margin-bottom:14px">'
+            f'{_pending_msg[:80]}'
+            f'</div>'
+            f'<div style="display:flex;justify-content:center;gap:8px">'
+            f'<div style="width:8px;height:8px;border-radius:50%;background:#00d4aa;'
+            f'animation:epch_b 1.2s ease-in-out infinite 0s"></div>'
+            f'<div style="width:8px;height:8px;border-radius:50%;background:#00d4aa;'
+            f'animation:epch_b 1.2s ease-in-out infinite .2s"></div>'
+            f'<div style="width:8px;height:8px;border-radius:50%;background:#00d4aa;'
+            f'animation:epch_b 1.2s ease-in-out infinite .4s"></div>'
+            f'</div>'
+            f'<style>@keyframes epch_b{{0%,60%,100%{{transform:translateY(0);opacity:.4}}'
+            f'30%{{transform:translateY(-8px);opacity:1}}}}</style>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Run synchronously (blocking) — then full rerun refreshes all charts
+        _msgs = st.session_state.setdefault(f"{_RK}_msgs", [])
+        _response_text = ""
+        try:
+            _phases = safe_list(
+                st.session_state.processing_results.get("time_estimate", {}).get("phases", [])
+            )
+            _stream_names = [safe_str(safe_dict(p).get("name", "")) for p in _phases]
+            _stream_list  = "\n".join(f"  - {n}" for n in _stream_names if n)
+            _hours_summary = "\n".join(
+                f"  - {safe_str(safe_dict(p).get('name',''))}: "
+                f"{safe_int(safe_dict(p).get('hours',0))}h "
+                f"({safe_int(safe_dict(p).get('tasks_count', len(safe_list(safe_dict(p).get('tasks',[])))))} tasks)"
+                for p in _phases if safe_str(safe_dict(p).get('name',''))
+            )
+
+            _interp_prompt = (
+                f"Current estimate streams:\n{_stream_list}\n\n"
+                f"Hours per stream:\n{_hours_summary}\n\n"
+                f"User instruction: {_pending_msg}\n\n"
+                "Interpret the instruction and return a JSON object describing what to change.\n"
+                "Supported fix types:\n"
+                '  remove_stream  → {"type":"remove_stream","data":{"stream_name":"<exact name>"}}\n'
+                '  adjust_hours   → {"type":"adjust_hours","data":{"stream_name":"<exact name>","factor":<float e.g. 0.8 = -20%, 1.3 = +30%>}}\n'
+                '  add_tasks      → {"type":"add_tasks","data":{"stream_name":"<exact name>","requirement_title":"<short description>"}}\n'
+                "Use fuzzy name matching — if the user says 'DevOps' and the stream is 'DevOps & Infra', match it.\n"
+                "You may return multiple fixes in sequence (e.g. adjust hours then add tasks).\n\n"
+                "Return ONLY this JSON (no markdown fences):\n"
+                '{"fixes":[{"type":"<fix_type>","data":{...},"explanation":"one sentence"}],'
+                '"summary":"one sentence describing all changes combined"}'
+            )
+
+            _ai = _pick_ai_for("default")
+            _raw = (_ai.call_raw_text(
+                "You are a delivery estimation assistant. Interpret the user instruction and "
+                "return ONLY valid JSON with no markdown fences.",
+                _interp_prompt,
+                max_tokens=1500,
+            ) or "").strip()
+
+            if _raw.startswith("```"):
+                _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
+
+            _parsed = json.loads(_raw)
+            _fixes  = safe_list(_parsed.get("fixes", []))
+            _summary = safe_str(_parsed.get("summary", "Changes applied."))
+
+            if not _fixes:
+                _response_text = "I couldn't determine what to change. Try being more specific — e.g. *\"remove the SharePoint stream\"* or *\"cut DevOps hours by 20%\"*."
+            else:
+                _applied = []
+                for _fx in _fixes:
+                    _fxd = safe_dict(_fx)
+                    _ft  = safe_str(_fxd.get("type", ""))
+                    _fd  = safe_dict(_fxd.get("data", {}))
+                    _expl = safe_str(_fxd.get("explanation", ""))
+                    if _ft in ("remove_stream", "adjust_hours", "add_tasks"):
+                        _apply_estimate_fix(_ft, _fd)
+                        _applied.append(f"• {_expl}" if _expl else f"• Applied `{_ft}`")
+                    # Prevent auto-correct re-firing on updated total
+                    _new_total = safe_int(
+                        st.session_state.processing_results.get("time_estimate", {}).get("total_hours", 0)
+                    )
+                    st.session_state[f"_autocorr_done_{_new_total}"] = True
+
+                _bullet_list = "\n".join(_applied)
+                _response_text = f"**{_summary}**\n\n{_bullet_list}"
+                # Clear existing review so user re-audits on updated estimate
+                st.session_state.pop("est_review_result", None)
+                st.session_state.pop("est_review_error",  None)
+
+        except json.JSONDecodeError:
+            _response_text = "Agent returned an unexpected format. Please try rephrasing your instruction."
+        except Exception as _ex:
+            _response_text = f"Could not apply change: {str(_ex)[:180]}"
+
+        _msgs.append({"role": "assistant", "content": _response_text})
+        st.session_state[f"{_RK}_state"] = "idle"
+        st.session_state.pop(f"{_RK}_pending_msg", None)
+
+        if "**" in _response_text and "Could not" not in _response_text and "unexpected" not in _response_text:
+            show_toast("✅ Estimate updated — charts refreshed below.", "success")
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.rerun()   # full rerun — refreshes KPIs, Gantt, charts
+        else:
+            st.rerun(scope="fragment")
+        return
+
+    # ── STATE: idle — render chat interface ───────────────────────────────────
+    _msgs = st.session_state.setdefault(f"{_RK}_msgs", [])
+
+    # Suggestion chips when chat is empty
+    if not _msgs:
+        st.markdown(
+            '<div style="font-size:.72rem;color:#64748b;margin-bottom:8px">'
+            'Try one of these or type your own:</div>',
+            unsafe_allow_html=True,
+        )
+        _chips = [
+            "Remove the SharePoint stream",
+            "Cut DevOps hours by 20%",
+            "Increase Data Engineering by 1 week",
+            "Add security testing tasks to QA",
+        ]
+        _chip_cols = st.columns(2)
+        for _ci, _chip in enumerate(_chips):
+            with _chip_cols[_ci % 2]:
+                if st.button(_chip, key=f"{_RK}_chip_{_ci}", width="stretch"):
+                    st.session_state[f"{_RK}_pending_chip"] = _chip
+                    st.rerun(scope="fragment")
+        _pending_chip = st.session_state.pop(f"{_RK}_pending_chip", None)
+        if _pending_chip:
+            _msgs.append({"role": "user", "content": _pending_chip})
+            st.session_state[f"{_RK}_pending_msg"] = _pending_chip
+            st.session_state[f"{_RK}_state"] = "interpreting"
+            st.rerun(scope="fragment")
+
+    # Chat history
+    for _m in _msgs:
+        with st.chat_message(_m["role"]):
+            st.markdown(_m["content"])
+
+    # Chat input
+    _user_in = st.chat_input(
+        "E.g. 'Remove the SharePoint stream' or 'Cut DevOps hours by 25%'…",
+        key=f"{_RK}_input",
+    )
+
+    if _user_in:
+        _msgs.append({"role": "user", "content": _user_in})
+        st.session_state[f"{_RK}_pending_msg"] = _user_in
+        st.session_state[f"{_RK}_state"] = "interpreting"
+        st.rerun(scope="fragment")
+
+    if _msgs:
+        _cc1, _cc2 = st.columns([5, 1])
+        with _cc2:
+            if st.button("🗑️ Clear", key=f"{_RK}_clear", type="secondary", width="stretch"):
+                st.session_state[f"{_RK}_msgs"] = []
+                st.rerun(scope="fragment")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def _recalc_estimate(phases: list) -> dict:
     """Recompute all derived fields from a phases list — same formulas as _build_dynamic_time."""
     _OVERHEAD = {"Discovery", "Documentation", "PM", "QA"}
@@ -10224,7 +10419,7 @@ def show_results():
         # ── Agent review ──────────────────────────────────────────────
         _render_estimate_review(te, se)
 
-        # _render_estimate_chat(te, se)  # hidden temporarily
+        _render_estimate_patch_chat(te, se)
 
     # ── Cost (Infrastructure) ──
     with tab_list[2]:

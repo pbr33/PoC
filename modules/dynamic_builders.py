@@ -846,15 +846,14 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
     _scope_lower = (text or semantic.get("_raw_text", "") or "").lower()
 
     def _pick_tier(catalog_name, default_tier, default_monthly, default_desc):
-        """Return (tier, monthly, desc) — upgraded if scope text contains tier signals."""
+        """Return (tier, monthly, desc, locked) — upgraded if scope text contains tier signals.
+        locked=True means a tier upgrade was applied; pipeline patching must not overwrite the price."""
         if _scope_lower and catalog_name in _TIER_UPGRADE_SIGNALS:
             for signals, tier_label, tier_monthly, tier_desc in _TIER_UPGRADE_SIGNALS[catalog_name]:
                 if any(sig in _scope_lower for sig in signals):
-                    # Use live price if available for the upgraded tier, else use catalog value
                     live_override = live_prices.get(catalog_name + " " + tier_label, tier_monthly)
-                    return tier_label, live_override, tier_desc
-        # Default: prefer live price over hardcoded base_monthly
-        return default_tier, live_prices.get(catalog_name, default_monthly), default_desc
+                    return tier_label, live_override, tier_desc, True
+        return default_tier, live_prices.get(catalog_name, default_monthly), default_desc, False
 
     mandated    = safe_list(semantic.get("mandated_technologies", []))
     source_sys  = safe_list(semantic.get("source_systems", []))
@@ -884,10 +883,11 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
             if catalog_name in seen:
                 continue
             if _tech_matches_catalog(tech_name, catalog_name):
-                _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
+                _tier, _monthly, _desc, _locked = _pick_tier(catalog_name, tier, base_monthly, desc)
                 azure_costs.append({"service": catalog_name, "tier": _tier,
                                     "monthly_cost": _monthly, "description": _desc,
-                                    "category": _cost_category(catalog_name)})
+                                    "category": _cost_category(catalog_name),
+                                    "_locked_cost": _locked})
                 seen.add(catalog_name)
                 break
     # Also scan remaining all_tech for catalog matches not covered above (non-source)
@@ -898,10 +898,11 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
             if catalog_name in seen:
                 continue
             if _tech_matches_catalog(tech_name, catalog_name):
-                _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
+                _tier, _monthly, _desc, _locked = _pick_tier(catalog_name, tier, base_monthly, desc)
                 azure_costs.append({"service": catalog_name, "tier": _tier,
                                     "monthly_cost": _monthly, "description": _desc,
-                                    "category": _cost_category(catalog_name)})
+                                    "category": _cost_category(catalog_name),
+                                    "_locked_cost": _locked})
                 seen.add(catalog_name)
                 break
 

@@ -10614,13 +10614,14 @@ def show_results():
             if not _s.get("service") and _s.get("name"):
                 _s["service"] = _s["name"]
             _name = safe_str(_s.get("service", ""))
-            if _name in live_cache:
+            _locked = _s.get("_locked_cost", False)
+            if not _locked and _name in live_cache:
                 _s["monthly_cost"] = live_cache[_name]
                 _s["_live"] = True
             else:
                 _s["_live"] = False
                 # If AI left the cost at 0 or missing, try broad catalog fallback
-                if not safe_int(_s.get("monthly_cost", 0)):
+                if not _locked and not safe_int(_s.get("monthly_cost", 0)):
                     _cat_val = _broad_catalog_cost(_name)
                     if _cat_val:
                         _s["monthly_cost"] = _cat_val

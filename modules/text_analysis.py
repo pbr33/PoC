@@ -195,10 +195,11 @@ _INFRA_COST_CATALOG = {
 # First matching rule wins (ordered high→low tier).
 _TIER_UPGRADE_SIGNALS: dict = {
     "Azure API Management": [
-        (["premium", "zone redundan", "multi-region", "vnet injection", "internal mode",
-          "private endpoint apim", "apim premium"],
+        (["premium apim", "apim premium", "api management premium", "zone redundan",
+          "multi-region apim", "vnet injection", "internal mode apim", "private endpoint apim",
+          "apim v2 premium", "apim enterprise"],
          "Premium", 936, "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"),
-        (["standard tier", "apim standard"],
+        (["apim standard", "apim v2 standard", "api management standard", "standard apim"],
          "Standard", 224, "~$0.307/hr × 730 hrs; Standard tier, 1 unit"),
     ],
     "Azure AI Search": [

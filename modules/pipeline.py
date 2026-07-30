@@ -4039,6 +4039,9 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         "discovery_questions": discovery_questions,
         "rich_arch_html": rich_arch_html,
     }
+    # Run auto-corrections NOW (before results render) so the results page
+    # never needs to make a blocking Claude call after load.
+    _auto_correct_estimate(time_est, semantic)
     st.session_state.model_metrics["proposals_processed"] += 1
 
     # Auto-populate client name from semantic analysis if not already set by user
@@ -8499,104 +8502,106 @@ def _render_estimate_review(te: dict, se: dict) -> None:
         if _is_auto_review:
             # ── Auto-review: background thread launched during pipeline ──
             # If thread already finished → rerun once to show results.
-            # If still running → fall through to idle so user sees "Review Now"
-            # button normally; results will appear on the next natural interaction.
+            # If still running → reset to idle; do NOT show loader (user didn't ask for it).
             if not st.session_state.get(f"{_RK}_thread_active", False):
                 try:
                     st.rerun(scope="fragment")
                 except Exception:
                     st.rerun()
                 return
-            # Thread still running — reset to idle so results tab is unblocked
+            # Thread still running — reset to idle and fall through to idle body.
+            # Do NOT fall through to the loader block below (that's manual-only).
             _state = "idle"
             st.session_state[f"{_RK}_state"] = "idle"
+            # intentional: no return here; fall through to idle/done body below
 
-        # ── Manual "Review Now" — show full loader, run single-pass thread ──
-        if not st.session_state.get(f"{_RK}_thread_active"):
-            _ai_key   = st.session_state.get("anthropic_api_key", "")
-            _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
-            _ai_ep    = st.session_state.get("claude_endpoint", "")
-            _ai_live  = bool(_ai_key) and not st.session_state.get("_claude_blocked")
-            _live_te  = st.session_state.processing_results.get("time_estimate", te)
-            _prompt   = _build_review_prompt(_live_te, se)
-            _holder   = [None, None]
-            st.session_state[f"{_RK}_result_holder"] = _holder
-            st.session_state[f"{_RK}_thread_active"] = True
+        else:
+            # ── Manual "Review Now" only — show full loader, run single-pass thread ──
+            if not st.session_state.get(f"{_RK}_thread_active"):
+                _ai_key   = st.session_state.get("anthropic_api_key", "")
+                _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
+                _ai_ep    = st.session_state.get("claude_endpoint", "")
+                _ai_live  = bool(_ai_key) and not st.session_state.get("_claude_blocked")
+                _live_te  = st.session_state.processing_results.get("time_estimate", te)
+                _prompt   = _build_review_prompt(_live_te, se)
+                _holder   = [None, None]
+                st.session_state[f"{_RK}_result_holder"] = _holder
+                st.session_state[f"{_RK}_thread_active"] = True
 
-            from modules.ai_clients import AnthropicAI as _Ant
+                from modules.ai_clients import AnthropicAI as _Ant
 
-            def _review_task():
-                try:
-                    if not _ai_live:
-                        raise ValueError("Claude not configured — add your Anthropic API key in settings.")
-                    _client = _Ant(_ai_key, _ai_model, _ai_ep)
-                    _raw = (_client.call_raw_text(
-                        "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
-                        _prompt, max_tokens=6000,
-                    ) or "").strip()
-                    if not _raw:
-                        raise ValueError("Agent returned empty response.")
+                def _review_task():
                     try:
-                        _holder[0] = "ok"
-                        _holder[1] = json.loads(_raw)
-                    except json.JSONDecodeError:
-                        if _raw.startswith("```"):
-                            _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
-                        _holder[0] = "ok"
-                        _holder[1] = json.loads(_raw)
-                except Exception as _tex:
-                    _holder[0] = "err"
-                    _holder[1] = str(_tex)
+                        if not _ai_live:
+                            raise ValueError("Claude not configured — add your Anthropic API key in settings.")
+                        _client = _Ant(_ai_key, _ai_model, _ai_ep)
+                        _raw = (_client.call_raw_text(
+                            "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
+                            _prompt, max_tokens=6000,
+                        ) or "").strip()
+                        if not _raw:
+                            raise ValueError("Agent returned empty response.")
+                        try:
+                            _holder[0] = "ok"
+                            _holder[1] = json.loads(_raw)
+                        except json.JSONDecodeError:
+                            if _raw.startswith("```"):
+                                _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
+                            _holder[0] = "ok"
+                            _holder[1] = json.loads(_raw)
+                    except Exception as _tex:
+                        _holder[0] = "err"
+                        _holder[1] = str(_tex)
 
-            threading.Thread(target=_review_task, daemon=True).start()
+                threading.Thread(target=_review_task, daemon=True).start()
 
-        st.markdown(
-            '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
-            'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
-            '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
-            '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
-            'Agent Reviewing Estimate…</div>'
-            '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
-            'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
-            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
-            '</div>'
-            '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
-            '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
-            '30%{transform:translateY(-10px);opacity:1}}</style>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+            st.markdown(
+                '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
+                'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
+                '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
+                '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
+                'Agent Reviewing Estimate…</div>'
+                '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
+                'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
+                '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
+                '</div>'
+                '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
+                '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
+                '30%{transform:translateY(-10px);opacity:1}}</style>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
-        # Poll the holder — 300ms is fine here (user already sees the loader)
-        _holder = st.session_state.get(f"{_RK}_result_holder")
-        if _holder and _holder[0] is not None:
-            if _holder[0] == "ok":
-                st.session_state[f"{_RK}_result"]        = _holder[1]
-                st.session_state[f"{_RK}_state"]         = "done"
-            else:
-                st.session_state[f"{_RK}_error"]         = _holder[1]
-                st.session_state[f"{_RK}_state"]         = "idle"
-            st.session_state[f"{_RK}_thread_active"] = False
-            st.session_state[f"{_RK}_manual"]        = False   # clear for next auto-review
-            st.session_state.pop(f"{_RK}_result_holder", None)
+            # Poll the holder — 300ms is fine here (user already sees the loader)
+            _holder = st.session_state.get(f"{_RK}_result_holder")
+            if _holder and _holder[0] is not None:
+                if _holder[0] == "ok":
+                    st.session_state[f"{_RK}_result"]        = _holder[1]
+                    st.session_state[f"{_RK}_state"]         = "done"
+                else:
+                    st.session_state[f"{_RK}_error"]         = _holder[1]
+                    st.session_state[f"{_RK}_state"]         = "idle"
+                st.session_state[f"{_RK}_thread_active"] = False
+                st.session_state[f"{_RK}_manual"]        = False
+                st.session_state.pop(f"{_RK}_result_holder", None)
+                try:
+                    st.rerun(scope="fragment")
+                except Exception:
+                    st.rerun()
+                return
+
+            time.sleep(0.3)
             try:
                 st.rerun(scope="fragment")
             except Exception:
                 st.rerun()
             return
-
-        time.sleep(0.3)
-        try:
-            st.rerun(scope="fragment")
-        except Exception:
-            st.rerun()
-        return
 
     # ── STATE: fixing ─────────────────────────────────────────────────
     if _state == "fixing":
@@ -10518,11 +10523,10 @@ def show_results():
                 )
         # ──────────────────────────────────────────────────────────────
 
-        # ── Auto-correct pass (Claude, runs once per estimate) ────────
-        _auto_correct_estimate(te, se)
+        # ── Auto-corrections badge (already applied during pipeline) ──
         _render_auto_corrections_badge()
 
-        # ── Agent review ──────────────────────────────────────────────
+        # ── Agent review (manual-only after results load) ─────────────
         _render_estimate_review(te, se)
 
         _render_estimate_patch_chat(te, se)

@@ -1515,7 +1515,7 @@ class AzureAI:
             "If nothing is explicitly forbidden, return {\"remove\": []}."
         )
         try:
-            result = self._call(system, user, max_tokens=200)
+            result = self._call(system, user, max_tokens=800)
             if not (result and isinstance(result, dict) and "remove" in result):
                 return time_est
             remove_set = {s.lower().strip() for s in result["remove"]}

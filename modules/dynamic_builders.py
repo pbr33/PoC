@@ -601,6 +601,24 @@ def _build_dynamic_time(semantic, text="", rag=None):
     streams.append(_stream("DevOps & Platform", "DevOps", devops_tasks, mult=devops_mult,
                            parallel_with=["Data Engineering", "AI / ML Stream", "Custom Application", "SharePoint / M365"]))
 
+    # ── Apply tech-stack complexity multiplier M to all technical streams ────
+    # M is 1.0 for basic stacks; Databricks → 1.50, Fabric → 1.40, OpenAI → 1.20, etc.
+    # Discovery, Documentation, and PM are excluded — they scale with req count, not tech.
+    if M > 1.0:
+        _SKIP_DOMAINS = {"Discovery", "Documentation", "PM"}
+        for _s in streams:
+            if _s.get("domain") in _SKIP_DOMAINS:
+                continue
+            _s["hours"]               = max(1, round(_s["hours"] * M))
+            _s["low_hours"]           = max(1, round(_s["low_hours"] * M))
+            _s["high_hours"]          = max(1, round(_s["high_hours"] * M))
+            _s["duration_weeks"]      = round(_s["hours"] / 40, 1)
+            _s["complexity_multiplier"] = round(_s.get("complexity_multiplier", 1.0) * M, 2)
+            for _t in _s.get("tasks", []):
+                _t["hours"]     = max(1, round(_t["hours"] * M))
+                _t["low_hours"] = max(1, round(_t.get("low_hours", _t["hours"]) * M))
+                _t["high_hours"]= max(1, round(_t.get("high_hours", _t["hours"]) * M))
+
     # ── QA & Testing — NOT a separately estimated phase at ECI ──────────
     # QA is treated as 30% of total dev effort (built into delivery cost).
     # We derive its duration for Gantt visualisation only — NOT added to streams.

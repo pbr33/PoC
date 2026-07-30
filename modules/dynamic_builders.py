@@ -238,7 +238,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
             is_ai = True
         if any(t in ("data",) for t in _upt):
             is_data_eng = True
-            is_visualization = True   # data projects almost always include dashboards
+            # Do NOT force is_visualization — let document content decide whether
+            # Power BI / dashboards are actually in scope for this data project
         if any(t in ("sharepoint",) for t in _upt):
             is_sharepoint = True
         if any(t in ("custom app", "app") for t in _upt):

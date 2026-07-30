@@ -8404,34 +8404,34 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     # without blocking the fragment render or the asyncio event loop.
     if _state == "reviewing":
         _auto_pass_n = safe_int(st.session_state.get(f"{_RK}_auto_pass", 0))
-        _pass_badge  = (
-            f'<div style="display:inline-block;background:rgba(123,97,255,.18);'
-            f'border-radius:20px;padding:2px 10px;font-size:.62rem;font-weight:800;'
-            f'color:#a78bfa;letter-spacing:.6px;margin-bottom:8px">PASS {_auto_pass_n} / 2</div>'
-        ) if _auto_pass_n else ""
-        _REVIEW_LOADER = (
-            '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
-            'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
-            '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
-            f'{_pass_badge}'
-            '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
-            'Agent Reviewing Estimate…</div>'
-            '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
-            'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
-            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
-            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-            'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
-            '</div>'
-            '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
-            '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
-            '30%{transform:translateY(-10px);opacity:1}}</style>'
-            '</div>'
-        )
-        st.markdown(_REVIEW_LOADER, unsafe_allow_html=True)
+        _is_auto_review = _auto_pass_n > 0   # True = background auto-run, False = manual "Review Now"
+
+        # Auto-review works silently — no loader shown until results are ready.
+        # Manual "Review Now" click shows the full loader UI.
+        if not _is_auto_review:
+            _pass_badge = ""
+            _REVIEW_LOADER = (
+                '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
+                'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
+                '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
+                '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
+                'Agent Reviewing Estimate…</div>'
+                '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
+                'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
+                '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
+                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
+                '</div>'
+                '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
+                '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
+                '30%{transform:translateY(-10px);opacity:1}}</style>'
+                '</div>'
+            )
+            st.markdown(_REVIEW_LOADER, unsafe_allow_html=True)
 
         # Start thread once (idempotent — guarded by _thread_active flag)
         if not st.session_state.get(f"{_RK}_thread_active"):

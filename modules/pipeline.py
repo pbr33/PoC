@@ -4000,9 +4000,11 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     except Exception as _fin_ex:
         log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
 
-    # ── Step 13: Wait for background review before showing results ───────
+    # ── Step 13: Wait for background review — no fixed cap ───────────────
+    # The thread always exits via its finally block (sets thread_active=False),
+    # so this loop is guaranteed to terminate. 600s is a hard safety fallback only.
     _upd(13, "Waiting for estimate review to complete…", 99)
-    _rv_wait_max = 120   # seconds
+    _rv_wait_max = 600   # safety cap — thread always exits naturally before this
     _rv_waited   = 0
     while st.session_state.get("est_review_thread_active", False) and _rv_waited < _rv_wait_max:
         stepper.markdown(
@@ -4023,7 +4025,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         _nf = len(safe_list(_rv.get("findings", [])))
         log_agent("Review", f"✓ Complete — score {_sc}/100, {_nf} finding{'s' if _nf != 1 else ''}")
     else:
-        log_agent("Review", "⚠ Review did not complete in time — click Review Now in Time tab")
+        log_agent("Review", "⚠ Review timed out — click Review Now in Time tab")
     _render_live_log(); time.sleep(0.2)
 
     pb.progress(100)

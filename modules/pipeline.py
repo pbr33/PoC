@@ -8862,11 +8862,11 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
         # ── Findings cards ────────────────────────────────────────────
-        for _fd in _findings:
+        for _fi, _fd in enumerate(_findings):
             _fd    = safe_dict(_fd)
             _sev   = safe_str(_fd.get("severity", "low"))
             _cat   = safe_str(_fd.get("category", ""))
-            _fid   = safe_str(_fd.get("id", "f0"))
+            _fid   = f"{safe_str(_fd.get('id', '')) or 'f'}_{_fi}"
             _ft    = safe_str(_fd.get("fix_type", "manual"))
             _fdata = safe_dict(_fd.get("fix_data", {}))
             _sc    = _SEV_C.get(_sev, "#94a3b8")

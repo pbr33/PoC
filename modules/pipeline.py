@@ -3911,6 +3911,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
             "scope": {}, "proposal": {}, "mermaid_diagrams": [],
             "discovery_questions": {}, "rich_arch_html": None,
         }
+        st.session_state["est_review_auto_done"] = False   # trigger auto-review on Time tab
         st.session_state.model_metrics["proposals_processed"] += 1
         return
 
@@ -4010,6 +4011,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         "discovery_questions": discovery_questions,
         "rich_arch_html": rich_arch_html,
     }
+    st.session_state["est_review_auto_done"] = False   # trigger auto-review on Time tab
     st.session_state.model_metrics["proposals_processed"] += 1
 
     # Auto-populate client name from semantic analysis if not already set by user
@@ -7539,12 +7541,12 @@ def _apply_estimate_fix(fix_type: str, fix_data: dict) -> None:
                 if _sig_words and any(w in _existing_text for w in _sig_words):
                     continue  # already covered — skip to prevent duplicate
                 p.setdefault("tasks", []).append({
-                    "name":          f"Implement: {_rtitle[:50]}",
+                    "name":          _rtitle[:60] if _rtitle else "Implementation task",
                     "role":          "Engineer",
                     "hours":         8,
                     "low_hours":     6,
                     "high_hours":    11,
-                    "justification": f"Added to cover requirement: {_rtitle}",
+                    "justification": "",
                 })
                 p["hours"] = sum(safe_int(safe_dict(t).get("hours", 0)) for t in safe_list(p.get("tasks", [])))
 
@@ -8312,6 +8314,29 @@ def _build_review_prompt(te: dict, se: dict) -> str:
     )
 
 
+def _merge_review_passes(p1: dict, p2: dict) -> dict:
+    """Merge two review-pass results — stricter verdict, lower score, deduplicated findings."""
+    _verdict_rank = {"ok": 0, "warning": 1, "critical": 2}
+    v1 = safe_str(p1.get("verdict", "ok"))
+    v2 = safe_str(p2.get("verdict", "ok"))
+    verdict  = v1 if _verdict_rank.get(v1, 0) >= _verdict_rank.get(v2, 0) else v2
+    score    = min(safe_int(p1.get("score", 100)), safe_int(p2.get("score", 100)))
+    summary  = safe_str(p2.get("verdict_summary", "") or p1.get("verdict_summary", ""))
+
+    # Merge findings — deduplicate by first 40 chars of lowercased title
+    seen: set = set()
+    merged: list = []
+    _sev_rank = {"high": 0, "medium": 1, "low": 2}
+    for f in safe_list(p1.get("findings", [])) + safe_list(p2.get("findings", [])):
+        _key = safe_str(safe_dict(f).get("title", "")).lower()[:40].strip()
+        if _key and _key not in seen:
+            seen.add(_key)
+            merged.append(f)
+    merged.sort(key=lambda f: _sev_rank.get(safe_str(safe_dict(f).get("severity", "low")), 2))
+
+    return {"verdict": verdict, "verdict_summary": summary, "score": score, "findings": merged}
+
+
 @st.fragment
 def _render_estimate_review(te: dict, se: dict) -> None:
     """On-demand Agent review of the estimate with actionable fix buttons.
@@ -8326,6 +8351,16 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     _RK = "est_review"
     _state = st.session_state.get(f"{_RK}_state", "idle")
     _busy  = _state in ("reviewing", "fixing", "fix_selected", "ask_agent")
+
+    # ── Auto-trigger: run two passes in background on first load after pipeline ──
+    if not st.session_state.get("est_review_auto_done", True) and _state == "idle" and not _busy:
+        _state = "reviewing"
+        st.session_state[f"{_RK}_state"]         = "reviewing"
+        st.session_state[f"{_RK}_auto_pass"]     = 1
+        st.session_state["est_review_auto_done"] = True   # prevent re-trigger on reruns
+        for _k in (f"{_RK}_result", f"{_RK}_error", f"{_RK}_ask_active",
+                   f"{_RK}_thread_active", f"{_RK}_result_holder", f"{_RK}_pass1_result"):
+            st.session_state.pop(_k, None)
 
     # ── Header row (always visible) ───────────────────────────────────
     _h1, _h2 = st.columns([5, 2])
@@ -8364,32 +8399,38 @@ def _render_estimate_review(te: dict, se: dict) -> None:
         st.session_state.pop(f"{_RK}_result_holder", None)
 
     # ── STATE: reviewing — loader + background thread ──
-    _REVIEW_LOADER = (
-        '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
-        'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
-        '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
-        '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
-        'Agent Reviewing Estimate…</div>'
-        '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
-        'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
-        '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
-        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-        'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
-        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-        'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
-        '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-        'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
-        '</div>'
-        '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
-        '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
-        '30%{transform:translateY(-10px);opacity:1}}</style>'
-        '</div>'
-    )
-
     # ── STATE: reviewing — "Review Now" button path (always fragment context) ──
     # Uses background thread + 300ms polls so the loader appears instantly
     # without blocking the fragment render or the asyncio event loop.
     if _state == "reviewing":
+        _auto_pass_n = safe_int(st.session_state.get(f"{_RK}_auto_pass", 0))
+        _pass_badge  = (
+            f'<div style="display:inline-block;background:rgba(123,97,255,.18);'
+            f'border-radius:20px;padding:2px 10px;font-size:.62rem;font-weight:800;'
+            f'color:#a78bfa;letter-spacing:.6px;margin-bottom:8px">PASS {_auto_pass_n} / 2</div>'
+        ) if _auto_pass_n else ""
+        _REVIEW_LOADER = (
+            '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
+            'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
+            '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
+            f'{_pass_badge}'
+            '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
+            'Agent Reviewing Estimate…</div>'
+            '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
+            'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
+            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
+            '</div>'
+            '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
+            '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
+            '30%{transform:translateY(-10px);opacity:1}}</style>'
+            '</div>'
+        )
         st.markdown(_REVIEW_LOADER, unsafe_allow_html=True)
 
         # Start thread once (idempotent — guarded by _thread_active flag)
@@ -8398,7 +8439,9 @@ def _render_estimate_review(te: dict, se: dict) -> None:
             _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
             _ai_ep    = st.session_state.get("claude_endpoint", "")
             _ai_live  = bool(_ai_key) and not st.session_state.get("_claude_blocked")
-            _prompt   = _build_review_prompt(te, se)
+            # Always read live estimate from session state so pass-2 sees current data
+            _live_te  = st.session_state.processing_results.get("time_estimate", te)
+            _prompt   = _build_review_prompt(_live_te, se)
             _holder   = [None, None]   # [status, payload] — written by thread
             st.session_state[f"{_RK}_result_holder"] = _holder
             st.session_state[f"{_RK}_thread_active"] = True
@@ -8475,15 +8518,41 @@ def _render_estimate_review(te: dict, se: dict) -> None:
         # Check whether the thread has finished
         _holder = st.session_state.get(f"{_RK}_result_holder")
         if _holder and _holder[0] is not None:
+            _cur_auto_pass = safe_int(st.session_state.get(f"{_RK}_auto_pass", 0))
             if _holder[0] == "ok":
-                st.session_state[f"{_RK}_result"] = _holder[1]
-                st.session_state[f"{_RK}_state"]  = "done"
+                if _cur_auto_pass == 1:
+                    # Pass 1 done — store result and immediately kick off pass 2
+                    st.session_state[f"{_RK}_pass1_result"]  = _holder[1]
+                    st.session_state[f"{_RK}_auto_pass"]     = 2
+                    st.session_state[f"{_RK}_state"]         = "reviewing"
+                    st.session_state[f"{_RK}_thread_active"] = False
+                    st.session_state.pop(f"{_RK}_result_holder", None)
+                    st.rerun(scope="fragment")
+                elif _cur_auto_pass == 2:
+                    # Pass 2 done — merge with pass 1 and show final result
+                    _p1 = safe_dict(st.session_state.pop(f"{_RK}_pass1_result", {}))
+                    _merged = _merge_review_passes(_p1, _holder[1])
+                    st.session_state[f"{_RK}_result"]        = _merged
+                    st.session_state[f"{_RK}_state"]         = "done"
+                    st.session_state[f"{_RK}_auto_pass"]     = 0
+                    st.session_state[f"{_RK}_thread_active"] = False
+                    st.session_state.pop(f"{_RK}_result_holder", None)
+                    st.rerun(scope="fragment")
+                else:
+                    # Manual single-pass review
+                    st.session_state[f"{_RK}_result"]        = _holder[1]
+                    st.session_state[f"{_RK}_state"]         = "done"
+                    st.session_state[f"{_RK}_thread_active"] = False
+                    st.session_state.pop(f"{_RK}_result_holder", None)
+                    st.rerun(scope="fragment")
             else:
-                st.session_state[f"{_RK}_error"] = _holder[1]
-                st.session_state[f"{_RK}_state"] = "idle"
-            st.session_state[f"{_RK}_thread_active"] = False
-            st.session_state.pop(f"{_RK}_result_holder", None)
-            st.rerun(scope="fragment")
+                st.session_state[f"{_RK}_error"]         = _holder[1]
+                st.session_state[f"{_RK}_state"]         = "idle"
+                st.session_state[f"{_RK}_auto_pass"]     = 0
+                st.session_state[f"{_RK}_thread_active"] = False
+                st.session_state.pop(f"{_RK}_result_holder", None)
+                st.session_state.pop(f"{_RK}_pass1_result", None)
+                st.rerun(scope="fragment")
             return
 
         # Thread still running — sleep(0.3) releases GIL so the asyncio

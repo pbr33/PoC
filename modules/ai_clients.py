@@ -1263,6 +1263,142 @@ Fill every FILL placeholder with content specific to this project. Use real numb
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  STREAM-LEVEL AI CALIBRATION
+#  Reads actual requirement descriptions and adjusts stream hours so that
+#  two projects with the same tech stack but different scope content
+#  produce different estimates. Called from _fb_time after the rule-based
+#  builder runs. Falls back silently on any failure.
+# ═══════════════════════════════════════════════════════════════════════
+
+def _calibrate_streams_with_ai(call_fn, result: dict, semantic: dict) -> dict:
+    """Adjust rule-based stream hours using actual requirement descriptions."""
+    import copy
+
+    phases = safe_list(result.get("phases", []))
+    if not phases:
+        return result
+
+    reqs = safe_list(semantic.get("requirements", []))
+    if not reqs:
+        return result
+
+    # Build requirement summary — functional + integration reqs drive hours most
+    _SKIP_DOMAINS = {"Discovery", "Documentation", "PM"}
+    req_lines = []
+    for r in reqs[:15]:
+        r = safe_dict(r)
+        rtype = safe_str(r.get("type", "functional"))
+        title = safe_str(r.get("title", "")).strip()
+        desc  = safe_str(r.get("description", "")).strip()[:250]
+        cplx  = safe_str(r.get("complexity", "Medium"))
+        if title:
+            req_lines.append(f"  [{rtype.upper()} / {cplx}] {title}: {desc}")
+
+    stream_lines = []
+    for ph in phases:
+        ph = safe_dict(ph)
+        name   = safe_str(ph.get("name", ""))
+        domain = safe_str(ph.get("domain", ""))
+        hours  = safe_int(ph.get("hours", 0))
+        if domain not in _SKIP_DOMAINS and hours > 0:
+            stream_lines.append(f"  - {name}: {hours}h")
+
+    if not req_lines or not stream_lines:
+        return result
+
+    project_type = safe_str(semantic.get("project_type", ""))
+    tech         = ", ".join(safe_list(semantic.get("technology_stack", []))[:12])
+    complexity   = safe_int(semantic.get("complexity_score", 5))
+
+    system = (
+        "You are a senior Azure solutions architect calibrating a project estimate. "
+        "The current stream hours were generated from tech-stack detection alone — they do not "
+        "reflect the ACTUAL SCOPE described in the requirements. "
+        "Read the requirements carefully and adjust the stream hours to match the real work. "
+        "Rules:\n"
+        "- Adjustment per stream: 0.4× minimum, 2.5× maximum of current hours\n"
+        "- Only adjust streams where the requirements clearly indicate more or less work than the baseline\n"
+        "- DO NOT adjust Discovery, Documentation, or PM streams\n"
+        "- Consider: data volume, real-time vs batch, number of integrations, "
+        "AI/ML model complexity, UI feature count, number of source systems\n"
+        "Return ONLY valid JSON — no explanation, no markdown:\n"
+        '{"adjustments": [{"stream": "exact stream name", "hours": N, "reason": "one sentence"}]}'
+    )
+    user = (
+        f"Project type: {project_type}\n"
+        f"Tech stack: {tech}\n"
+        f"Complexity score: {complexity}/10\n\n"
+        f"Requirements (what the system must actually do):\n" +
+        "\n".join(req_lines) +
+        f"\n\nCurrent stream estimates (rule-based, tech-stack only):\n" +
+        "\n".join(stream_lines) +
+        "\n\nReturn adjusted hours only for streams that need changing. "
+        "If a stream already looks right, exclude it from the response."
+    )
+
+    try:
+        raw = call_fn(system, user, max_tokens=1200)
+        if not isinstance(raw, dict):
+            return result
+        adjustments = safe_list(raw.get("adjustments", []))
+        if not adjustments:
+            return result
+    except Exception:
+        return result
+
+    # Build name → adjustment map
+    adj_map = {}
+    for adj in adjustments:
+        adj = safe_dict(adj)
+        name     = safe_str(adj.get("stream", "")).strip()
+        new_hrs  = safe_int(adj.get("hours", 0))
+        if name and new_hrs > 0:
+            adj_map[name.lower()] = new_hrs
+
+    if not adj_map:
+        return result
+
+    # Apply adjustments with guard-rails
+    result = copy.deepcopy(result)
+    phases = safe_list(result.get("phases", []))
+    for ph in phases:
+        name   = safe_str(ph.get("name", "")).strip()
+        domain = safe_str(ph.get("domain", ""))
+        if domain in _SKIP_DOMAINS:
+            continue
+        adj_hrs = adj_map.get(name.lower())
+        if adj_hrs is None:
+            continue
+        cur_hrs = safe_int(ph.get("hours", 0))
+        if cur_hrs <= 0:
+            continue
+        # Enforce bounds: 0.4× – 2.5× of current
+        adj_hrs = max(round(cur_hrs * 0.4), min(round(cur_hrs * 2.5), adj_hrs))
+        ratio   = adj_hrs / cur_hrs
+        # Scale task hours proportionally
+        for t in safe_list(ph.get("tasks", [])):
+            t["hours"]      = max(1, round(safe_int(t.get("hours", 0))      * ratio))
+            t["low_hours"]  = max(1, round(safe_int(t.get("low_hours", 0))  * ratio))
+            t["high_hours"] = max(1, round(safe_int(t.get("high_hours", 0)) * ratio))
+        ph["hours"]          = adj_hrs
+        ph["low_hours"]      = max(1, round(adj_hrs * 0.75))
+        ph["high_hours"]     = round(adj_hrs * 1.40)
+        ph["duration_weeks"] = round(adj_hrs / 40, 1)
+
+    # Recalculate totals
+    new_total = sum(safe_int(ph.get("hours", 0)) for ph in phases)
+    if new_total > 0:
+        result["phases"]      = phases
+        result["total_hours"] = new_total
+        result["three_point"] = {
+            "optimistic":  round(new_total * 0.8),
+            "most_likely":  new_total,
+            "pessimistic": round(new_total * 1.35),
+        }
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  AZURE OPENAI CLIENT — PRODUCTION
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -2023,7 +2159,12 @@ class AzureAI:
 
     def _fb_time(self, semantic, rag):
         text = st.session_state.get("_extracted_text", "")
-        return _build_dynamic_time(semantic, text=text, rag=rag)
+        result = _build_dynamic_time(semantic, text=text, rag=rag)
+        try:
+            result = _calibrate_streams_with_ai(self._call, result, semantic)
+        except Exception:
+            pass  # always fall back to rule-based result on any AI failure
+        return result
 
     def _fb_cost(self, time_est):
         sem  = st.session_state.get("_last_semantic", {})

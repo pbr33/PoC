@@ -2022,7 +2022,8 @@ class AzureAI:
         return _analyze_text_dynamic(text)
 
     def _fb_time(self, semantic, rag):
-        return _build_dynamic_time(semantic, rag=rag)
+        text = st.session_state.get("_extracted_text", "")
+        return _build_dynamic_time(semantic, text=text, rag=rag)
 
     def _fb_cost(self, time_est):
         sem  = st.session_state.get("_last_semantic", {})

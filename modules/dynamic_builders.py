@@ -200,8 +200,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # SharePoint: ONLY fire when tech stack explicitly says "sharepoint".
     # The domains list can misclassify AI/data projects — never use it alone.
     is_sharepoint = _h("sharepoint")
-    is_custom_app = (_h("react") or _h("angular") or _h("app service") or _h("fastapi") or \
-                     _h(".net") or _h("blazor")) and not is_data_eng
+    is_custom_app = _h("react") or _h("angular") or _h("app service") or _h("fastapi") or \
+                    _h(".net") or _h("blazor")
     is_devops     = _h("devops") or _h("ci/cd") or _h("kubernetes") or _h("github actions")
     has_multi_env = "two environment" in " ".join(
         safe_str(r.get("description","")) for r in reqs if isinstance(r,dict)
@@ -239,8 +239,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
         if any(t in ("cloud",) for t in _upt):
             is_devops = True       # Cloud type = enhanced DevOps & Platform stream
 
-    # Shared source-count (used by DE and Power Platform streams)
-    n_src = max(1, n_int)
+    # Shared source-count: prefer actual source_systems list; fall back to integration req count
+    n_src = max(1, len(source_sys)) if source_sys else max(1, n_int)
 
     # ── PARALLEL WORK STREAMS ────────────────────────────────────────────
     streams: list[dict] = []
@@ -562,6 +562,40 @@ def _build_dynamic_time(semantic, text="", rag=None):
         _task_name = f"Configure: {_title}"
         if _task_name.lower() not in _existing_devops_titles:
             devops_tasks.append(_task(_task_name, "DevOps", _hrs, _desc))
+    # ── Non-functional requirement tasks — injected into DevOps stream ───────
+    # Each NFR generates a concrete task routed to the right role based on its category.
+    _nf_reqs = [safe_dict(r) for r in reqs
+                if isinstance(r, dict) and r.get("type") == "non-functional"]
+    _nfr_seen = {t["name"].lower() for t in devops_tasks}
+    for _nfr in _nf_reqs:
+        _nfr_title = safe_str(_nfr.get("title", "")).strip()
+        _nfr_desc  = safe_str(_nfr.get("description", _nfr_title))
+        _nfr_lower = (_nfr_title + " " + _nfr_desc).lower()
+        _cplx      = safe_str(_nfr.get("complexity", "Medium"))
+        _hrs       = 6 if _cplx == "High" else 4
+        if not _nfr_title:
+            continue
+        if any(k in _nfr_lower for k in ["performance", "load test", "throughput", "concurrent user",
+                                          "response time", "latency", "benchmark"]):
+            _tn, _role = f"Performance testing and tuning: {_nfr_title}", "QA"
+        elif any(k in _nfr_lower for k in ["security", "encrypt", "auth", "mfa", "sso",
+                                            "zero trust", "access control", "identity"]):
+            _tn, _role = f"Security hardening: {_nfr_title}", "Security"
+        elif any(k in _nfr_lower for k in ["availab", "uptime", "sla", "disaster recovery",
+                                            "rto", "rpo", "failover", "redundan", "resilience"]):
+            _tn, _role = f"HA/DR implementation: {_nfr_title}", "DevOps"
+        elif any(k in _nfr_lower for k in ["compliance", "gdpr", "iso", "soc2", "hipaa",
+                                            "audit", "regulatory", "pci", "data protection"]):
+            _tn, _role = f"Compliance control: {_nfr_title}", "Security"
+        elif any(k in _nfr_lower for k in ["scalab", "elastic", "auto-scale", "autoscale",
+                                            "scale out", "scale up", "horizontal"]):
+            _tn, _role = f"Scalability implementation: {_nfr_title}", "DevOps"
+        else:
+            _tn, _role = f"NFR verification: {_nfr_title}", "DevOps"
+        if _tn.lower() not in _nfr_seen:
+            devops_tasks.append(_task(_tn, _role, _hrs, _nfr_desc))
+            _nfr_seen.add(_tn.lower())
+
     # Small infra multiplier: private endpoints and multi-env add real overhead
     devops_mult = round(min(1.0 * (1.10 if has_multi_env else 1.0) * (1.10 if _h("private endpoint") or _h("kubernetes") else 1.0), 1.30), 2)
     streams.append(_stream("DevOps & Platform", "DevOps", devops_tasks, mult=devops_mult,

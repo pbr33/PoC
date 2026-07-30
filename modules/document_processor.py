@@ -20,12 +20,39 @@ class DocProcessor:
             try:
                 from docx import Document
                 doc = Document(io.BytesIO(data))
-                parts = [p.text for p in doc.paragraphs if p.text.strip()]
+                parts = []
+                # Headers and footers from each section
+                for sec in doc.sections:
+                    for hdr in (sec.header, sec.first_page_header, sec.even_page_header):
+                        try:
+                            txt = hdr.paragraphs[0].text.strip() if hdr.paragraphs else ""
+                            if txt:
+                                parts.append(txt)
+                        except Exception:
+                            pass
+                # Body paragraphs
+                parts += [p.text for p in doc.paragraphs if p.text.strip()]
+                # Tables
                 for tbl in doc.tables:
                     for row in tbl.rows:
                         cells = [c.text.strip() for c in row.cells if c.text.strip()]
                         if cells:
                             parts.append(" | ".join(cells))
+                # Floating text boxes (stored as inline shapes / drawing elements)
+                try:
+                    from docx.oxml.ns import qn
+                    for shape in doc.inline_shapes:
+                        try:
+                            txbx = shape._inline.find('.//' + qn('w:txbxContent'))
+                            if txbx is not None:
+                                for p in txbx.findall('.//' + qn('w:p')):
+                                    txt = "".join(r.text or "" for r in p.findall('.//' + qn('w:t')))
+                                    if txt.strip():
+                                        parts.append(txt.strip())
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 return "\n".join(parts)
             except Exception as e:
                 return "[DOCX error: " + str(e) + "]"
@@ -36,9 +63,9 @@ class DocProcessor:
                 parts = []
                 for sn in wb.sheetnames:
                     parts.append("=== " + sn + " ===")
-                    for row in wb[sn].iter_rows(max_row=500, values_only=True):
-                        cells = [str(c) if c else "" for c in row]
-                        if any(cells):
+                    for row in wb[sn].iter_rows(max_row=2000, values_only=True):
+                        cells = [str(c) if c is not None else "" for c in row]
+                        if any(c.strip() for c in cells if c):
                             parts.append(" | ".join(cells))
                 return "\n".join(parts)
             except Exception as e:
@@ -53,11 +80,18 @@ class DocProcessor:
                     for sh in sl.shapes:
                         if hasattr(sh, "text") and sh.text.strip():
                             parts.append(sh.text)
+                    # Speaker notes
+                    try:
+                        notes_text = sl.notes_slide.notes_text_frame.text.strip()
+                        if notes_text:
+                            parts.append("[Notes] " + notes_text)
+                    except Exception:
+                        pass
                 return "\n".join(parts)
             except Exception as e:
                 return "[PPTX error: " + str(e) + "]"
         else:
-            return data.decode("utf-8", errors="replace")[:50000]
+            return data.decode("utf-8", errors="replace")[:200000]
 
     def analyze(self, text):
         lines = text.split("\n")

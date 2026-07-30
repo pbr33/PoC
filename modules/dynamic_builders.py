@@ -180,11 +180,11 @@ def _build_dynamic_time(semantic, text="", rag=None):
     _text_lower = (text or "").lower()
     def _th(k): return k in tech_lower or k in _text_lower
 
-    is_fabric     = _h("microsoft fabric") or _h("fabric lakehouse") or _h("onelake")
-    is_databricks = _h("azure databricks") or _h("databricks")
-    is_synapse    = _h("azure synapse") or _h("synapse analytics")
-    is_adf        = _h("azure data factory") or _h("data factory")
-    is_adls       = _h("adls") or _h("data lake storage")
+    is_fabric     = _th("microsoft fabric") or _th("fabric lakehouse") or _th("onelake")
+    is_databricks = _th("azure databricks") or _th("databricks")
+    is_synapse    = _th("azure synapse") or _th("synapse analytics")
+    is_adf        = _th("azure data factory") or _th("data factory")
+    is_adls       = _th("adls") or _th("data lake storage")
     is_data_eng   = is_fabric or is_databricks or is_synapse or is_adf or is_adls or \
                     "Data Engineering" in " ".join(domains) or \
                     any(k in tech_lower for k in [
@@ -200,12 +200,19 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # SharePoint: ONLY fire when tech stack explicitly says "sharepoint".
     # The domains list can misclassify AI/data projects — never use it alone.
     is_sharepoint = _h("sharepoint")
+    # ".net" alone is too broad (appears in data SDKs, connectors) — require asp.net or blazor for .NET custom apps
     is_custom_app = _h("react") or _h("angular") or _h("app service") or _h("fastapi") or \
-                    _h(".net") or _h("blazor")
+                    _h("blazor") or _h("asp.net")
     is_devops     = _h("devops") or _h("ci/cd") or _h("kubernetes") or _h("github actions")
-    has_multi_env = "two environment" in " ".join(
+    _env_text = " ".join(
         safe_str(r.get("description","")) for r in reqs if isinstance(r,dict)
-    ).lower() or "dev/test" in tech_lower
+    ).lower()
+    has_multi_env = (
+        any(k in _env_text for k in ["two environment", "two environments", "dev and prod",
+                                      "development and production", "dev/prod"])
+        or "dev/test" in tech_lower
+        or "dev/test" in _env_text
+    )
 
     # ── Power Platform Developer stream ───────────────────────────────────
     # Only fires on explicit Power Platform / RPA keywords in tech or scope text.
@@ -283,7 +290,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("Gold layer: aggregations and KPI calculations",      "Data Engineer", 8,  "Metrics, rollups, partitioning strategy"),
                 _task("Gold layer: business entity models",                 "Data Engineer", 8,  "Dimensional model, conformed dimensions"),
                 _task("Fabric Semantic Model — measures and hierarchies",   "Data Engineer", 10, "DAX measures, hierarchies, KPIs"),
-                _task("Power BI report development",                        "Data Engineer", 8,  "Dashboard design, visualisations, drillthrough"),
+                # Skip basic Power BI task when Visualization Developer stream handles it end-to-end
+                *([_task("Power BI report development", "Data Engineer", 8, "Dashboard design, visualisations, drillthrough")] if not is_visualization else []),
                 _task("Row-Level Security and data access policies",        "Data Engineer", 6,  "RLS rules, workspace roles, sensitivity labels"),
                 _task("Data quality monitoring — rules and alerting",       "Data Engineer", 8,  "DQ expectations, Purview, alerting pipelines"),
                 _task("Pipeline performance tuning and optimisation",       "Data Engineer", 6,  "V-order, partition pruning, caching"),
@@ -493,7 +501,10 @@ def _build_dynamic_time(semantic, text="", rag=None):
                                parallel_with=["Data Engineering", "AI / ML Stream"]))
 
     # ── Stream 5: Integration (standalone, only when no dedicated DE stream) ──
-    if n_int > 0 and not is_data_eng:
+    # Integration stream fires for ALL project types — in combined AI+DE projects
+    # integration requirements (API connectors, SSO, webhooks) are not covered by
+    # the data source pipeline tasks and would otherwise vanish from the estimate.
+    if n_int > 0:
         int_tasks: list[dict] = []
         for r in reqs:
             r = safe_dict(r)

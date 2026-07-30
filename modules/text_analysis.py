@@ -127,7 +127,7 @@ def _extract_mandated_tech(text_lower: str, detected_tech: list) -> list:
                     mandated.add(tech_name)
                     break
                 idx = text_lower.find(kw, idx + 1)
-    return [t for t in mandated if t in detected_tech or t not in []]
+    return [t for t in mandated if t in detected_tech or len(detected_tech) == 0]
 
 _LANG_CATALOG = {
     "Python": ["python", "flask", "django", "fastapi", "pytest"],
@@ -393,10 +393,13 @@ def _analyze_text_dynamic(text):
         sent_lower = sent.lower()
 
         req_type = None
-        if any(kw in sent_lower for kw in req_keywords_int):
-            req_type = "integration"
-        elif any(kw in sent_lower for kw in req_keywords_nf):
+        # Check non-functional first — security/compliance sentences often contain
+        # integration keywords (e.g. "API must use OAuth 2.0 encryption") and would
+        # be misclassified if integration is checked first.
+        if any(kw in sent_lower for kw in req_keywords_nf):
             req_type = "non-functional"
+        elif any(kw in sent_lower for kw in req_keywords_int):
+            req_type = "integration"
         elif any(kw in sent_lower for kw in req_keywords_func):
             req_type = "functional"
 

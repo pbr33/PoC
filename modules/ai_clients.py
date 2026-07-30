@@ -1285,7 +1285,7 @@ def _calibrate_streams_with_ai(call_fn, result: dict, semantic: dict) -> dict:
     # Build requirement summary — functional + integration reqs drive hours most
     _SKIP_DOMAINS = {"Discovery", "Documentation", "PM"}
     req_lines = []
-    for r in reqs[:15]:
+    for r in reqs[:25]:
         r = safe_dict(r)
         rtype = safe_str(r.get("type", "functional"))
         title = safe_str(r.get("title", "")).strip()
@@ -1346,14 +1346,18 @@ def _calibrate_streams_with_ai(call_fn, result: dict, semantic: dict) -> dict:
     except Exception:
         return result
 
-    # Build name → adjustment map
+    # Build name → adjustment map with normalized keys for fuzzy matching
+    # (AI often returns "AI/ML Stream" instead of "AI / ML Stream" etc.)
+    import re as _re
+    def _norm_sname(s): return _re.sub(r'[^a-z0-9]', '', s.lower())
+
     adj_map = {}
     for adj in adjustments:
         adj = safe_dict(adj)
         name     = safe_str(adj.get("stream", "")).strip()
         new_hrs  = safe_int(adj.get("hours", 0))
         if name and new_hrs > 0:
-            adj_map[name.lower()] = new_hrs
+            adj_map[_norm_sname(name)] = new_hrs
 
     if not adj_map:
         return result
@@ -1366,7 +1370,7 @@ def _calibrate_streams_with_ai(call_fn, result: dict, semantic: dict) -> dict:
         domain = safe_str(ph.get("domain", ""))
         if domain in _SKIP_DOMAINS:
             continue
-        adj_hrs = adj_map.get(name.lower())
+        adj_hrs = adj_map.get(_norm_sname(name))
         if adj_hrs is None:
             continue
         cur_hrs = safe_int(ph.get("hours", 0))
@@ -1385,12 +1389,14 @@ def _calibrate_streams_with_ai(call_fn, result: dict, semantic: dict) -> dict:
         ph["high_hours"]     = round(adj_hrs * 1.40)
         ph["duration_weeks"] = round(adj_hrs / 40, 1)
 
-    # Recalculate totals
+    # Recalculate totals and derived fields
     new_total = sum(safe_int(ph.get("hours", 0)) for ph in phases)
     if new_total > 0:
-        result["phases"]      = phases
-        result["total_hours"] = new_total
-        result["three_point"] = {
+        _crit_weeks = max((float(ph.get("duration_weeks", 0)) for ph in phases), default=0)
+        result["phases"]         = phases
+        result["total_hours"]    = new_total
+        result["duration_weeks"] = f"{_crit_weeks:.0f}"
+        result["three_point"]    = {
             "optimistic":  round(new_total * 0.8),
             "most_likely":  new_total,
             "pessimistic": round(new_total * 1.35),
@@ -1529,7 +1535,7 @@ class AzureAI:
             "  \"project_type\": str  — primary type\n"
             "  \"client_name\": str  — actual client/company name or empty string\n"
             "  \"project_title\": str  — specific project/initiative name or empty string",
-            "Analyze:\n\n" + text[:60000],
+            "Analyze:\n\n" + text[:120000],
         )
         if r and isinstance(r, dict) and "requirements" in r:
             return r
@@ -1554,41 +1560,8 @@ class AzureAI:
         all_tech   = safe_list(semantic.get("technology_stack", []))
         tech_lower = " ".join(mandated + all_tech).lower()
 
-        # ── Tech complexity multipliers ──────────────────────────────────────
-        mults = []
-        if any(k in tech_lower for k in ["microsoft fabric", "fabric lakehouse", "onelake"]):
-            mults.append("Microsoft Fabric ×1.40 — new unified platform, workspace config, OneLake schema, Direct Lake semantic model")
-        if any(k in tech_lower for k in ["azure databricks", "databricks", "delta lake"]):
-            mults.append("Azure Databricks ×1.50 — Spark cluster management, Delta architecture, Unity Catalog, MLflow")
-        if any(k in tech_lower for k in ["azure synapse", "synapse analytics"]):
-            mults.append("Azure Synapse ×1.30 — DWH setup, Spark pools, serverless SQL, pipeline orchestration")
-        if any(k in tech_lower for k in ["azure data factory", "data factory"]):
-            mults.append("Azure Data Factory ×1.20 — pipeline design, connectors, scheduling, error handling")
-        if any(k in tech_lower for k in ["azure machine learning", "azure ml", " aml "]):
-            mults.append("Azure Machine Learning ×1.35 — workspace, compute clusters, experiment tracking, model registry")
-        if any(k in tech_lower for k in ["azure openai", "openai", "gpt", "ai foundry", "foundry"]):
-            mults.append("Azure OpenAI/Foundry ×1.30 — prompt engineering, RAG pipeline, guardrails, evaluation framework")
-        if any(k in tech_lower for k in ["kubernetes", "aks", "container"]):
-            mults.append("AKS/Containers ×1.25 — cluster config, Helm charts, auto-scaling, monitoring")
-        if any(k in tech_lower for k in ["private endpoint", "private network", "vnet"]):
-            mults.append("Private endpoints/VNet ×1.15 — network config, DNS, firewall rules per service")
-        _req_text = " ".join(
-            safe_str(r.get("description", "") if isinstance(r, dict) else r)
-            for r in safe_list(semantic.get("requirements", []))
-        ).lower()
-        if "two environment" in _req_text or \
-           "dev/test" in " ".join(all_tech + mandated).lower():
-            mults.append("Multi-environment (Dev/Test + Prod) ×1.20 — IaC per env, promotion pipeline, env-specific config")
-        mult_block = "\n".join(f"  - {m}" for m in mults) if mults else "  (standard complexity)"
-
-        # ── Source systems context ───────────────────────────────────────────
-        src_block = ""
-        if source_sys:
-            src_block = ("\nSOURCE SYSTEMS (client's existing data sources — add connector/ingestion work, "
-                         "NOT rebuild time): " + json.dumps(source_sys))
-
         # Always use the calibrated dynamic builder — it produces tech-specific
-        # parallel streams including a Feature Development stream per requirement.
+        # parallel streams with the tech multiplier (M) and AI calibration pass applied.
         result = self._fb_time(semantic, rag)
 
         # ── Training-context stream pruning ──────────────────────────────────
@@ -1669,10 +1642,17 @@ class AzureAI:
             ]
             if not filtered:
                 return time_est
-            new_total = sum(safe_int(safe_dict(p).get("hours", 0)) for p in filtered)
+            new_total  = sum(safe_int(safe_dict(p).get("hours", 0)) for p in filtered)
+            _crit_wks  = max((float(safe_dict(p).get("duration_weeks", 0)) for p in filtered), default=0)
             pruned = dict(time_est)
-            pruned["phases"] = filtered
-            pruned["total_hours"] = new_total
+            pruned["phases"]         = filtered
+            pruned["total_hours"]    = new_total
+            pruned["duration_weeks"] = f"{_crit_wks:.0f}"
+            pruned["three_point"]    = {
+                "optimistic":  round(new_total * 0.8),
+                "most_likely":  new_total,
+                "pessimistic": round(new_total * 1.35),
+            }
             try:
                 from .pipeline import log_agent
                 log_agent("Training", f"Pruned per instructions: {', '.join(remove_set)}")

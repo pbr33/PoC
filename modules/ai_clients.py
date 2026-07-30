@@ -152,18 +152,23 @@ class AnthropicAI:
         code_str = str(getattr(e, "code", "") or getattr(e, "status_code", ""))
         err_str  = str(e)
 
-        # Timeout / network errors — do NOT block Claude; just warn so user can retry
+        # Transient errors (529 overloaded, 429 rate-limit, 5xx) — warn but NEVER block Claude
+        _code_int = int(code_str) if code_str.isdigit() else 0
+        is_transient = _code_int in {429, 529, 502, 503, 500}
         is_timeout = (
             "timed out" in err_str.lower()
             or "timeout" in err_str.lower()
             or "read operation" in err_str.lower()
         )
-        if is_timeout:
-            st.warning(
-                "⏱️ Request timed out — the diagram is large. "
-                "Click Generate again to retry (the model is still available).",
+        if is_transient or is_timeout:
+            _msg = (
+                "⏱️ Request timed out — click Generate again to retry."
+                if is_timeout else
+                f"⏳ Anthropic service temporarily overloaded (HTTP {_code_int or 529}). "
+                "Retried automatically — if this persists, wait 30 s and try again."
             )
-            # Don't set _claude_blocked — let the user retry
+            st.warning(_msg)
+            # Do NOT set _claude_blocked — these are transient, not permanent failures
             return
 
         if is_azure:
@@ -207,13 +212,20 @@ class AnthropicAI:
         st.session_state[_seen] = True
         st.session_state["_claude_blocked"] = True
 
+    # HTTP codes that are transient — retry with backoff, never block Claude permanently
+    _RETRY_CODES = {429, 529, 503, 502, 500}
+    _MAX_RETRIES = 3
+    _RETRY_DELAYS = [5, 15, 30]   # seconds between attempts
+
     def _make_request(self, system: str, user: str, max_tokens: int, timeout: int = 120):
         """Build and send request; returns raw response text or raises.
 
         Routing:
         - Azure AI Services endpoint  → raw HTTP with  api-key  header
         - Standard Anthropic API      → SDK first, raw HTTP fallback
+        Retries automatically on 429/529/5xx with exponential backoff.
         """
+        import time as _time
         import urllib.request
 
         payload = json.dumps({
@@ -227,64 +239,88 @@ class AnthropicAI:
         if self._is_azure:
             import urllib.error
             url = self.endpoint
-            # Try api-key header first (Azure AI Services / Foundry style)
-            for auth_headers in [
-                {"api-key": self.key},
-                {"Authorization": f"Bearer {self.key}"},
-            ]:
-                req = urllib.request.Request(
-                    url, data=payload,
-                    headers={
-                        **auth_headers,
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type":      "application/json",
-                    },
-                    method="POST",
-                )
-                try:
-                    with urllib.request.urlopen(req, timeout=timeout) as resp:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        return (data.get("content") or [{}])[0].get("text", "")
-                except urllib.error.HTTPError as he:
-                    if he.code == 401:
-                        continue  # try next auth style
-                    raise
-            raise urllib.error.HTTPError(url, 401, "Auth failed with both api-key and Bearer", {}, None)
+            last_exc = None
+            for _attempt in range(self._MAX_RETRIES):
+                for auth_headers in [
+                    {"api-key": self.key},
+                    {"Authorization": f"Bearer {self.key}"},
+                ]:
+                    req = urllib.request.Request(
+                        url, data=payload,
+                        headers={
+                            **auth_headers,
+                            "anthropic-version": "2023-06-01",
+                            "Content-Type":      "application/json",
+                        },
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(req, timeout=timeout) as resp:
+                            data = json.loads(resp.read().decode("utf-8"))
+                            return (data.get("content") or [{}])[0].get("text", "")
+                    except urllib.error.HTTPError as he:
+                        if he.code == 401:
+                            continue  # try next auth style
+                        if he.code in self._RETRY_CODES and _attempt < self._MAX_RETRIES - 1:
+                            last_exc = he
+                            _time.sleep(self._RETRY_DELAYS[_attempt])
+                            break  # break auth loop, retry outer attempt loop
+                        raise
+                else:
+                    # Both auth styles exhausted without a retryable error
+                    raise urllib.error.HTTPError(url, 401, "Auth failed with both api-key and Bearer", {}, None)
+                if last_exc and _attempt == self._MAX_RETRIES - 1:
+                    raise last_exc
 
         # ── Standard Anthropic API — try SDK first ────────────────────────
-        try:
-            import anthropic as _sdk
-            client = _sdk.Anthropic(api_key=self.key)
-            kwargs: dict = dict(
-                model=self.model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-            if max_tokens > 8192:
-                kwargs["betas"] = ["output-128k-2025-02-19"]
-                msg = client.beta.messages.create(**kwargs)
-            else:
-                msg = client.messages.create(**kwargs)
-            return msg.content[0].text
-        except ImportError:
-            pass  # SDK not installed — fall back to raw HTTP
-        except Exception:
-            raise
+        last_exc = None
+        for _attempt in range(self._MAX_RETRIES):
+            try:
+                import anthropic as _sdk
+                client = _sdk.Anthropic(api_key=self.key)
+                kwargs: dict = dict(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                )
+                if max_tokens > 8192:
+                    kwargs["betas"] = ["output-128k-2025-02-19"]
+                    msg = client.beta.messages.create(**kwargs)
+                else:
+                    msg = client.messages.create(**kwargs)
+                return msg.content[0].text
+            except ImportError:
+                break  # SDK not installed — fall through to raw HTTP
+            except Exception as _sdk_exc:
+                _code = getattr(_sdk_exc, "status_code", None) or getattr(_sdk_exc, "code", None)
+                if _code in self._RETRY_CODES and _attempt < self._MAX_RETRIES - 1:
+                    last_exc = _sdk_exc
+                    _time.sleep(self._RETRY_DELAYS[_attempt])
+                    continue
+                raise
 
         # ── Raw HTTP fallback (standard Anthropic) ────────────────────────
-        req = urllib.request.Request(
-            self._BASE, data=payload,
-            headers={
-                "x-api-key":         self.key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type":      "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return (data.get("content") or [{}])[0].get("text", "")
+        for _attempt in range(self._MAX_RETRIES):
+            import urllib.error as _ue
+            req = urllib.request.Request(
+                self._BASE, data=payload,
+                headers={
+                    "x-api-key":         self.key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type":      "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return (data.get("content") or [{}])[0].get("text", "")
+            except _ue.HTTPError as he:
+                if he.code in self._RETRY_CODES and _attempt < self._MAX_RETRIES - 1:
+                    _time.sleep(self._RETRY_DELAYS[_attempt])
+                    continue
+                raise
 
     def _stream_azure(self, system: str, user: str, max_tokens: int = 2048):
         """Yield text chunks from Azure AI Services via SSE streaming (requests library)."""

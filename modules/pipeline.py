@@ -8160,7 +8160,8 @@ def _launch_bg_review(te: dict, se: dict) -> None:
     st.session_state[f"{_RK}_state"]         = "reviewing"
     st.session_state[f"{_RK}_auto_pass"]     = 1
     st.session_state[f"{_RK}_thread_active"] = True
-    st.session_state["est_review_auto_done"] = True   # prevent re-trigger on Time tab render
+    st.session_state[f"{_RK}_manual"]        = False   # this is auto, not button-triggered
+    st.session_state["est_review_auto_done"] = True
     for _k in (f"{_RK}_result", f"{_RK}_error", f"{_RK}_pass1_result", f"{_RK}_result_holder"):
         st.session_state.pop(_k, None)
 
@@ -8457,7 +8458,8 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     # loader immediately without an extra round-trip to the browser.
     if _run_clicked and not _busy:
         _state = "reviewing"
-        st.session_state[f"{_RK}_state"] = "reviewing"
+        st.session_state[f"{_RK}_state"]    = "reviewing"
+        st.session_state[f"{_RK}_manual"]   = True   # persists across reruns — marks manual trigger
         st.session_state.pop(f"{_RK}_result",        None)
         st.session_state.pop(f"{_RK}_error",         None)
         st.session_state.pop(f"{_RK}_ask_active",    None)
@@ -8466,7 +8468,8 @@ def _render_estimate_review(te: dict, se: dict) -> None:
 
     # ── STATE: reviewing ──────────────────────────────────────────────────────
     if _state == "reviewing":
-        _is_auto_review = not _run_clicked   # auto = launched from pipeline; manual = button click
+        # _manual flag is set on button click and cleared by _launch_bg_review (auto path)
+        _is_auto_review = not st.session_state.get(f"{_RK}_manual", False)
 
         if _is_auto_review:
             # ── Auto-review: running silently in background during pipeline ──
@@ -8573,6 +8576,7 @@ def _render_estimate_review(te: dict, se: dict) -> None:
                 st.session_state[f"{_RK}_error"]         = _holder[1]
                 st.session_state[f"{_RK}_state"]         = "idle"
             st.session_state[f"{_RK}_thread_active"] = False
+            st.session_state[f"{_RK}_manual"]        = False   # clear for next auto-review
             st.session_state.pop(f"{_RK}_result_holder", None)
             try:
                 st.rerun(scope="fragment")

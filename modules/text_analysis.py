@@ -197,7 +197,9 @@ _TIER_UPGRADE_SIGNALS: dict = {
     "Azure API Management": [
         (["premium apim", "apim premium", "api management premium", "zone redundan",
           "multi-region apim", "vnet injection", "internal mode apim", "private endpoint apim",
-          "apim v2 premium", "apim enterprise"],
+          "apim v2 premium", "apim enterprise", "api management - premium",
+          "api management (premium", "apim - premium", "premium tier apim",
+          "apim premium tier", "management premium tier"],
          "Premium", 936, "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"),
         (["apim standard", "apim v2 standard", "api management standard", "standard apim"],
          "Standard", 224, "~$0.307/hr × 730 hrs; Standard tier, 1 unit"),

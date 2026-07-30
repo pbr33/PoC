@@ -906,6 +906,21 @@ def _build_dynamic_cost(semantic, time_est, text: str = ""):
                 seen.add(catalog_name)
                 break
 
+    # ── APIM compound upgrade: "api management"/"apim" + "premium" anywhere in scope ──
+    # Handles documents that write "Azure API Management - Premium" where the words
+    # aren't adjacent (substring matching above would miss them).
+    if _scope_lower and "Azure API Management" in seen:
+        _has_apim_kw = ("apim" in _scope_lower or "api management" in _scope_lower)
+        _has_premium = "premium" in _scope_lower
+        if _has_apim_kw and _has_premium:
+            for _c in azure_costs:
+                if _c.get("service") == "Azure API Management" and _c.get("tier") != "Premium":
+                    _c["tier"]         = "Premium"
+                    _c["monthly_cost"] = 936
+                    _c["description"]  = "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"
+                    _c["_locked_cost"] = True
+                    break
+
     # Always include baseline security/ops unless already present
     for base_svc in ["Azure Key Vault", "Azure Monitor", "Azure AD / Entra ID"]:
         if base_svc not in seen and base_svc in _INFRA_COST_CATALOG:

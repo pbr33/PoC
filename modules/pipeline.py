@@ -837,7 +837,7 @@ def _build_bella_prompt(r: dict, se: dict, te: dict, ce: dict, ri: dict) -> str:
         for s in st.session_state.get("scenarios",[])[:3]
     ]
     _exec = safe_str(pro.get("executive_summary",""))[:1500] if pro else ""
-    _doc  = str(st.session_state.get("_extracted_text",""))[:5500].strip()
+    _doc  = str(st.session_state.get("_extracted_text",""))[:40000].strip()
 
     ctx = json.dumps({
         "project_type": se.get("project_type",""), "client_name": se.get("client_name",""),
@@ -3722,8 +3722,12 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     log_agent("Intelligence", str(intel["section_count"]) + " sections, " + str(intel["word_count"]) + " words")
     _render_live_log(); time.sleep(0.2)
 
-    _upd(2, "Semantic analysis…", 20)
-    semantic = ai_req.analyze_requirements(text)
+    _upd(2, "Semantic analysis (deep extraction)…", 20)
+    # Use Opus for scope analysis — larger context, deeper extraction.
+    # Falls back to the configured requirements client if Opus isn't available.
+    _opus_client = AnthropicAI.opus_from_session()
+    _ai_for_scope = _opus_client if (_opus_client and _opus_client.is_live) else ai_req
+    semantic = _ai_for_scope.analyze_requirements(text)
 
     # Apply user-supplied hints to override AI extraction
     _eng_hint = st.session_state.get("engagement_type", "Implementation")

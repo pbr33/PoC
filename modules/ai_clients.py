@@ -1393,7 +1393,7 @@ class AzureAI:
             "  \"project_type\": str  — primary type\n"
             "  \"client_name\": str  — actual client/company name or empty string\n"
             "  \"project_title\": str  — specific project/initiative name or empty string",
-            "Analyze:\n\n" + text[:15000],
+            "Analyze:\n\n" + text[:60000],
         )
         if r and isinstance(r, dict) and "requirements" in r:
             return r
@@ -1405,7 +1405,7 @@ class AzureAI:
                 "Compare new project with historical data. Return JSON: "
                 "{\"similar_projects\": [{\"name\": str, \"similarity\": float, \"hours\": int, \"cost\": int, \"outcome\": str}], "
                 "\"benchmark_hours\": int, \"benchmark_cost\": int, \"success_patterns\": [str], \"risk_patterns\": [str]}",
-                "New:\n" + text[:5000] + "\n\nHistory:\n" + json.dumps(projects, default=str),
+                "New:\n" + text[:20000] + "\n\nHistory:\n" + json.dumps(projects, default=str),
             )
             if r:
                 return r
@@ -2217,7 +2217,7 @@ class AzureAI:
             "Team & Stakeholders, Infrastructure & Hosting.\n"
             "what_is_clear: list 3-6 things the document DOES make clear.\n"
             "Only include a category if it has real questions. Aim for 8-15 questions total.",
-            "Scope document:\n\n" + scope_text[:12000],
+            "Scope document:\n\n" + scope_text[:60000],
         )
         if r and isinstance(r, dict) and "categories" in r:
             return r
@@ -2291,7 +2291,7 @@ class AzureAI:
             "}\n\n"
             "Be specific — quote actual text from the document for every excerpt. "
             "critical = blocks estimation; warning = reduces accuracy.",
-            "Scope document to review:\n\n" + scope_text[:14000],
+            "Scope document to review:\n\n" + scope_text[:60000],
         )
         if r and isinstance(r, dict) and "issues" in r:
             return r
@@ -2318,7 +2318,7 @@ class AzureAI:
             " \"complexity_score\": int 1-10,\n"
             " \"business_objectives\": [str],\n"
             " \"meeting_summary\": str, \"sentiment\": str, \"key_themes\": [str]}",
-            "Transcript:\n\n" + transcript_text[:15000],
+            "Transcript:\n\n" + transcript_text[:60000],
         )
         if r and isinstance(r, dict) and ("wbs" in r or "requirements_extracted" in r):
             return r

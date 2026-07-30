@@ -3911,9 +3911,12 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
             "scope": {}, "proposal": {}, "mermaid_diagrams": [],
             "discovery_questions": {}, "rich_arch_html": None,
         }
-        st.session_state["est_review_auto_done"] = False   # trigger auto-review on Time tab
+        _launch_bg_review(time_est, semantic)
         st.session_state.model_metrics["proposals_processed"] += 1
         return
+
+    # ── Launch estimate review in background now (runs during cost/risk/arch steps) ──
+    _launch_bg_review(time_est, semantic)
 
     _upd(5, "Calculating infrastructure cost…", 50)
     cost_est = ai_cost.estimate_cost(semantic, time_est, rag)
@@ -4011,7 +4014,6 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
         "discovery_questions": discovery_questions,
         "rich_arch_html": rich_arch_html,
     }
-    st.session_state["est_review_auto_done"] = False   # trigger auto-review on Time tab
     st.session_state.model_metrics["proposals_processed"] += 1
 
     # Auto-populate client name from semantic analysis if not already set by user
@@ -8137,6 +8139,74 @@ document.querySelectorAll('.tp').forEach((el,i) => {{
     _cv1.html(html, height=772, scrolling=False)
 
 
+def _launch_bg_review(te: dict, se: dict) -> None:
+    """Start a background 2-pass review thread during the pipeline.
+
+    Both passes run sequentially inside a single daemon thread so the pipeline
+    (and later the UI) never needs to do polling reruns.  When the thread finishes
+    it writes directly into est_review_result / est_review_state = "done" so the
+    Time tab can display results immediately on first render, with zero blocking.
+    """
+    _RK = "est_review"
+    # Don't launch twice for the same estimate
+    if st.session_state.get(f"{_RK}_thread_active"):
+        return
+    _ai_key   = st.session_state.get("anthropic_api_key", "")
+    _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
+    _ai_ep    = st.session_state.get("claude_endpoint", "")
+    if not _ai_key or st.session_state.get("_claude_blocked"):
+        return   # Claude not available — skip silently
+
+    st.session_state[f"{_RK}_state"]         = "reviewing"
+    st.session_state[f"{_RK}_auto_pass"]     = 1
+    st.session_state[f"{_RK}_thread_active"] = True
+    st.session_state["est_review_auto_done"] = True   # prevent re-trigger on Time tab render
+    for _k in (f"{_RK}_result", f"{_RK}_error", f"{_RK}_pass1_result", f"{_RK}_result_holder"):
+        st.session_state.pop(_k, None)
+
+    from modules.ai_clients import AnthropicAI as _Ant
+
+    def _bg_both_passes():
+        try:
+            _client = _Ant(_ai_key, _ai_model, _ai_ep)
+            # Re-read live estimate at call time (most up-to-date)
+            _live_te = safe_dict(
+                st.session_state.get("processing_results", {}).get("time_estimate") or te
+            )
+            _prompt = _build_review_prompt(_live_te, se)
+
+            def _call_pass():
+                raw = (_client.call_raw_text(
+                    "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
+                    _prompt, max_tokens=6000,
+                ) or "").strip()
+                if not raw:
+                    raise ValueError("Empty response from Claude")
+                try:
+                    return json.loads(raw)
+                except json.JSONDecodeError:
+                    # best-effort strip fences
+                    if raw.startswith("```"):
+                        raw2 = "\n".join(raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
+                        return json.loads(raw2)
+                    raise
+
+            p1 = _call_pass()
+            # Pass 2 — same prompt; merging catches anything pass 1 missed
+            p2 = _call_pass()
+            merged = _merge_review_passes(p1, p2)
+            st.session_state[f"{_RK}_result"]        = merged
+            st.session_state[f"{_RK}_state"]         = "done"
+        except Exception as _ex:
+            st.session_state[f"{_RK}_error"]         = str(_ex)
+            st.session_state[f"{_RK}_state"]         = "idle"
+        finally:
+            st.session_state[f"{_RK}_auto_pass"]     = 0
+            st.session_state[f"{_RK}_thread_active"] = False
+
+    threading.Thread(target=_bg_both_passes, daemon=True).start()
+
+
 def _auto_correct_estimate(te: dict, se: dict) -> None:
     """Run once per estimate: Claude reviews and auto-applies all high-severity,
     non-manual findings. Skips if already run for this estimate or Claude not live."""
@@ -8352,15 +8422,11 @@ def _render_estimate_review(te: dict, se: dict) -> None:
     _state = st.session_state.get(f"{_RK}_state", "idle")
     _busy  = _state in ("reviewing", "fixing", "fix_selected", "ask_agent")
 
-    # ── Auto-trigger: run two passes in background on first load after pipeline ──
+    # ── Auto-trigger fallback: if pipeline didn't launch review (e.g. Claude was blocked
+    #    at pipeline time but is now live), try once from here ──
     if not st.session_state.get("est_review_auto_done", True) and _state == "idle" and not _busy:
-        _state = "reviewing"
-        st.session_state[f"{_RK}_state"]         = "reviewing"
-        st.session_state[f"{_RK}_auto_pass"]     = 1
-        st.session_state["est_review_auto_done"] = True   # prevent re-trigger on reruns
-        for _k in (f"{_RK}_result", f"{_RK}_error", f"{_RK}_ask_active",
-                   f"{_RK}_thread_active", f"{_RK}_result_holder", f"{_RK}_pass1_result"):
-            st.session_state.pop(_k, None)
+        _launch_bg_review(te, se)
+        _state = st.session_state.get(f"{_RK}_state", "idle")
 
     # ── Header row (always visible) ───────────────────────────────────
     _h1, _h2 = st.columns([5, 2])
@@ -8398,177 +8464,122 @@ def _render_estimate_review(te: dict, se: dict) -> None:
         st.session_state.pop(f"{_RK}_thread_active", None)
         st.session_state.pop(f"{_RK}_result_holder", None)
 
-    # ── STATE: reviewing — loader + background thread ──
-    # ── STATE: reviewing — "Review Now" button path (always fragment context) ──
-    # Uses background thread + 300ms polls so the loader appears instantly
-    # without blocking the fragment render or the asyncio event loop.
+    # ── STATE: reviewing ──────────────────────────────────────────────────────
     if _state == "reviewing":
-        _auto_pass_n = safe_int(st.session_state.get(f"{_RK}_auto_pass", 0))
-        _is_auto_review = _auto_pass_n > 0   # True = background auto-run, False = manual "Review Now"
+        _is_auto_review = not _run_clicked   # auto = launched from pipeline; manual = button click
 
-        # Auto-review works silently — no loader shown until results are ready.
-        # Manual "Review Now" click shows the full loader UI.
-        if not _is_auto_review:
-            _pass_badge = ""
-            _REVIEW_LOADER = (
-                '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
-                'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
-                '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
-                '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
-                'Agent Reviewing Estimate…</div>'
-                '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
-                'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
-                '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
-                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-                'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
-                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-                'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
-                '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
-                'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
-                '</div>'
-                '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
-                '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
-                '30%{transform:translateY(-10px);opacity:1}}</style>'
-                '</div>'
+        if _is_auto_review:
+            # ── Auto-review: running silently in background during pipeline ──
+            # The _launch_bg_review thread handles both passes and writes directly
+            # to est_review_result/est_review_state when done.
+            # Check if it finished; if not, show a small non-blocking badge and
+            # poll every 5 s (not 300 ms) so the UI stays fully usable.
+            if not st.session_state.get(f"{_RK}_thread_active", False):
+                # Thread finished — transition happened inside the thread; rerun once to display
+                try:
+                    st.rerun(scope="fragment")
+                except Exception:
+                    st.rerun()
+                return
+            # Still running — tiny status chip, no blocking loader
+            st.markdown(
+                '<div style="display:inline-flex;align-items:center;gap:6px;'
+                'font-size:.7rem;color:#64748b;padding:4px 10px;margin-bottom:8px;'
+                'background:rgba(123,97,255,.06);border:1px solid rgba(123,97,255,.15);'
+                'border-radius:20px;">'
+                '<span style="width:6px;height:6px;border-radius:50%;background:#7b61ff;'
+                'animation:erv_b 1.2s ease-in-out infinite"></span>'
+                'Estimate review running in background…'
+                '<style>@keyframes erv_b{0%,60%,100%{opacity:.3}30%{opacity:1}}</style>'
+                '</div>',
+                unsafe_allow_html=True,
             )
-            st.markdown(_REVIEW_LOADER, unsafe_allow_html=True)
+            time.sleep(5)
+            try:
+                st.rerun(scope="fragment")
+            except Exception:
+                st.rerun()
+            return
 
-        # Start thread once (idempotent — guarded by _thread_active flag)
+        # ── Manual "Review Now" — show full loader, run single-pass thread ──
         if not st.session_state.get(f"{_RK}_thread_active"):
             _ai_key   = st.session_state.get("anthropic_api_key", "")
             _ai_model = st.session_state.get("claude_model", "claude-sonnet-4-6")
             _ai_ep    = st.session_state.get("claude_endpoint", "")
             _ai_live  = bool(_ai_key) and not st.session_state.get("_claude_blocked")
-            # Always read live estimate from session state so pass-2 sees current data
             _live_te  = st.session_state.processing_results.get("time_estimate", te)
             _prompt   = _build_review_prompt(_live_te, se)
-            _holder   = [None, None]   # [status, payload] — written by thread
+            _holder   = [None, None]
             st.session_state[f"{_RK}_result_holder"] = _holder
             st.session_state[f"{_RK}_thread_active"] = True
 
             from modules.ai_clients import AnthropicAI as _Ant
-
-            def _repair_json(s: str):
-                """Best-effort repair of a truncated JSON string from the API."""
-                s = s.strip()
-                # Strip markdown fences if present
-                if s.startswith("```"):
-                    s = "\n".join(s.split("\n")[1:]).rsplit("```", 1)[0].strip()
-                # Try clean parse first
-                try:
-                    return json.loads(s)
-                except json.JSONDecodeError:
-                    pass
-                # Truncated — close any open structures then re-try
-                # Count unmatched braces/brackets and open strings
-                depth_brace = 0
-                depth_bracket = 0
-                in_str = False
-                escape = False
-                last_good = 0
-                for i, ch in enumerate(s):
-                    if escape:
-                        escape = False
-                        continue
-                    if ch == "\\" and in_str:
-                        escape = True
-                        continue
-                    if ch == '"' and not escape:
-                        in_str = not in_str
-                    if not in_str:
-                        if ch == "{":
-                            depth_brace += 1
-                        elif ch == "}":
-                            depth_brace -= 1
-                        elif ch == "[":
-                            depth_bracket += 1
-                        elif ch == "]":
-                            depth_bracket -= 1
-                        if depth_brace > 0 or depth_bracket > 0:
-                            last_good = i + 1
-                # If we're mid-string, close it
-                repaired = s[:last_good] if last_good else s
-                if in_str:
-                    repaired += '"'
-                # Close open arrays/objects in reverse order
-                repaired += "]" * max(depth_bracket, 0)
-                repaired += "}" * max(depth_brace, 0)
-                return json.loads(repaired)
 
             def _review_task():
                 try:
                     if not _ai_live:
                         raise ValueError("Claude not configured — add your Anthropic API key in settings.")
                     _client = _Ant(_ai_key, _ai_model, _ai_ep)
-                    _raw = _client.call_raw_text(
+                    _raw = (_client.call_raw_text(
                         "You are a senior delivery estimator. Return ONLY valid JSON with no markdown fences.",
-                        _prompt,
-                        max_tokens=6000,
-                    )
+                        _prompt, max_tokens=6000,
+                    ) or "").strip()
                     if not _raw:
                         raise ValueError("Agent returned empty response.")
-                    _holder[0] = "ok"
-                    _holder[1] = _repair_json(_raw)
+                    try:
+                        _holder[0] = "ok"
+                        _holder[1] = json.loads(_raw)
+                    except json.JSONDecodeError:
+                        if _raw.startswith("```"):
+                            _raw = "\n".join(_raw.split("\n")[1:]).rsplit("```", 1)[0].strip()
+                        _holder[0] = "ok"
+                        _holder[1] = json.loads(_raw)
                 except Exception as _tex:
                     _holder[0] = "err"
                     _holder[1] = str(_tex)
 
             threading.Thread(target=_review_task, daemon=True).start()
 
-        # Check whether the thread has finished
+        st.markdown(
+            '<div style="background:rgba(123,97,255,.08);border:1px solid rgba(123,97,255,.22);'
+            'border-radius:0 0 12px 12px;padding:32px 24px;text-align:center;margin-bottom:16px">'
+            '<div style="font-size:2rem;margin-bottom:10px">🔍</div>'
+            '<div style="font-size:.9rem;font-weight:800;color:#a78bfa;margin-bottom:6px">'
+            'Agent Reviewing Estimate…</div>'
+            '<div style="font-size:.73rem;color:#64748b;margin-bottom:22px">'
+            'Auditing streams, requirements coverage, hours sanity, and scope alignment</div>'
+            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:18px">'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite 0s"></div>'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite .2s"></div>'
+            '<div style="width:10px;height:10px;border-radius:50%;background:#7b61ff;'
+            'animation:erv_b 1.2s ease-in-out infinite .4s"></div>'
+            '</div>'
+            '<div style="font-size:.65rem;color:#475569">This usually takes 10–20 seconds</div>'
+            '<style>@keyframes erv_b{0%,60%,100%{transform:translateY(0);opacity:.4}'
+            '30%{transform:translateY(-10px);opacity:1}}</style>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Poll the holder — 300ms is fine here (user already sees the loader)
         _holder = st.session_state.get(f"{_RK}_result_holder")
         if _holder and _holder[0] is not None:
-            _cur_auto_pass = safe_int(st.session_state.get(f"{_RK}_auto_pass", 0))
             if _holder[0] == "ok":
-                if _cur_auto_pass == 1:
-                    # Pass 1 done — store result and immediately kick off pass 2
-                    st.session_state[f"{_RK}_pass1_result"]  = _holder[1]
-                    st.session_state[f"{_RK}_auto_pass"]     = 2
-                    st.session_state[f"{_RK}_state"]         = "reviewing"
-                    st.session_state[f"{_RK}_thread_active"] = False
-                    st.session_state.pop(f"{_RK}_result_holder", None)
-                    try:
-                        st.rerun(scope="fragment")
-                    except Exception:
-                        st.rerun()
-                elif _cur_auto_pass == 2:
-                    # Pass 2 done — merge with pass 1 and show final result
-                    _p1 = safe_dict(st.session_state.pop(f"{_RK}_pass1_result", {}))
-                    _merged = _merge_review_passes(_p1, _holder[1])
-                    st.session_state[f"{_RK}_result"]        = _merged
-                    st.session_state[f"{_RK}_state"]         = "done"
-                    st.session_state[f"{_RK}_auto_pass"]     = 0
-                    st.session_state[f"{_RK}_thread_active"] = False
-                    st.session_state.pop(f"{_RK}_result_holder", None)
-                    try:
-                        st.rerun(scope="fragment")
-                    except Exception:
-                        st.rerun()
-                else:
-                    # Manual single-pass review
-                    st.session_state[f"{_RK}_result"]        = _holder[1]
-                    st.session_state[f"{_RK}_state"]         = "done"
-                    st.session_state[f"{_RK}_thread_active"] = False
-                    st.session_state.pop(f"{_RK}_result_holder", None)
-                    try:
-                        st.rerun(scope="fragment")
-                    except Exception:
-                        st.rerun()
+                st.session_state[f"{_RK}_result"]        = _holder[1]
+                st.session_state[f"{_RK}_state"]         = "done"
             else:
                 st.session_state[f"{_RK}_error"]         = _holder[1]
                 st.session_state[f"{_RK}_state"]         = "idle"
-                st.session_state[f"{_RK}_auto_pass"]     = 0
-                st.session_state[f"{_RK}_thread_active"] = False
-                st.session_state.pop(f"{_RK}_result_holder", None)
-                st.session_state.pop(f"{_RK}_pass1_result", None)
-                try:
-                    st.rerun(scope="fragment")
-                except Exception:
-                    st.rerun()
+            st.session_state[f"{_RK}_thread_active"] = False
+            st.session_state.pop(f"{_RK}_result_holder", None)
+            try:
+                st.rerun(scope="fragment")
+            except Exception:
+                st.rerun()
             return
 
-        # Thread still running — sleep(0.3) releases GIL so the asyncio
-        # event loop can flush the loader delta to the browser before waking
         time.sleep(0.3)
         try:
             st.rerun(scope="fragment")

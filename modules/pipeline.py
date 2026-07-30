@@ -4000,11 +4000,9 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     except Exception as _fin_ex:
         log_agent("Finalize", f"Pre-computation partial: {str(_fin_ex)[:120]}")
 
-    # ── Step 13: Wait for background review — no fixed cap ───────────────
-    # The thread always exits via its finally block (sets thread_active=False),
-    # so this loop is guaranteed to terminate. 600s is a hard safety fallback only.
+    # ── Step 13: Wait for background review (single-pass, ~30-60s) ───────
     _upd(13, "Waiting for estimate review to complete…", 99)
-    _rv_wait_max = 600   # safety cap — thread always exits naturally before this
+    _rv_wait_max = 120   # seconds; single-pass review finishes well within this
     _rv_waited   = 0
     while st.session_state.get("est_review_thread_active", False) and _rv_waited < _rv_wait_max:
         stepper.markdown(
@@ -8222,14 +8220,11 @@ def _launch_bg_review(te: dict, se: dict) -> None:
                         return json.loads(raw2)
                     raise
 
-            p1 = _call_pass()
-            # Pass 2 — same prompt; merging catches anything pass 1 missed
-            p2 = _call_pass()
-            merged = _merge_review_passes(p1, p2)
-            st.session_state[f"{_RK}_result"]        = merged
+            result = _call_pass()
+            st.session_state[f"{_RK}_result"]        = result
             st.session_state[f"{_RK}_state"]         = "done"
-            _n_findings = len(safe_list(merged.get("findings", [])))
-            _score = safe_int(merged.get("score", 0))
+            _n_findings = len(safe_list(result.get("findings", [])))
+            _score = safe_int(result.get("score", 0))
             log_agent("Review", f"✓ Done — score {_score}/100, {_n_findings} finding{'s' if _n_findings != 1 else ''} — see Time tab")
         except Exception as _ex:
             st.session_state[f"{_RK}_error"]         = str(_ex)

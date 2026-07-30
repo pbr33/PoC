@@ -2025,8 +2025,9 @@ class AzureAI:
         return _build_dynamic_time(semantic, rag=rag)
 
     def _fb_cost(self, time_est):
-        sem = st.session_state.get("_last_semantic", {})
-        return _build_dynamic_cost(sem, time_est)
+        sem  = st.session_state.get("_last_semantic", {})
+        text = st.session_state.get("_extracted_text", "")
+        return _build_dynamic_cost(sem, time_est, text=text)
 
     def _fb_risk(self, semantic):
         te = st.session_state.get("_last_time_est", {})

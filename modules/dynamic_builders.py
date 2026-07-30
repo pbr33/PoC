@@ -768,13 +768,29 @@ def _cost_category(service_name: str) -> str:
     return "Other"
 
 
-def _build_dynamic_cost(semantic, time_est):
-    """Build infrastructure cost estimate, respecting mandated tech and excluding source systems."""
-    from .text_analysis import _fetch_live_azure_pricing
+def _build_dynamic_cost(semantic, time_est, text: str = ""):
+    """Build infrastructure cost estimate, respecting mandated tech and excluding source systems.
+    text: raw scope document text — used to detect tier upgrades (e.g. Premium APIM for zone redundancy).
+    """
+    from .text_analysis import _fetch_live_azure_pricing, _TIER_UPGRADE_SIGNALS
     try:
         live_prices = _fetch_live_azure_pricing()
     except Exception:
         live_prices = {}
+
+    # Scope text for tier detection — also check raw text stored in semantic
+    _scope_lower = (text or semantic.get("_raw_text", "") or "").lower()
+
+    def _pick_tier(catalog_name, default_tier, default_monthly, default_desc):
+        """Return (tier, monthly, desc) — upgraded if scope text contains tier signals."""
+        if _scope_lower and catalog_name in _TIER_UPGRADE_SIGNALS:
+            for signals, tier_label, tier_monthly, tier_desc in _TIER_UPGRADE_SIGNALS[catalog_name]:
+                if any(sig in _scope_lower for sig in signals):
+                    # Use live price if available for the upgraded tier, else use catalog value
+                    live_override = live_prices.get(catalog_name + " " + tier_label, tier_monthly)
+                    return tier_label, live_override, tier_desc
+        # Default: prefer live price over hardcoded base_monthly
+        return default_tier, live_prices.get(catalog_name, default_monthly), default_desc
 
     mandated    = safe_list(semantic.get("mandated_technologies", []))
     source_sys  = safe_list(semantic.get("source_systems", []))
@@ -791,9 +807,9 @@ def _build_dynamic_cost(semantic, time_est):
             # Exact match preferred, then keyword overlap
             if tech_name.lower() == catalog_name.lower() or \
                all(w in tech_name.lower() for w in catalog_name.lower().split() if len(w) > 3):
-                monthly = live_prices.get(catalog_name, base_monthly)
-                azure_costs.append({"service": catalog_name, "tier": tier,
-                                    "monthly_cost": monthly, "description": desc,
+                _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
+                azure_costs.append({"service": catalog_name, "tier": _tier,
+                                    "monthly_cost": _monthly, "description": _desc,
                                     "category": _cost_category(catalog_name)})
                 seen.add(catalog_name)
                 break
@@ -806,9 +822,9 @@ def _build_dynamic_cost(semantic, time_est):
                 continue
             if tech_name.lower() == catalog_name.lower() or \
                all(w in tech_name.lower() for w in catalog_name.lower().split() if len(w) > 3):
-                monthly = live_prices.get(catalog_name, base_monthly)
-                azure_costs.append({"service": catalog_name, "tier": tier,
-                                    "monthly_cost": monthly, "description": desc,
+                _tier, _monthly, _desc = _pick_tier(catalog_name, tier, base_monthly, desc)
+                azure_costs.append({"service": catalog_name, "tier": _tier,
+                                    "monthly_cost": _monthly, "description": _desc,
                                     "category": _cost_category(catalog_name)})
                 seen.add(catalog_name)
                 break

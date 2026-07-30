@@ -191,6 +191,49 @@ _INFRA_COST_CATALOG = {
     "Azure API Management":   ("Basic",                 147,  "$0.201/hr x 730 hrs; Basic tier, 1 unit"),
 }
 
+# Tier upgrade rules: when scope text contains any signal keyword, use higher tier + price.
+# Format: service_name → [(signals_list, tier_label, monthly_usd, description), ...]
+# First matching rule wins (ordered high→low tier).
+_TIER_UPGRADE_SIGNALS: dict = {
+    "Azure API Management": [
+        (["premium", "zone redundan", "multi-region", "vnet injection", "internal mode",
+          "private endpoint apim", "apim premium"],
+         "Premium", 936, "~$1.28/hr × 730 hrs; Premium, zone-redundant, VNet-injected"),
+        (["standard tier", "apim standard"],
+         "Standard", 224, "~$0.307/hr × 730 hrs; Standard tier, 1 unit"),
+    ],
+    "Azure AI Search": [
+        (["s2 ", "standard s2", "semantic ranker high", "high throughput search"],
+         "Standard S2", 982, "~$1.34/hr × 730 hrs; S2 high-throughput"),
+        (["basic search", "small index"],
+         "Basic", 82, "~$0.113/hr × 730 hrs; Basic tier"),
+    ],
+    "Azure SQL Database": [
+        (["business critical", "mission critical", "zone redundant sql", "in-memory oltp"],
+         "Business Critical Gen5 2vC", 756, "~$1.035/hr × 730 hrs; BC, zone-redundant, in-memory OLTP"),
+        (["premium sql", "premium tier sql", " p1 "],
+         "Premium P1 (125 DTU)", 465, "$465/mo; Premium P1, SLA 99.99%"),
+        (["hyperscale sql"],
+         "Hyperscale Gen5 2vC", 370, "~$0.507/hr × 730 hrs; Hyperscale, auto-scale storage"),
+    ],
+    "Azure Databricks": [
+        (["unity catalog", "delta live table", "databricks premium", "ml feature"],
+         "Premium DS3_v2 cluster", 420, "4-node Premium cluster; Unity Catalog, ML features"),
+    ],
+    "Microsoft Fabric": [
+        (["f4 ", "f8 ", "f16", "enterprise fabric", "large fabric"],
+         "F4 Capacity (4 CUs)", 1052, "4 CUs × $0.36/CU-hr × 730 hrs"),
+    ],
+    "Azure Machine Learning": [
+        (["gpu training", "a100", "v100", "nc6", "gpu cluster"],
+         "NC6s_v3 GPU cluster", 490, "GPU compute; ~100 hrs/mo training workloads"),
+    ],
+    "Azure Container Apps": [
+        (["dedicated plan", "high throughput container", "always-on"],
+         "Dedicated D4", 280, "Dedicated D4 plan; always-on, predictable scaling"),
+    ],
+}
+
 # Technologies that typically appear as EXISTING CLIENT SOURCE SYSTEMS, not built components.
 # When detected near "source", "existing", "client has", "on-premises", etc., they are excluded from build costs.
 _SOURCE_SYSTEM_SIGNALS = [

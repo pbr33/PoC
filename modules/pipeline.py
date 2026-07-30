@@ -7327,12 +7327,24 @@ def _apply_estimate_fix(fix_type: str, fix_data: dict) -> None:
     elif fix_type == "add_tasks":
         _name   = safe_str(fix_data.get("stream_name", "")).lower()
         _rtitle = safe_str(fix_data.get("requirement_title", ""))
+        _rtitle_lower = _rtitle.lower()
         for p in _phases:
             if safe_str(p.get("name", "")).lower() == _name or safe_str(p.get("domain", "")).lower() == _name:
+                # Dedup: skip if any existing task already covers this requirement
+                _existing_text = " ".join(
+                    safe_str(safe_dict(t).get("name", "") or safe_dict(t).get("title", "")) + " " +
+                    safe_str(safe_dict(t).get("justification", ""))
+                    for t in safe_list(p.get("tasks", []))
+                ).lower()
+                _sig_words = [w for w in _rtitle_lower.split() if len(w) > 4]
+                if _sig_words and any(w in _existing_text for w in _sig_words):
+                    continue  # already covered — skip to prevent duplicate
                 p.setdefault("tasks", []).append({
-                    "title":         f"Implement: {_rtitle[:50]}",
+                    "name":          f"Implement: {_rtitle[:50]}",
                     "role":          "Engineer",
                     "hours":         8,
+                    "low_hours":     6,
+                    "high_hours":    11,
                     "justification": f"Added to cover requirement: {_rtitle}",
                 })
                 p["hours"] = sum(safe_int(safe_dict(t).get("hours", 0)) for t in safe_list(p.get("tasks", [])))

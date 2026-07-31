@@ -4028,10 +4028,23 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
 
     pb.progress(100)
     stepper.markdown(_pipeline_stepper_html(_PIPE_STEPS, len(_PIPE_STEPS)), unsafe_allow_html=True)
-    status.empty()
     log_area.empty()
     _banner_slot.empty()
     show_toast("🚀 Proposal ready — all 12 agents completed!", "success")
+    # Show a visible loader while the blocking auto-correction Claude call runs.
+    # Without this, the screen is blank for 10-30s after all steps show green ticks.
+    status.markdown(
+        '<div style="display:flex;align-items:center;justify-content:center;gap:14px;'
+        'padding:28px 0;font-family:\'DM Sans\',system-ui,sans-serif">'
+        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" '
+        'stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/>'
+        '<animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" '
+        'dur="0.9s" repeatCount="indefinite"/></svg>'
+        '<div><div style="font-size:.9rem;font-weight:700;color:#e2e8f0">Finalising your proposal…</div>'
+        '<div style="font-size:.75rem;color:#64748b;margin-top:2px">Applying quality corrections — '
+        'results will appear in a moment</div></div></div>',
+        unsafe_allow_html=True,
+    )
     st.session_state.processing_results = {
         "semantic_analysis": semantic, "rag": rag, "time_estimate": time_est,
         "cost_estimate": cost_est, "risk_assessment": risk, "architecture": arch,
@@ -4042,6 +4055,7 @@ var d=document.createElement('div');d.className='ag';d.style.animationDelay=(j*.
     # Run auto-corrections NOW (before results render) so the results page
     # never needs to make a blocking Claude call after load.
     _auto_correct_estimate(time_est, semantic)
+    status.empty()   # clear loader; results page renders next
     st.session_state.model_metrics["proposals_processed"] += 1
 
     # Auto-populate client name from semantic analysis if not already set by user

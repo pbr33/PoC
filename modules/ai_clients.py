@@ -1676,40 +1676,6 @@ class AzureAI:
             if not remove_set:
                 return time_est
 
-            # Before removing SharePoint/M365 phases, merge their hours+tasks
-            # into the AI/ML stream so no effort is lost
-            _sp_keys = {"sharepoint / m365", "sharepoint/m365", "microsoft 365",
-                        "sharepoint & m365", "sharepoint", "m365"}
-            _sp_removing = remove_set & _sp_keys
-            if _sp_removing and _has_ai:
-                _aiml_phase = next(
-                    (p for p in phases
-                     if "ai" in safe_str(safe_dict(p).get("name","")).lower()
-                     or "ml" in safe_str(safe_dict(p).get("name","")).lower()),
-                    None,
-                )
-                if _aiml_phase:
-                    _aiml_phase = dict(safe_dict(_aiml_phase))
-                    for _sp_p in phases:
-                        _sp_p = safe_dict(_sp_p)
-                        if safe_str(_sp_p.get("name","")).lower().strip() in _sp_removing:
-                            _aiml_phase["hours"] = (
-                                safe_int(_aiml_phase.get("hours", 0))
-                                + safe_int(_sp_p.get("hours", 0))
-                            )
-                            _aiml_phase.setdefault("tasks", [])
-                            _aiml_phase["tasks"].extend(
-                                [dict(t) for t in safe_list(_sp_p.get("tasks", []))]
-                            )
-                    # Replace original AI/ML phase entry with merged version
-                    phases = [
-                        _aiml_phase if (
-                            "ai" in safe_str(safe_dict(p).get("name","")).lower()
-                            or "ml" in safe_str(safe_dict(p).get("name","")).lower()
-                        ) else safe_dict(p)
-                        for p in phases
-                    ]
-
             filtered = [
                 p for p in phases
                 if safe_str(safe_dict(p).get("name", "")).lower().strip() not in remove_set

@@ -10143,12 +10143,14 @@ def show_results():
                     "Frontend Dev": "Frontend Developer", "DevOps": "DevOps Engineer",
                     "QA": "QA Engineer", "Writer": "Technical Writer",
                     "SharePoint Dev": "AI Engineer",
+                    # ML Engineer and AI Engineer are the same resource on AI projects
+                    "ML Engineer": "AI Engineer",
                     "Product Owner": "Product Owner",
-                    "Data Engineer": "Data Engineer", "ML Engineer": "ML Engineer",
+                    "Data Engineer": "Data Engineer",
                 }
                 _ROLE_ORDER = [
                     "Project Manager", "Business Analyst", "Solution Architect",
-                    "Security Consultant", "Data Engineer", "ML Engineer",
+                    "Security Consultant", "Data Engineer", "AI Engineer",
                     "Developer", "Frontend Developer",
                     "DevOps Engineer", "QA Engineer", "Technical Writer", "Product Owner",
                 ]

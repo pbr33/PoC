@@ -451,11 +451,25 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 # Single combined task (do not split into implementation + testing rows)
                 ai_tasks.append(_task(f"Feature: {title}", "ML Engineer", base, desc))
 
+        # When SharePoint/M365 is in scope on an AI project, the AI Engineer owns
+        # that work — fold it directly into the AI/ML stream (training instruction 21)
+        if is_sharepoint:
+            ai_tasks += [
+                _task("SharePoint site architecture and provisioning",      "AI Engineer", 8,  "Site collections, hub sites, navigation, permissions model"),
+                _task("Content types, columns and metadata taxonomy",       "AI Engineer", 6,  "Term store, managed metadata, content type hub"),
+                _task("SPFx web parts / Power Automate flows",             "AI Engineer", 10, "SPFx components, Power Automate approvals, AAD group mapping"),
+                _task("SharePoint Search and permissions configuration",    "AI Engineer", 6,  "Search verticals, managed properties, permission matrix"),
+            ]
+            if is_teams:
+                ai_tasks += [
+                    _task("SharePoint pages as Teams tabs integration",     "AI Engineer", 6,  "Tab config, SSO, deep link support"),
+                ]
+
         streams.append(_stream("AI / ML Stream", "AI / ML", ai_tasks, mult=1.0,
                                parallel_with=["Data Engineering"] if is_data_eng else []))
 
-    # ── Stream 3: SharePoint / M365 ───────────────────────────────────────
-    if is_sharepoint:
+    # ── Stream 3: SharePoint / M365 (only for non-AI projects) ────────────
+    if is_sharepoint and not is_ai:
         sp_tasks = [
             _task("SharePoint site architecture and provisioning",          "AI Engineer", 8,  "Site collections, hub sites, navigation, permissions model"),
             _task("Content types, columns and metadata taxonomy",           "AI Engineer", 8,  "Term store, managed metadata, content type hub"),
@@ -471,7 +485,7 @@ def _build_dynamic_time(semantic, text="", rag=None):
                 _task("Teams notifications and adaptive cards from flows",  "AI Engineer", 6,  "Power Automate to Teams channel cards, @mentions"),
             ]
         streams.append(_stream("SharePoint / M365", "SharePoint", sp_tasks, mult=1.20,
-                               parallel_with=["AI / ML Stream", "Data Engineering"]))
+                               parallel_with=["Data Engineering"]))
 
     # ── Stream 4: Custom Application ─────────────────────────────────────
     if is_custom_app:

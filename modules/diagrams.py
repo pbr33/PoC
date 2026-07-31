@@ -3873,7 +3873,7 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
                              ai_client=None) -> None:
     """Render the Architecture tab.
 
-    Top section  : AI-generated, full-colour HTML/SVG diagram (Claude / Azure OpenAI).
+    Top section  : Claude dark-theme AI Vision Architecture diagram.
     Middle section: Interactive JavaScript SVG designer (5 views) — shown in expander.
     Bottom section: Component cards, data-flow strip, security controls.
     """
@@ -3914,11 +3914,7 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
     if _drawio_key not in st.session_state:
         st.session_state[_drawio_key] = generate_drawio_xml(ar, se).encode("utf-8")
 
-    # ── Solution Architecture Diagram — Azure OpenAI light-theme (fragment) ──
-    _az_arch_fragment(ar, se, _cache_key, _drawio_key)
-
-    # ── Claude AI Vision Architecture — fragment-isolated (no full-page gray-out) ──
-    st.markdown("---")
+    # ── AI Vision Architecture — dark-theme (Claude) ──
     st.markdown("### 🌟 AI Vision Architecture")
 
     _cv_key = "claude_vision_arch_" + _hashlib.md5(

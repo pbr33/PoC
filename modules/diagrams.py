@@ -3721,6 +3721,119 @@ def _arch_vision_fragment(ar: dict, se: dict, ce: dict, cv_key: str) -> None:
 
 
 @st.fragment
+def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> None:
+    """Fragment for the first (light-theme) Solution Architecture diagram — Azure OpenAI powered."""
+    from datetime import datetime as _dt3
+    _cached    = st.session_state.get(cache_key)
+    _ERR_KEY   = "_az_arch_err"
+    _GEN_KEY   = "_az_arch_doing_work"
+    _SHOW_KEY  = "_az_arch_show_loader"
+
+    # ── STATE 1 — show loader then do work ──────────────────────────────
+    if st.session_state.get(_SHOW_KEY):
+        st.session_state[_SHOW_KEY] = False
+        st.session_state[_GEN_KEY]  = True
+        st.components.v1.html(
+            '<html><body style="margin:0;background:#f8fafc;display:flex;align-items:center;'
+            'justify-content:center;height:260px;font-family:Segoe UI,sans-serif">'
+            '<div style="text-align:center">'
+            '<div style="font-size:2.5rem;margin-bottom:12px">🤖</div>'
+            '<div style="font-size:.95rem;font-weight:700;color:#0078D4;margin-bottom:6px">'
+            'Azure OpenAI — Generating Architecture Diagram…</div>'
+            '<div style="font-size:.75rem;color:#6B7280">Building layered diagram with service '
+            'cards, data-flow arrows and business outcomes — ~30 seconds</div>'
+            '</div></body></html>',
+            height=280, scrolling=False,
+        )
+        st.rerun(scope="fragment")
+        return
+
+    # ── STATE 2 — make the API call ──────────────────────────────────────
+    if st.session_state.get(_GEN_KEY):
+        st.session_state[_GEN_KEY] = False
+        _err = None
+        _html = None
+        with st.spinner("🤖 Azure OpenAI generating — please wait…"):
+            try:
+                from .ai_clients import AzureAI as _AZ
+                _az = _AZ.from_session()
+                if _az and _az.is_live:
+                    _html = _az.generate_ai_arch_svg(ar, se)
+                    if not _html:
+                        _err = "Azure OpenAI returned an empty response."
+                else:
+                    _err = "Azure OpenAI not configured — add your API key in Settings."
+            except Exception as _ex:
+                _err = str(_ex)[:200]
+        if _html:
+            st.session_state[cache_key] = _html
+        if _err:
+            st.session_state[_ERR_KEY] = _err
+        st.rerun(scope="fragment")
+        return
+
+    # ── Show error from last attempt ─────────────────────────────────────
+    _prev_err = st.session_state.pop(_ERR_KEY, None)
+    if _prev_err:
+        st.error(f"Generation failed: {_prev_err}", icon="⚠️")
+
+    # ── Diagram available ────────────────────────────────────────────────
+    if _cached:
+        st.components.v1.html(_cached, height=960, scrolling=True)
+        _ac1, _ac2, _ac3, _ac4 = st.columns(4)
+        with _ac1:
+            st.download_button(
+                "📥 Download (HTML)", data=_cached.encode("utf-8"),
+                file_name="ECI_Arch_" + _dt3.now().strftime("%Y%m%d_%H%M%S") + ".html",
+                mime="text/html", width="stretch", key="dl_az_html",
+            )
+        with _ac2:
+            _drawio_b = st.session_state.get(drawio_key, b"")
+            if _drawio_b:
+                st.download_button(
+                    "📐 Export to Lucidchart", data=_drawio_b,
+                    file_name="ECI_Architecture.drawio", mime="application/xml",
+                    width="stretch", key="dl_az_drawio",
+                    help="Download .drawio → Lucidchart: File → Import → diagrams.net",
+                )
+        with _ac3:
+            if st.button("🔄 Reset", key="btn_az_reset", width="stretch"):
+                st.session_state.pop(cache_key, None)
+                st.rerun(scope="fragment")
+        with _ac4:
+            if st.button("✨ Regenerate", key="btn_az_regen", width="stretch", type="primary"):
+                st.session_state.pop(cache_key, None)
+                st.session_state[_SHOW_KEY] = True
+                st.rerun(scope="fragment")
+
+    # ── No diagram yet — auto-trigger on first visit ─────────────────────
+    else:
+        _auto_key = f"_azarch_auto_{cache_key}"
+        if not st.session_state.get(_auto_key):
+            st.session_state[_auto_key] = True
+            st.session_state[_SHOW_KEY] = True
+            st.rerun(scope="fragment")
+        else:
+            st.markdown(
+                '<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;'
+                'padding:36px 24px;text-align:center;margin:8px 0">'
+                '<div style="font-size:2.5rem;margin-bottom:10px">🏗️</div>'
+                '<div style="font-family:\'Segoe UI\',sans-serif;font-size:1.05rem;font-weight:700;'
+                'color:#1F2937;margin-bottom:8px">Solution Architecture Diagram</div>'
+                '<div style="font-size:.82rem;color:#6B7280;margin-bottom:0;max-width:480px;'
+                'margin-left:auto;margin-right:auto">Azure OpenAI generates a professional '
+                'light-theme architecture diagram with layered sections, data-flow arrows, '
+                'service cards and business outcomes panel.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("🤖 Generate with Azure OpenAI", key="btn_az_arch_gen",
+                         width="stretch", type="primary"):
+                st.session_state[_SHOW_KEY] = True
+                st.rerun(scope="fragment")
+
+
+@st.fragment
 def _arch_dl_fragment(drawio_key: str, html_key: str, lucid_url: str) -> None:
     """Download buttons in a fragment so clicking only reruns this section, not the full page."""
     _drawio_b = st.session_state.get(drawio_key, b"")
@@ -3795,82 +3908,8 @@ def render_architecture_tab(ar: dict, te: dict, ce: dict,
     if _drawio_key not in st.session_state:
         st.session_state[_drawio_key] = generate_drawio_xml(ar, se).encode("utf-8")
 
-    # ── Render diagram HTML outside the fragment ──────────────────────────
-    # (stays on screen unchanged when download buttons are clicked)
-    if cached_html:
-        st.components.v1.html(cached_html, height=920, scrolling=True)
-        st.session_state[_html_dl_key] = cached_html
-    else:
-        if _pyhtml_key not in st.session_state:
-            st.session_state[_pyhtml_key] = generate_arch_html_svg(ar, se)
-        _py_html = st.session_state[_pyhtml_key]
-        st.components.v1.html(_py_html, height=920, scrolling=True)
-        if _html_dl_key not in st.session_state:
-            st.session_state[_html_dl_key] = _py_html
-
-    # ── Download buttons in a fragment ────────────────────────────────────
-    # Clicking a download button only reruns this fragment, not the full page
-    _arch_dl_fragment(_drawio_key, _html_dl_key, _LUCID_URL)
-
-    gen_clicked = False  # Enhance with AI hidden
-
-    # ── AI generation (triggered by button in either branch above) ──
-    # Tries all live AI clients in priority order: configured → Claude → GPT → Qwen → DeepSeek
-    if gen_clicked:
-        # Build candidate list: configured client first, then all others
-        _candidates = []
-        if ai_client and hasattr(ai_client, "generate_ai_arch_svg"):
-            _candidates.append(("configured", ai_client))
-
-        # Lazy-import sibling clients to try as fallbacks
-        try:
-            from .ai_clients import AnthropicAI, AzureAI, QwenAI, DeepSeekAI
-            for _cls_name, _cls in [
-                ("Claude", AnthropicAI),
-                ("Azure OpenAI", AzureAI),
-                ("Qwen", QwenAI),
-                ("DeepSeek", DeepSeekAI),
-            ]:
-                try:
-                    _c = _cls.from_session()
-                    if _c and _c.is_live and hasattr(_c, "generate_ai_arch_svg"):
-                        if not any(_c.__class__ is x.__class__ for _, x in _candidates):
-                            _candidates.append((_cls_name, _c))
-                except Exception:
-                    pass
-        except ImportError:
-            pass
-
-        if not _candidates:
-            st.warning(
-                "No AI client configured. Add an Anthropic, Azure OpenAI, Qwen, or DeepSeek key in Settings.",
-                icon="🔑",
-            )
-        else:
-            _model_name = _candidates[0][0]
-            with st.spinner(f"🤖 Generating AI diagram via {_model_name} — this may take ~30 s…"):
-                _html = None
-                _last_err = ""
-                for _name, _c in _candidates:
-                    try:
-                        _html = _c.generate_ai_arch_svg(ar, se)
-                        if _html:
-                            _model_name = _name
-                            break
-                    except Exception as _ex:
-                        _last_err = str(_ex)[:120]
-                        continue
-
-            if _html:
-                st.session_state[_cache_key] = _html
-                st.success(f"✅ AI diagram generated via {_model_name}. Refreshing…")
-                st.rerun()
-            else:
-                st.error(
-                    f"AI diagram generation failed across all configured models. "
-                    f"Last error: {_last_err or 'No response returned — check API keys in Settings.'}",
-                    icon="⚠️",
-                )
+    # ── Solution Architecture Diagram — Azure OpenAI light-theme (fragment) ──
+    _az_arch_fragment(ar, se, _cache_key, _drawio_key)
 
     # ── Claude AI Vision Architecture — fragment-isolated (no full-page gray-out) ──
     st.markdown("---")

@@ -3729,6 +3729,12 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
     _GEN_KEY   = "_az_arch_doing_work"
     _SHOW_KEY  = "_az_arch_show_loader"
 
+    def _frag_rerun():
+        try:
+            st.rerun(scope="fragment")
+        except Exception:
+            st.rerun()
+
     # ── STATE 1 — show loader then do work ──────────────────────────────
     if st.session_state.get(_SHOW_KEY):
         st.session_state[_SHOW_KEY] = False
@@ -3745,7 +3751,7 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
             '</div></body></html>',
             height=280, scrolling=False,
         )
-        st.rerun(scope="fragment")
+        _frag_rerun()
         return
 
     # ── STATE 2 — make the API call ──────────────────────────────────────
@@ -3769,7 +3775,7 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
             st.session_state[cache_key] = _html
         if _err:
             st.session_state[_ERR_KEY] = _err
-        st.rerun(scope="fragment")
+        _frag_rerun()
         return
 
     # ── Show error from last attempt ─────────────────────────────────────
@@ -3799,12 +3805,12 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
         with _ac3:
             if st.button("🔄 Reset", key="btn_az_reset", width="stretch"):
                 st.session_state.pop(cache_key, None)
-                st.rerun(scope="fragment")
+                _frag_rerun()
         with _ac4:
             if st.button("✨ Regenerate", key="btn_az_regen", width="stretch", type="primary"):
                 st.session_state.pop(cache_key, None)
                 st.session_state[_SHOW_KEY] = True
-                st.rerun(scope="fragment")
+                _frag_rerun()
 
     # ── No diagram yet — auto-trigger on first visit ─────────────────────
     else:
@@ -3812,7 +3818,7 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
         if not st.session_state.get(_auto_key):
             st.session_state[_auto_key] = True
             st.session_state[_SHOW_KEY] = True
-            st.rerun(scope="fragment")
+            _frag_rerun()
         else:
             st.markdown(
                 '<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;'
@@ -3830,7 +3836,7 @@ def _az_arch_fragment(ar: dict, se: dict, cache_key: str, drawio_key: str) -> No
             if st.button("🤖 Generate with Azure OpenAI", key="btn_az_arch_gen",
                          width="stretch", type="primary"):
                 st.session_state[_SHOW_KEY] = True
-                st.rerun(scope="fragment")
+                _frag_rerun()
 
 
 @st.fragment

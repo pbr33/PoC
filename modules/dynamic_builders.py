@@ -457,18 +457,18 @@ def _build_dynamic_time(semantic, text="", rag=None):
     # ── Stream 3: SharePoint / M365 ───────────────────────────────────────
     if is_sharepoint:
         sp_tasks = [
-            _task("SharePoint site architecture and provisioning",          "SharePoint Dev", 8,  "Site collections, hub sites, navigation, permissions model"),
-            _task("Content types, columns and metadata taxonomy",           "SharePoint Dev", 8,  "Term store, managed metadata, content type hub"),
-            _task("SPFx web parts and application customisers",             "SharePoint Dev", 12, "React-based SPFx, property pane, API calls"),
-            _task("Power Apps canvas / model-driven app development",       "SharePoint Dev", 12, "Forms, screens, data connections, business rules"),
-            _task("Power Automate flows and approval workflows",            "SharePoint Dev", 10, "Trigger/action flows, approvals, email notifications"),
-            _task("SharePoint Search configuration and result sources",     "SharePoint Dev", 6,  "Search verticals, managed properties, refiners"),
-            _task("User roles, permission matrix and AAD group mapping",    "SharePoint Dev", 6,  "Permission levels, broken inheritance, AAD groups"),
+            _task("SharePoint site architecture and provisioning",          "AI Engineer", 8,  "Site collections, hub sites, navigation, permissions model"),
+            _task("Content types, columns and metadata taxonomy",           "AI Engineer", 8,  "Term store, managed metadata, content type hub"),
+            _task("SPFx web parts and application customisers",             "AI Engineer", 12, "React-based SPFx, property pane, API calls"),
+            _task("Power Apps canvas / model-driven app development",       "AI Engineer", 12, "Forms, screens, data connections, business rules"),
+            _task("Power Automate flows and approval workflows",            "AI Engineer", 10, "Trigger/action flows, approvals, email notifications"),
+            _task("SharePoint Search configuration and result sources",     "AI Engineer", 6,  "Search verticals, managed properties, refiners"),
+            _task("User roles, permission matrix and AAD group mapping",    "AI Engineer", 6,  "Permission levels, broken inheritance, AAD groups"),
         ]
         if is_teams:
             sp_tasks += [
-                _task("SharePoint pages as Teams tabs integration",         "SharePoint Dev", 8,  "Tab configuration, SSO, deep link support"),
-                _task("Teams notifications and adaptive cards from flows",  "SharePoint Dev", 6,  "Power Automate to Teams channel cards, @mentions"),
+                _task("SharePoint pages as Teams tabs integration",         "AI Engineer", 8,  "Tab configuration, SSO, deep link support"),
+                _task("Teams notifications and adaptive cards from flows",  "AI Engineer", 6,  "Power Automate to Teams channel cards, @mentions"),
             ]
         streams.append(_stream("SharePoint / M365", "SharePoint", sp_tasks, mult=1.20,
                                parallel_with=["AI / ML Stream", "Data Engineering"]))
@@ -780,8 +780,8 @@ def _build_dynamic_time(semantic, text="", rag=None):
     if is_custom_app:
         roles.append({"name": "Backend Developer", "allocation_pct": min(1.0, 0.5 + n_func * 0.05), "rate": 110})
         roles.append({"name": "Frontend Developer","allocation_pct": min(1.0, 0.3 + n_func * 0.04), "rate": 100})
-    if is_sharepoint:
-        roles.append({"name": "SharePoint Developer", "allocation_pct": 0.5, "rate": 105})
+    if is_sharepoint and not is_ai:
+        roles.append({"name": "AI Engineer", "allocation_pct": 0.5, "rate": 115})
     if not is_custom_app and not is_sharepoint:
         roles.append({"name": "Backend Developer", "allocation_pct": min(1.0, 0.4 + n_func * 0.04), "rate": 110})
     roles.append({"name": "DevOps Engineer",       "allocation_pct": 0.35 if is_devops else 0.25, "rate": 120})

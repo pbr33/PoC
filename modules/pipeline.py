@@ -1214,7 +1214,7 @@ _DOMAIN_META = {
     "Documentation":    {"color": "#f4845f", "icon": "📄",  "role": "Tech Writer"},
     "PM":               {"color": "#e9c46a", "icon": "📋",  "role": "Project Manager"},
     "Custom App":       {"color": "#f87171", "icon": "💻",  "role": "Developer"},
-    "SharePoint":       {"color": "#0078d4", "icon": "📑",  "role": "SharePoint Dev"},
+    "SharePoint":       {"color": "#0078d4", "icon": "📑",  "role": "AI Engineer"},
     "Integration":      {"color": "#94a3b8", "icon": "🔗",  "role": "Integration Dev"},
     "Feature Development": {"color": "#06b6d4", "icon": "⚙️", "role": "Developer"},
 }
@@ -10142,14 +10142,14 @@ def show_results():
                     "Developer": "Developer", "Senior Dev": "Developer",
                     "Frontend Dev": "Frontend Developer", "DevOps": "DevOps Engineer",
                     "QA": "QA Engineer", "Writer": "Technical Writer",
-                    "SharePoint Dev": "SharePoint Developer",
+                    "SharePoint Dev": "AI Engineer",
                     "Product Owner": "Product Owner",
                     "Data Engineer": "Data Engineer", "ML Engineer": "ML Engineer",
                 }
                 _ROLE_ORDER = [
                     "Project Manager", "Business Analyst", "Solution Architect",
                     "Security Consultant", "Data Engineer", "ML Engineer",
-                    "Developer", "Frontend Developer", "SharePoint Developer",
+                    "Developer", "Frontend Developer",
                     "DevOps Engineer", "QA Engineer", "Technical Writer", "Product Owner",
                 ]
                 _DOM_COLOR = {
